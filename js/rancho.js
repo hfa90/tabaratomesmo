@@ -1,8 +1,9 @@
 // Rancho do mês: lista mensal, relatório "onde comprar", distância de casa e dias das proteínas.
 import * as api from './api.js';
+import { track } from './track.js';
 import { BAIRROS } from './config.js';
 import {
-  S, $, $$, esc, brl, km, haversine, isOn, logo, logoFull, priceTag, stepper, hooks, DOW, DOW_SHORT, reduceMotion,
+  S, $, $$, esc, brl, km, haversine, isOn, logo, logoFull, priceTag, stepper, hooks, DOW, DOW_SHORT, reduceMotion, media,
 } from './core.js';
 
 // ---------------------------------------------------------------- configuração do deslocamento
@@ -227,75 +228,138 @@ async function proteinInsights(its) {
   return { perProduct, combo, worst, fromList: inList.length > 0 };
 }
 
+// ---------------------------------------------------------------- histórico (página "Você")
+export function history() { return api.store.get('tb.history', {}); }
+function saveHistory(entry) {
+  const h = history(); h[entry.month] = { ...(h[entry.month] || {}), ...entry }; api.store.set('tb.history', h);
+}
+
 // ---------------------------------------------------------------- render
 const cats = () => new Map(S.categories.map((c) => [c.slug, c]));
+let mode = api.store.get('tb.rmode', 'plan'); // 'plan' | 'shop'
+const bestOf = (p) => p.prices.filter((x) => isOn(x.market_id))[0] || p.prices[0];
+
+function shell() {
+  const v = $('#ranchoView');
+  if ($('#rxGroups', v)) return;
+  v.innerHTML = `
+    <div class="rx">
+      <div id="rxNote"></div>
+      <div class="rx-head" id="rxHead"></div>
+      <div class="rx-layout">
+        <div class="rx-main">
+          <div class="rx-add">
+            <label class="search search--sm">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 1 0 4.6 13.4l4.7 4.7 1.4-1.4-4.7-4.7A7.5 7.5 0 0 0 10.5 3zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z" fill="currentColor"/></svg>
+              <input id="ranchoSearch" type="search" placeholder="Adicionar produto ao rancho" autocomplete="off" aria-autocomplete="list" aria-controls="ranchoSug" />
+            </label>
+            <ul class="sug" id="ranchoSug" role="listbox" hidden></ul>
+            <div class="rx-quick" id="rxQuick"></div>
+          </div>
+          <div id="rxGroups"></div>
+        </div>
+        <aside class="rx-side" id="rxSide"></aside>
+      </div>
+      <div id="ranchoReport"></div>
+      <div class="rbar" id="ranchoBar" hidden></div>
+    </div>`;
+}
 
 export function render() {
+  shell();
   const m = meta();
   const its = items();
   const cur = monthKey();
   const checked = new Set(m.checked);
-  const total = its.reduce((s, { p, qty }) => s + (p.prices[0]?.price ?? 0) * qty, 0);
   const done = its.filter(({ p }) => checked.has(p.id)).length;
+  const lastMonth = Object.values(history()).filter((h) => h.month !== m.month && h.items?.length).sort((a, b) => b.month.localeCompare(a.month))[0];
 
-  $('#ranchoHead').innerHTML = `
-    ${m.month !== cur ? `<div class="note newmonth">Começou ${esc(monthName(cur))}. <button class="linkish" data-rancho="newmonth">Montar o rancho de ${esc(monthName(cur))} com os mesmos itens</button></div>` : ''}
-    <div class="rh">
-      <label class="rh__name"><span class="sr-only">Nome da lista</span>
-        <input id="ranchoName" value="${esc(m.name)}" maxlength="40" aria-label="Nome da lista" /></label>
-      <p class="muted">${its.length ? `${its.length} ${its.length > 1 ? 'produtos' : 'produto'}, ${done ? `${done} já no carrinho, ` : ''}cerca de ${brl(total)} no melhor preço de cada um` : 'Monte a lista do mês. No fim, mostramos onde o rancho todo sai mais barato.'}</p>
-    </div>`;
+  $('#rxNote').innerHTML = m.month !== cur
+    ? `<div class="note">Começou ${esc(monthName(cur))}. <button class="linkish" data-rancho="newmonth">Montar o rancho de ${esc(monthName(cur))} com os mesmos itens</button></div>` : '';
 
-  $('#ranchoAdd').innerHTML = `
-    <div class="radd">
-      <label class="search search--sm">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 1 0 4.6 13.4l4.7 4.7 1.4-1.4-4.7-4.7A7.5 7.5 0 0 0 10.5 3zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z" fill="currentColor"/></svg>
-        <input id="ranchoSearch" type="search" placeholder="Adicionar produto ao rancho" autocomplete="off" aria-autocomplete="list" aria-controls="ranchoSug" />
-      </label>
-      <ul class="sug" id="ranchoSug" role="listbox" hidden></ul>
-      ${its.length < 4 ? `<button class="btn btn--sm btn--ghost" data-rancho="basic">Começar pela cesta básica</button>` : ''}
-    </div>`;
+  $('#rxHead').innerHTML = `
+    <div class="rx-title">
+      <label><span class="sr-only">Nome da lista</span><input id="ranchoName" value="${esc(m.name)}" maxlength="40" /></label>
+      <div class="rx-progress">
+        ${its.length ? `<span>${its.length} ${its.length > 1 ? 'itens' : 'item'}${done ? ` · ${done} no carrinho` : ''}</span><span class="track" aria-hidden="true"><span style="--w:${its.length ? Math.round((done / its.length) * 100) : 0}%"></span></span>`
+          : '<span>Monte a lista do mês. No fim, mostramos onde ela sai mais barata.</span>'}
+      </div>
+    </div>
+    ${its.length ? `<div class="seg" role="radiogroup" aria-label="Modo da lista">
+      <button role="radio" aria-checked="${mode === 'plan'}" data-rmode="plan">Planejar</button>
+      <button role="radio" aria-checked="${mode === 'shop'}" data-rmode="shop">No mercado</button>
+    </div>` : ''}`;
+
+  $('#rxQuick').innerHTML = [
+    its.length < 6 ? `<button class="chip" data-rancho="basic">+ Cesta básica</button>` : '',
+    lastMonth && its.length < 3 ? `<button class="chip" data-rancho="repeat" data-month="${lastMonth.month}">Repetir ${esc(monthName(lastMonth.month))}</button>` : '',
+    S.favs.size && its.length < 6 ? `<button class="chip" data-rancho="favs">+ Meus favoritos</button>` : '',
+  ].join('');
 
   if (!its.length) {
-    $('#cartItems').innerHTML = `<li class="empty-box"><p><b>Seu rancho está vazio.</b></p><p class="muted">Busque produtos acima, use “Começar pela cesta básica” ou toque em “+ Lista” nos cards de ofertas.</p></li>`;
-    $('#cartSummary').innerHTML = ''; $('#ranchoReport').innerHTML = ''; $('#ranchoBar').hidden = true;
+    $('#rxGroups').innerHTML = `<div class="rx-empty"><span class="big" aria-hidden="true">🛒</span><b>Seu rancho está vazio</b>
+      <p class="muted small">Busque acima, comece pela cesta básica ou toque no + dos produtos em Ofertas.</p></div>`;
+    $('#rxSide').innerHTML = ''; $('#ranchoReport').innerHTML = ''; $('#ranchoBar').hidden = true;
     return;
   }
 
+  // ---- lista por categoria
   const C = cats();
   const groups = new Map();
   for (const it of its) { const k = it.p.category_slug; (groups.get(k) || groups.set(k, []).get(k)).push(it); }
-  $('#cartItems').innerHTML = [...groups].sort((a, b) => (C.get(a[0])?.sort ?? 99) - (C.get(b[0])?.sort ?? 99)).map(([slug, arr]) => `
-    <li class="cart__group"><span aria-hidden="true">${C.get(slug)?.icon || ''}</span>${esc(C.get(slug)?.name || slug)}</li>
-    ${arr.map(({ p, qty }) => {
-      const b = p.prices.filter((x) => isOn(x.market_id))[0] || p.prices[0];
-      const on = checked.has(p.id);
-      return `<li class="cart__item ${on ? 'is-checked' : ''}" data-pid="${p.id}">
-        <label class="tick-box"><input type="checkbox" data-check="${p.id}" ${on ? 'checked' : ''} aria-label="Já peguei ${esc(p.name)}" /><span></span></label>
-        <span class="card__emoji" aria-hidden="true">${p.emoji || '🛒'}</span>
-        <div class="cart__txt"><b>${esc(p.name)}</b><small>${esc([p.brand, p.unit].filter(Boolean).join(', '))}</small>
-        <small class="cart__best">${logo(S.markets.get(b.market_id), 'xs')} ${brl(b.price)}${qty > 1 ? ` × ${qty} = ${brl(b.price * qty)}` : ''}</small></div>
-        <div class="card__foot">${stepper(p.id)}</div>
-      </li>`;
-    }).join('')}`).join('');
+  const openState = api.store.get('tb.rgroups', {});
+  $('#rxGroups').classList.toggle('rx-mode-shop', mode === 'shop');
+  $('#rxGroups').innerHTML = [...groups].sort((a, b) => (C.get(a[0])?.sort ?? 99) - (C.get(b[0])?.sort ?? 99)).map(([slug, arr]) => {
+    const n = arr.filter(({ p }) => checked.has(p.id)).length;
+    if (mode === 'shop') arr.sort((a, b) => checked.has(a.p.id) - checked.has(b.p.id));
+    return `<details class="rx-group" data-group="${esc(slug)}" ${openState[slug] === false ? '' : 'open'}>
+      <summary>${esc(C.get(slug)?.name || slug)}<span class="cnt">${n ? `${n}/` : ''}${arr.length}</span></summary>
+      <ul class="rx-items">${arr.map(({ p, qty }) => {
+        const b = bestOf(p); const on = checked.has(p.id);
+        return `<li class="rx-item ${on ? 'is-checked' : ''}" data-pid="${p.id}">
+          <label class="tick"><input type="checkbox" data-check="${p.id}" ${on ? 'checked' : ''} aria-label="Já peguei ${esc(p.name)}" /><span></span></label>
+          ${media(p, 'rx-media')}
+          <div class="rx-txt"><span class="rx-name">${esc(p.name)}</span>
+            <span class="rx-meta">${mode === 'plan' ? `${logo(S.markets.get(b.market_id), 'xs')} <span>${brl(b.price)}${qty > 1 ? ` × ${qty}` : ''} · ${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</span>` : `<span>${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</span>`}</span></div>
+          <span class="rx-qty">${qty}×</span>
+          <span class="rx-sub">${brl(b.price * qty)}</span>
+          ${stepper(p.id)}
+        </li>`;
+      }).join('')}</ul>
+    </details>`;
+  }).join('');
 
+  // ---- resumo lateral
   const r = computeReport();
-  $('#cartSummary').innerHTML = r ? `
-    <div class="sum-live">
-      <p class="muted small">Prévia: produtos + deslocamento${r.home ? ` a partir de ${esc(r.home.label || 'casa')}` : ''}</p>
-      <ol class="totals">
-        ${r.ranked.map((x, i) => `<li class="${i === 0 ? 'is-best' : ''}">
-          ${logo(x.m, 'sm')}<span class="totals__n">${esc(x.m.name)}${x.km != null ? `<small>${km(x.km)} de casa</small>` : ''}</span>
-          <span class="totals__v">${brl(x.total)}${x.missing.length ? `<small>${x.missing.length} ${x.missing.length > 1 ? 'itens' : 'item'} em outro lugar</small>` : ''}</span></li>`).join('')}
-      </ol>
-      <button class="btn btn--text" data-rancho="share">Compartilhar lista</button>
-      <button class="btn btn--text" data-rancho="clear">Limpar</button>
-    </div>` : '';
+  if (r) {
+    const max = Math.max(...r.ranked.map((x) => x.total));
+    const min = r.best.total;
+    $('#rxSide').innerHTML = `
+      <div class="rx-best">
+        <p class="pd__h" style="margin:0">Onde sai mais barato</p>
+        <div class="rx-best__top"><span class="lf">${logoFull(r.best.m)}</span>
+          <div><b>${esc(r.best.m.name)}</b><small>${r.best.km != null ? `${km(r.best.km)} de ${r.home?.source === 'pos' ? 'você' : 'casa'}` : 'menor total'}</small></div></div>
+        ${priceTag(r.best.total, 'lg')}
+        <p class="rx-best__save">${r.base && r.base !== r.best ? `<b>${brl(r.savings)}</b> a menos que no ${esc(r.base.m.name)}, o mais perto${r.home?.source === 'pos' ? ' de você' : ' de casa'}.`
+          : r.base ? 'O mais perto também é o mais barato.' : `Até <b>${brl(r.savings)}</b> a menos que no mais caro.`}${r.home ? ' Já inclui o deslocamento.' : ''}</p>
+        <ol class="rank-list">${r.ranked.map((x, i) => `<li class="${i === 0 ? 'is-best' : ''}">
+          ${logo(x.m, 'xs')}<b>${esc(x.m.name)}</b><span class="v">${brl(x.total)}</span>
+          <span class="rl-bar"><span style="--w:${max > min ? 30 + 70 * ((x.total - min) / (max - min)) : 100}%"></span></span>
+          ${x.missing.length ? `<small style="grid-column:2/-1">${x.missing.length} ${x.missing.length > 1 ? 'itens' : 'item'} sem preço lá</small>` : ''}</li>`).join('')}</ol>
+        ${m.status === 'concluida'
+          ? `<button class="btn btn--ghost btn--block" data-rancho="report">Ver relatório completo</button>`
+          : `<button class="btn btn--primary btn--block" data-rancho="finish">Concluir e ver relatório</button>`}
+      </div>
+      <div class="rx-tools">
+        <button class="btn btn--text btn--sm" data-rancho="share">Compartilhar lista</button>
+        <button class="btn btn--text btn--sm" data-rancho="clear">Limpar lista</button>
+      </div>`;
+  }
 
   $('#ranchoBar').hidden = false;
   $('#ranchoBar').innerHTML = m.status === 'concluida'
-    ? `<span><b>Lista concluída</b><small>Altere itens e o relatório se atualiza</small></span><button class="btn btn--ghost btn--sm" data-rancho="reopen">Reabrir</button><button class="btn btn--primary btn--sm" data-rancho="report">Ver relatório</button>`
-    : `<span><b>${its.length} ${its.length > 1 ? 'produtos' : 'produto'}</b><small>a partir de ${brl(r?.best.total ?? total)}</small></span><button class="btn btn--primary" data-rancho="finish">Concluir lista</button>`;
+    ? `<span><b>Lista concluída</b><small>Mais barato: ${esc(r.best.m.name)}, ${brl(r.best.total)}</small></span><button class="btn btn--primary btn--sm" data-rancho="report">Relatório</button>`
+    : `<span><b>${r ? `${esc(r.best.m.name)}: ${brl(r.best.total)}` : `${its.length} itens`}</b><small>${its.length} ${its.length > 1 ? 'itens' : 'item'} · mais barato agora</small></span><button class="btn btn--primary btn--sm" data-rancho="finish">Concluir</button>`;
 
   if (m.status === 'concluida') renderReport(false); else $('#ranchoReport').innerHTML = '';
 }
@@ -305,8 +369,12 @@ export async function renderReport(scroll = true) {
   const el = $('#ranchoReport');
   if (!r) { el.innerHTML = ''; return; }
   const m = meta();
-  m.bestMarket = r.best.m.id; m.bestTotal = Math.round(r.best.total * 100) / 100; m.savings = Math.max(0, Math.round(r.savings * 100) / 100);
+  m.bestMarket = r.best.m.id; m.bestTotal = Math.round(r.best.total * 100) / 100;
+  m.baseTotal = Math.round((r.base || r.ranked[r.ranked.length - 1]).total * 100) / 100;
+  const totals = Object.fromEntries(r.rows.map((x) => [x.m.id, Math.round(x.total * 100) / 100]));
+  m.savings = m.bought ? Math.max(0, Math.round((m.baseTotal - (totals[m.bought] ?? m.bestTotal)) * 100) / 100) : Math.max(0, Math.round(r.savings * 100) / 100);
   persist();
+  if (m.status === 'concluida') saveHistory({ month: m.month, name: m.name, best: m.bestMarket, bestTotal: m.bestTotal, baseTotal: m.baseTotal, base: r.base?.m.id ?? null, totals, savings: m.savings, items: [...S.list], completedAt: m.completedAt, bought: m.bought ?? null, spent: m.spent ?? null });
   const T = S.transport; const M = MODES[T.mode] || MODES.carro;
   const maxTotal = Math.max(...r.rows.map((x) => x.total));
   const stale = r.best.missing.length + r.its.filter(({ p }) => {
@@ -317,23 +385,27 @@ export async function renderReport(scroll = true) {
   el.innerHTML = `
     <section class="rep" aria-labelledby="repTitle">
       <header class="rep__hero">
-        <p class="rep__kick">${esc(m.name)}: onde comprar</p>
-        <div class="rep__win"><span class="rep__logo">${logoFull(r.best.m)}</span><h2 id="repTitle">${esc(r.best.m.name)}</h2></div>
-        ${priceTag(r.best.total, 'tag--xl')}
+        <p class="rep__kick">Relatório · ${esc(m.name)}</p>
+        <div class="rep__win"><span class="rep__logo">${logoFull(r.best.m)}</span>
+          <div><p class="muted small">Melhor lugar para este rancho</p><h2 id="repTitle">${esc(r.best.m.name)}</h2></div></div>
+        ${priceTag(r.best.total, 'xl')}
         <p class="rep__lead">${r.base && r.base !== r.best
-          ? `Você economiza <b>${brl(r.savings)}</b> em relação ao ${esc(r.base.m.name)}, o mercado mais perto da sua casa, já contando o deslocamento.`
-          : r.base ? `O mercado mais perto da sua casa também é o mais barato para esta lista. Ótimo: economia e menos tempo no trânsito.`
+          ? `Você economiza <b>${brl(r.savings)}</b> em relação ao ${esc(r.base.m.name)}, o mercado mais perto ${r.home?.source === 'pos' ? 'de você' : 'da sua casa'}, já contando o deslocamento.`
+          : r.base ? `O mercado mais perto ${r.home?.source === 'pos' ? 'de você' : 'da sua casa'} também é o mais barato para esta lista: economia e menos trânsito.`
           : `É o menor total para a sua lista. Informe onde fica sua casa para incluir o deslocamento.`}</p>
-        <ul class="rep__facts">
+        <ul class="facts">
           <li><b>${r.qty}</b> itens</li>
-          ${r.best.km != null ? `<li><b>${km(r.best.km)}</b> de casa (${esc(r.best.store.neighborhood)})</li><li><b>~${Math.round(r.best.trip.minutes)} min</b> ida e volta</li>` : ''}
+          ${r.best.km != null ? `<li><b>${km(r.best.km)}</b> · ${esc(r.best.store.neighborhood)}</li><li><b>~${Math.round(r.best.trip.minutes)} min</b> ida e volta</li>` : ''}
           ${r.best.missing.length ? `<li><b>${r.best.missing.length}</b> sem preço lá</li>` : ''}
         </ul>
         <div class="rep__actions">
-          <button class="btn btn--tag" data-rancho="sharereport">Compartilhar resultado</button>
-          ${r.best.store ? `<a class="btn btn--ghost-light" href="https://www.google.com/maps/dir/?api=1&destination=${r.best.store.lat},${r.best.store.lng}" target="_blank" rel="noopener">Abrir rota</a>` : ''}
+          ${r.best.store ? `<a class="btn btn--primary" href="https://www.google.com/maps/dir/?api=1&destination=${r.best.store.lat},${r.best.store.lng}" target="_blank" rel="noopener" data-route="${r.best.m.id}">Abrir rota</a>` : ''}
+          <button class="btn btn--ghost" data-rancho="sharereport">Compartilhar</button>
+          ${m.status === 'concluida' ? `<button class="btn btn--text" data-rancho="reopen">Editar lista</button>` : ''}
         </div>
       </header>
+
+      <div class="rep__box bought" id="repBought">${boughtBox(r, m)}</div>
 
       <div class="rep__cfg">
         <div class="rep__home">
@@ -342,28 +414,30 @@ export async function renderReport(scroll = true) {
           <button class="linkish small" data-rancho="sethome">${r.home?.source === 'home' ? 'Alterar' : 'Definir minha casa'}</button>
         </div>
         <div class="seg seg--sm" role="radiogroup" aria-label="Como você vai ao mercado">
-          ${Object.entries(MODES).map(([k, v]) => `<button role="radio" aria-checked="${T.mode === k}" aria-selected="${T.mode === k}" data-mode="${k}">${v.label}</button>`).join('')}
+          ${Object.entries(MODES).map(([k, v]) => `<button role="radio" aria-checked="${T.mode === k}" data-mode="${k}">${v.label}</button>`).join('')}
         </div>
         ${M.unit ? `<label class="rep__cost">${T.mode === 'onibus' ? 'Passagem' : T.mode === 'app' ? 'Preço por km (+ R$ 6 por corrida)' : 'Custo por km rodado'}
           <span>R$ <input id="tripValue" inputmode="decimal" value="${(T.value ?? M.value).toFixed(2).replace('.', ',')}" /></span></label>` : ''}
       </div>
 
-      <h3 class="pd__h">Vale a pena ir mais longe?</h3>
-      <ol class="vs">
-        ${r.ranked.map((x) => `<li class="vs__row ${x === r.best ? 'is-best' : ''} ${x.verdict ? 'v-' + x.verdict.kind : ''}">
-          <div class="vs__top">
-            ${logo(x.m, 'md')}
-            <div class="vs__n"><b>${esc(x.m.name)}</b><small>${x.km != null ? `${km(x.km)} de casa, ~${Math.round(x.trip.minutes)} min ida e volta` : ''}</small></div>
-            <div class="vs__t"><b>${brl(x.total)}</b></div>
-          </div>
-          <p class="vs__break">${brl(x.goods)} em produtos + ${brl(x.trip.cost)} de deslocamento</p>
-          <div class="vs__bar"><span style="--w:${(x.total / maxTotal) * 100}%;--c:${esc(x.m.color)}"></span></div>
-          ${x.verdict ? `<p class="vs__v"><em>${x.verdict.label}</em>${x.verdict.text}</p>` : ''}
-          ${x.missing.length ? `<p class="vs__miss">Sem preço lá: ${x.missing.slice(0, 4).map((p) => esc(p.name)).join(', ')}${x.missing.length > 4 ? '…' : ''} (calculado no mais barato de outro mercado)</p>` : ''}
-        </li>`).join('')}
-      </ol>
+      <div>
+        <h3 class="pd__h">Vale a pena ir mais longe?</h3>
+        <ol class="vs">
+          ${r.ranked.map((x) => `<li class="vs__row ${x === r.best ? 'is-best' : ''} ${x.verdict ? 'v-' + x.verdict.kind : ''}">
+            <div class="vs__top">
+              ${logo(x.m, 'md')}
+              <div class="vs__n"><b>${esc(x.m.name)}</b><small>${x.km != null ? `${km(x.km)}, ~${Math.round(x.trip.minutes)} min ida e volta` : ''}</small></div>
+              <div class="vs__t"><b>${brl(x.total)}</b></div>
+            </div>
+            <div class="vs__bar"><span style="--w:${(x.total / maxTotal) * 100}%"></span></div>
+            <p class="vs__break">${brl(x.goods)} em produtos + ${brl(x.trip.cost)} de deslocamento</p>
+            ${x.verdict ? `<p class="vs__v"><em>${x.verdict.label}</em>${x.verdict.text}</p>` : ''}
+            ${x.missing.length ? `<p class="vs__miss">Sem preço lá: ${x.missing.slice(0, 4).map((p) => esc(p.name)).join(', ')}${x.missing.length > 4 ? '…' : ''} (contado pelo mais barato de outro mercado)</p>` : ''}
+          </li>`).join('')}
+        </ol>
+      </div>
 
-      ${r.split ? `<div class="rep__split">
+      ${r.split ? `<div class="rep__box">
         <h3 class="pd__h">Dá para economizar mais dividindo</h3>
         <p>Comprando parte no <b>${esc(r.split.A.m.name)}</b> e parte no <b>${esc(r.split.B.m.name)}</b>, numa volta só, o rancho sai por <b>${brl(r.split.total)}</b>: mais <b>${brl(r.best.total - r.split.total)}</b> de economia, com ~${Math.round(r.split.trip.minutes)} min de deslocamento.</p>
         <div class="split2">
@@ -372,11 +446,11 @@ export async function renderReport(scroll = true) {
         </div>
       </div>` : ''}
 
-      <div class="rep__prot" id="repProt"><h3 class="pd__h">Melhores dias para as proteínas</h3><div class="skeleton" style="height:140px"></div></div>
+      <div class="rep__box" id="repProt"><h3 class="pd__h">Melhores dias para as proteínas</h3><div class="skeleton" style="height:140px"></div></div>
 
-      ${stale ? `<div class="rep__crowd">
-        <p><b>${stale} ${stale > 1 ? 'preços' : 'preço'} do seu rancho no ${esc(r.best.m.name)} ${stale > 1 ? 'estão' : 'está'} sem confirmação recente.</b> Quando passar lá, confira em 1 minuto: você ganha pontos e o cálculo de todo mundo fica mais preciso.</p>
-        <button class="btn btn--primary btn--sm" data-fiscal-market="${r.best.m.id}">Conferir preços no ${esc(r.best.m.name)}</button>
+      ${stale ? `<div class="rep__box">
+        <p class="small"><b>${stale} ${stale > 1 ? 'preços' : 'preço'} no ${esc(r.best.m.name)} sem confirmação recente.</b> Quando passar lá, confira em 1 minuto: você ganha pontos e o cálculo fica mais preciso para todo mundo.</p>
+        <button class="btn btn--ghost btn--sm" style="margin-top:10px" data-fiscal-market="${r.best.m.id}">Conferir preços no ${esc(r.best.m.name)}</button>
       </div>` : ''}
     </section>`;
 
@@ -384,25 +458,36 @@ export async function renderReport(scroll = true) {
 
   const pi = await proteinInsights(r.its);
   const box = $('#repProt'); if (!box) return;
-  if (!pi) { box.innerHTML = `<h3 class="pd__h">Melhores dias para as proteínas</h3><p class="muted">Ainda não há histórico suficiente.</p>`; return; }
+  if (!pi) { box.innerHTML = `<h3 class="pd__h">Melhores dias para as proteínas</h3><p class="muted small">Ainda não há histórico suficiente.</p>`; return; }
   const today = new Date().getDay();
   box.innerHTML = `
     <h3 class="pd__h">Melhores dias para as proteínas</h3>
     ${pi.combo ? `<p class="prot__lead">Para comprar ${pi.fromList ? 'as proteínas da sua lista' : 'carnes, frango, peixe e ovos'} de uma vez: <b>${DOW[pi.combo.d]} no ${esc(pi.combo.m.name)}</b>${pi.worst > pi.combo.total ? `, em média <b>${brl(pi.worst - pi.combo.total)}</b> a menos que no pior dia da semana lá` : ''}.</p>` : ''}
-    ${!pi.fromList ? '<p class="muted small">Sua lista não tem proteínas; estes são os mais buscados.</p>' : ''}
     <div class="prot" role="table" aria-label="Preço médio por dia da semana">
       <div class="prot__row prot__head" role="row"><span role="columnheader">Produto</span>${DOW_SHORT.map((d, i) => `<span role="columnheader" class="${i === today ? 'is-today' : ''}">${d}</span>`).join('')}</div>
       ${pi.perProduct.map((x) => `<div class="prot__row" role="row">
-        <span role="rowheader" class="prot__name">${x.p.emoji || ''} ${esc(x.p.name)}<small>melhor: ${DOW_SHORT[x.best.dow].toLowerCase()} no ${esc(S.markets.get(x.best.market_id)?.name || '')}, ${brl(x.best.avg_price)}</small></span>
+        <span role="rowheader" class="prot__name">${esc(x.p.name)}<small>${DOW_SHORT[x.best.dow].toLowerCase()} no ${esc(S.markets.get(x.best.market_id)?.name || '')}, ${brl(x.best.avg_price)}</small></span>
         ${x.byDow.map((c, d) => {
           if (!c) return '<span role="cell" class="prot__c is-na">–</span>';
           const t = x.max > x.min ? (c.avg_price - x.min) / (x.max - x.min) : 0.5;
-          const isBest = c.avg_price === x.min;
-          return `<span role="cell" class="prot__c ${isBest ? 'is-best' : ''} ${d === today ? 'is-today' : ''}" style="--t:${t.toFixed(2)}" title="${DOW[d]}: ${brl(c.avg_price)} no ${esc(S.markets.get(c.market_id)?.name || '')}">${logo(S.markets.get(c.market_id), 'xs')}</span>`;
+          return `<span role="cell" class="prot__c ${c.avg_price === x.min ? 'is-best' : ''} ${d === today ? 'is-today' : ''}" style="--t:${t.toFixed(2)}" title="${DOW[d]}: ${brl(c.avg_price)} no ${esc(S.markets.get(c.market_id)?.name || '')}">${logo(S.markets.get(c.market_id), 'xs')}</span>`;
         }).join('')}
       </div>`).join('')}
     </div>
-    <p class="muted small">Média das últimas semanas. Cada célula mostra o mercado mais barato naquele dia; quanto mais verde, menor o preço.</p>`;
+    <p class="muted small" style="margin-top:8px">${!pi.fromList ? 'Sua lista não tem proteínas; estes são os mais buscados. ' : ''}Média das últimas semanas; quanto mais verde, menor o preço.</p>`;
+}
+
+/** "Onde você comprou?": alimenta a página Você e as métricas dos mercados */
+function boughtBox(r, m) {
+  if (m.status !== 'concluida') return `<p class="small muted">Conclua a lista para registrar onde você comprou e acompanhar quanto economiza mês a mês.</p>`;
+  if (m.bought) {
+    const bm = S.markets.get(m.bought);
+    return `<div class="bought__done">${logo(bm, 'md')}<span style="flex:1">Você comprou no <b>${esc(bm.name)}</b>${m.spent ? ` e gastou <b>${brl(m.spent)}</b>` : ''}. Economia registrada: <b class="down">${brl(m.savings || 0)}</b>.</span><button class="btn btn--text btn--sm" data-rancho="unbought">Alterar</button></div>`;
+  }
+  return `<h3 style="font-size:1rem">Já fez as compras? Onde comprou?</h3>
+    <p class="muted small">Registre para ver sua economia na página Você. Leva 2 segundos.</p>
+    <div class="bought__row">${r.ranked.map((x) => `<button class="chip" data-bought="${x.m.id}">${logo(x.m, 'xs')} ${esc(x.m.name)}</button>`).join('')}</div>
+    <label class="rep__cost">Quanto gastou? (opcional)<span>R$ <input id="spentValue" inputmode="decimal" placeholder="0,00" /></span></label>`;
 }
 
 // ---------------------------------------------------------------- busca para adicionar
@@ -433,12 +518,18 @@ document.addEventListener('change', (e) => {
   const m = meta(); const pid = Number(id);
   m.checked = e.target.checked ? [...new Set([...m.checked, pid])] : m.checked.filter((x) => x !== pid);
   persist();
-  e.target.closest('.cart__item')?.classList.toggle('is-checked', e.target.checked);
+  e.target.closest('.rx-item')?.classList.toggle('is-checked', e.target.checked);
+  clearTimeout(e.target._t); e.target._t = setTimeout(render, 380);
   if (m.checked.length === S.list.size && S.list.size > 2) hooks.toast?.('Tudo no carrinho. Boas compras!');
 });
+// lembra quais categorias ficaram recolhidas
+document.addEventListener('toggle', (e) => {
+  const g = e.target.dataset?.group; if (!g) return;
+  const st = api.store.get('tb.rgroups', {}); st[g] = e.target.open; api.store.set('tb.rgroups', st);
+}, true);
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button, a'); if (!t) {
-    if (!e.target.closest('.radd')) $('#ranchoSug')?.setAttribute('hidden', '');
+    if (!e.target.closest('.rx-add')) $('#ranchoSug')?.setAttribute('hidden', '');
     return;
   }
   const d = t.dataset;
@@ -454,7 +545,26 @@ document.addEventListener('click', async (e) => {
     if (S.user) api.updateProfile({ transport: d.mode }).catch(() => {});
     renderReport(false); render(); return;
   }
+  if (d.rmode) { mode = d.rmode; api.store.set('tb.rmode', mode); render(); return; }
+  if (d.bought) {
+    const m = meta(); const v = parseFloat(($('#spentValue')?.value || '').replace(/\./g, '').replace(',', '.'));
+    m.bought = Number(d.bought); m.spent = v > 0 ? Math.round(v * 100) / 100 : null;
+    track('bought', { market_id: m.bought, value: m.spent });
+    renderReport(false); hooks.toast?.('Compra registrada. Veja sua economia em Você.');
+    return;
+  }
   switch (d.rancho) {
+    case 'unbought': { const m = meta(); m.bought = null; m.spent = null; persist(); renderReport(false); break; }
+    case 'repeat': {
+      const h = history()[d.month]; let n = 0;
+      for (const [pid, q] of h?.items || []) if (!S.list.has(pid) && S.products.some((p) => p.id === pid)) { S.list.set(pid, q); n++; }
+      onListChange(); hooks.afterListLoad?.(); hooks.toast?.(`${n} itens de ${monthName(d.month)} adicionados.`); break;
+    }
+    case 'favs': {
+      let n = 0;
+      for (const pid of S.favs) if (!S.list.has(pid) && S.products.some((p) => p.id === pid)) { S.list.set(pid, 1); n++; }
+      onListChange(); hooks.afterListLoad?.(); hooks.toast?.(`${n} favoritos adicionados.`); break;
+    }
     case 'basic': {
       let n = 0;
       for (const name of BASIC) { const p = S.products.find((x) => x.name === name); if (p && !S.list.has(p.id)) { S.list.set(p.id, 1); n++; } }
@@ -464,14 +574,15 @@ document.addEventListener('click', async (e) => {
       if (!['home', 'profile'].includes(homePos()?.source)) { hooks.openHome?.(() => finish()); return; }
       finish(); break;
     }
-    case 'reopen': meta().status = 'aberta'; persist(); render(); break;
+    case 'reopen': meta().status = 'aberta'; persist(); render(); $('#ranchoView').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' }); break;
     case 'report': renderReport(true); break;
     case 'sethome': hooks.openHome?.(() => { renderReport(false); render(); }); break;
     case 'clear':
+      if (!confirm('Tirar todos os itens do rancho?')) return;
       S.list.clear(); meta().checked = []; meta().status = 'aberta'; onListChange(); hooks.afterListLoad?.(); break;
     case 'newmonth': {
       const cur = monthKey();
-      S.rancho = { name: `Rancho de ${monthName(cur)}`, month: cur, status: 'aberta', checked: [] };
+      S.rancho = { name: `Rancho de ${monthName(cur)}`, month: cur, status: 'aberta', checked: [] }; // bought/spent zerados
       persist(); render(); hooks.toast?.(`Rancho de ${monthName(cur)} criado com os mesmos itens.`); break;
     }
     case 'share': shareText(listText()); break;
@@ -485,6 +596,8 @@ document.addEventListener('click', async (e) => {
 
 function finish() {
   const m = meta(); m.status = 'concluida'; m.completedAt = new Date().toISOString();
+  const r = computeReport();
+  if (r) track('rancho_done', { market_id: r.best.m.id, value: Math.round(r.best.total * 100) / 100 });
   persist(); render(); renderReport(true);
 }
 

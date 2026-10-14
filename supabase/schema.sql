@@ -188,7 +188,9 @@ grant execute on function public.register_comparison() to authenticated;
 grant execute on function public.complete_profile(text,text,date,text,text,smallint[],boolean) to authenticated;
 
 -- ---------- VIEW: produto + preço atual em cada mercado ---------------
-create or replace view public.v_products with (security_invoker = true) as
+-- (versão final, com promoções e fotos, mais abaixo na seção do portal)
+drop view if exists public.v_products;
+create view public.v_products with (security_invoker = true) as
 with latest as (
   select distinct on (product_id, supermarket_id)
          product_id, supermarket_id, price, collected_at, source
@@ -703,3 +705,628 @@ end $prot$;
 update public.supermarkets set color = v.color
 from (values ('nova-era','#C21A19'), ('db','#D99A00'), ('veneza','#2E3A87'), ('baratao-da-carne','#8B4A2B'), ('coema','#009A51')) as v(slug, color)
 where supermarkets.slug = v.slug;
+
+-- =====================================================================
+--  PORTAL DOS SUPERMERCADOS, PROMOÇÕES, FOTOS E MÉTRICAS
+--  (página parceiros.html)
+-- =====================================================================
+
+-- ---------- Perfil: sexo (para métricas agregadas) ---------------------
+alter table public.profiles
+  add column if not exists gender text check (gender in ('feminino','masculino','outro','nao_informar'));
+
+drop function if exists public.complete_profile(text,text,date,text,text,smallint[],boolean);
+create or replace function public.complete_profile(
+  p_full_name text, p_phone text, p_birth_date date, p_neighborhood text,
+  p_cep text, p_preferred_markets smallint[], p_accepts_offers boolean, p_gender text default null)
+returns public.profiles language plpgsql security definer set search_path = public as $$
+declare r public.profiles;
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  if coalesce(trim(p_full_name),'') = '' or coalesce(trim(p_phone),'') = ''
+     or p_birth_date is null or coalesce(trim(p_neighborhood),'') = '' then
+    raise exception 'Preencha nome, telefone, data de nascimento e bairro';
+  end if;
+  perform set_config('app.trusted', 'on', true);
+  update public.profiles set
+    full_name = p_full_name, phone = p_phone, birth_date = p_birth_date,
+    neighborhood = p_neighborhood, cep = p_cep,
+    preferred_markets = coalesce(p_preferred_markets, '{}'),
+    accepts_offers = coalesce(p_accepts_offers, false),
+    gender = case when p_gender in ('feminino','masculino','outro','nao_informar') then p_gender else gender end,
+    completed_at = coalesce(completed_at, now())
+  where id = auth.uid()
+  returning * into r;
+  return r;
+end $$;
+revoke all on function public.complete_profile(text,text,date,text,text,smallint[],boolean,text) from public, anon;
+grant execute on function public.complete_profile(text,text,date,text,text,smallint[],boolean,text) to authenticated;
+
+-- ---------- Bairros e zonas de Manaus ----------------------------------
+create table if not exists public.bairros (
+  name text primary key,
+  zone text not null,
+  lat  double precision,
+  lng  double precision
+);
+alter table public.bairros enable row level security;
+do $$ begin
+  drop policy if exists "public read" on public.bairros;
+  create policy "public read" on public.bairros for select using (true);
+end $$;
+grant select on public.bairros to anon, authenticated;
+insert into public.bairros (name, zone, lat, lng) values
+ ('Adrianópolis','Centro-Sul',-3.1010,-60.0120), ('Aleixo','Centro-Sul',-3.0900,-59.9950),
+ ('Alvorada','Centro-Oeste',-3.0820,-60.0430), ('Cachoeirinha','Sul',-3.1180,-60.0110),
+ ('Centro','Sul',-3.1316,-60.0233), ('Chapada','Centro-Sul',-3.0960,-60.0270),
+ ('Cidade de Deus','Norte',-3.0280,-59.9560), ('Cidade Nova','Norte',-3.0360,-59.9880),
+ ('Compensa','Oeste',-3.1070,-60.0560), ('Coroado','Leste',-3.0950,-59.9850),
+ ('Dom Pedro','Centro-Oeste',-3.0880,-60.0350), ('Educandos','Sul',-3.1400,-60.0100),
+ ('Flores','Centro-Sul',-3.0730,-60.0150), ('Gilberto Mestrinho','Leste',-3.0700,-59.9300),
+ ('Japiim','Sul',-3.1180,-59.9850), ('Jorge Teixeira','Leste',-3.0430,-59.9330),
+ ('Lago Azul','Norte',-3.0050,-60.0350), ('Novo Aleixo','Norte',-3.0570,-59.9700),
+ ('Novo Israel','Norte',-3.0450,-60.0250), ('Parque 10 de Novembro','Centro-Sul',-3.0870,-60.0130),
+ ('Petrópolis','Sul',-3.1140,-59.9930), ('Planalto','Centro-Oeste',-3.0700,-60.0450),
+ ('Ponta Negra','Oeste',-3.0700,-60.0950), ('Redenção','Centro-Oeste',-3.0670,-60.0500),
+ ('Santo Antônio','Oeste',-3.1270,-60.0500), ('São José Operário','Leste',-3.0820,-59.9420),
+ ('Tarumã','Oeste',-3.0300,-60.0700), ('Zumbi dos Palmares','Leste',-3.0880,-59.9520)
+on conflict (name) do update set zone = excluded.zone, lat = excluded.lat, lng = excluded.lng;
+
+create or replace function public.zone_of(p_neighborhood text)
+returns text language sql stable set search_path = public as $$
+  select zone from bairros where lower(name) = lower(trim(p_neighborhood)) limit 1
+$$;
+
+-- ---------- Quem administra cada supermercado --------------------------
+create table if not exists public.market_members (
+  user_id        uuid not null references auth.users(id) on delete cascade,
+  supermarket_id smallint not null references public.supermarkets(id) on delete cascade,
+  role           text not null default 'editor' check (role in ('admin','editor')),
+  created_at     timestamptz not null default now(),
+  primary key (user_id, supermarket_id)
+);
+-- Código de convite: você gera um por mercado e envia ao responsável.
+--   insert into public.market_invites (supermarket_id) values (1) returning code;
+create table if not exists public.market_invites (
+  code           text primary key default upper(substr(md5(random()::text || clock_timestamp()::text), 1, 8)),
+  supermarket_id smallint not null references public.supermarkets(id) on delete cascade,
+  role           text not null default 'admin',
+  uses_left      int not null default 5,
+  expires_at     timestamptz not null default now() + interval '30 days',
+  created_at     timestamptz not null default now()
+);
+alter table public.market_members enable row level security;
+alter table public.market_invites enable row level security;
+do $$ begin
+  drop policy if exists "own membership" on public.market_members;
+  create policy "own membership" on public.market_members for select to authenticated using (user_id = (select auth.uid()));
+end $$;
+grant select on public.market_members to authenticated;
+
+create or replace function public.is_market_member(p_market smallint)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from market_members where user_id = auth.uid() and supermarket_id = p_market)
+$$;
+grant execute on function public.is_market_member(smallint) to authenticated;
+
+create or replace function public.join_market(p_code text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v market_invites;
+begin
+  if auth.uid() is null then raise exception 'Entre na sua conta primeiro.'; end if;
+  select * into v from market_invites where code = upper(trim(p_code)) for update;
+  if not found or v.expires_at < now() or v.uses_left <= 0 then
+    raise exception 'Código inválido ou expirado. Peça um novo à equipe do Tá Barato Mesmo?.';
+  end if;
+  insert into market_members (user_id, supermarket_id, role) values (auth.uid(), v.supermarket_id, v.role)
+  on conflict (user_id, supermarket_id) do nothing;
+  update market_invites set uses_left = uses_left - 1 where code = v.code;
+  return jsonb_build_object('supermarket_id', v.supermarket_id);
+end $$;
+
+create or replace function public.my_markets()
+returns table (id smallint, name text, slug text, logo_url text, color text, role text)
+language sql stable security definer set search_path = public as $$
+  select s.id, s.name, s.slug, s.logo_url, s.color, m.role
+  from market_members m join supermarkets s on s.id = m.supermarket_id
+  where m.user_id = auth.uid() order by s.name
+$$;
+revoke all on function public.join_market(text) from public, anon;
+revoke all on function public.my_markets() from public, anon;
+grant execute on function public.join_market(text) to authenticated;
+grant execute on function public.my_markets() to authenticated;
+
+-- ---------- Produtos de cada mercado (foto, código interno, ativo) -------
+alter table public.products
+  add column if not exists created_by_market smallint references public.supermarkets(id),
+  add column if not exists updated_at timestamptz default now();
+
+create table if not exists public.market_products (
+  supermarket_id smallint not null references public.supermarkets(id) on delete cascade,
+  product_id     int not null references public.products(id) on delete cascade,
+  sku            text,
+  image_url      text,
+  active         boolean not null default true,
+  updated_at     timestamptz not null default now(),
+  primary key (supermarket_id, product_id)
+);
+alter table public.market_products enable row level security;
+do $$ begin
+  drop policy if exists "public read" on public.market_products;
+  create policy "public read" on public.market_products for select using (true);
+end $$;
+grant select on public.market_products to anon, authenticated;
+
+-- ---------- Promoções ----------------------------------------------------
+-- kind = 'exclusiva': vale só para quem vem pelo Tá Barato Mesmo? (mostra o código no caixa)
+-- kind = 'geral':     promoção da loja, vale para todo mundo
+create table if not exists public.promotions (
+  id             bigserial primary key,
+  supermarket_id smallint not null references public.supermarkets(id) on delete cascade,
+  product_id     int not null references public.products(id) on delete cascade,
+  kind           text not null default 'geral' check (kind in ('exclusiva','geral')),
+  promo_price    numeric(10,2) not null check (promo_price > 0),
+  title          text,
+  code           text,
+  max_per_client int,
+  starts_at      timestamptz not null default now(),
+  ends_at        timestamptz not null default now() + interval '7 days',
+  active         boolean not null default true,
+  created_by     uuid default auth.uid(),
+  created_at     timestamptz not null default now(),
+  check (ends_at > starts_at)
+);
+create index if not exists promotions_live on public.promotions (product_id, supermarket_id, ends_at);
+alter table public.promotions enable row level security;
+do $$ begin
+  drop policy if exists "public read live" on public.promotions;
+  create policy "public read live" on public.promotions for select using (active and now() between starts_at and ends_at);
+  drop policy if exists "members read" on public.promotions;
+  create policy "members read" on public.promotions for select to authenticated using (public.is_market_member(supermarket_id));
+  drop policy if exists "members write" on public.promotions;
+  create policy "members write" on public.promotions for all to authenticated
+    using (public.is_market_member(supermarket_id)) with check (public.is_market_member(supermarket_id));
+end $$;
+grant select on public.promotions to anon, authenticated;
+grant insert, update, delete on public.promotions to authenticated;
+grant usage on sequence public.promotions_id_seq to authenticated;
+
+-- código padrão das promoções exclusivas
+create or replace function public.promotions_before()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if new.kind = 'exclusiva' and coalesce(trim(new.code), '') = '' then
+    new.code := 'TB' || upper(substr(md5(random()::text), 1, 5));
+  end if;
+  if new.kind = 'geral' then new.code := null; end if;
+  return new;
+end $$;
+drop trigger if exists promotions_before on public.promotions;
+create trigger promotions_before before insert or update on public.promotions
+  for each row execute function public.promotions_before();
+
+-- ---------- Fotos dos produtos (Storage) ---------------------------------
+-- Pasta = id do supermercado: produtos/<supermarket_id>/<arquivo>.webp
+do $$ begin
+  insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('produtos', 'produtos', true, 3145728, array['image/jpeg','image/png','image/webp'])
+  on conflict (id) do nothing;
+exception when undefined_table then raise notice 'Storage indisponível: crie o bucket "produtos" (público) no painel.';
+end $$;
+do $$ begin
+  drop policy if exists "produtos public read" on storage.objects;
+  create policy "produtos public read" on storage.objects for select using (bucket_id = 'produtos');
+  drop policy if exists "produtos members write" on storage.objects;
+  create policy "produtos members write" on storage.objects for insert to authenticated
+    with check (bucket_id = 'produtos' and public.is_market_member(((storage.foldername(name))[1])::smallint));
+  drop policy if exists "produtos members update" on storage.objects;
+  create policy "produtos members update" on storage.objects for update to authenticated
+    using (bucket_id = 'produtos' and public.is_market_member(((storage.foldername(name))[1])::smallint));
+  drop policy if exists "produtos members delete" on storage.objects;
+  create policy "produtos members delete" on storage.objects for delete to authenticated
+    using (bucket_id = 'produtos' and public.is_market_member(((storage.foldername(name))[1])::smallint));
+exception when undefined_table or undefined_function or invalid_schema_name then
+  raise notice 'Storage indisponível: políticas de fotos não criadas.';
+end $$;
+
+-- ---------- Cadastro e edição de produtos pelo mercado -------------------
+create or replace function public.market_save_product(
+  p_market smallint, p_product_id int, p_name text, p_brand text, p_unit text,
+  p_category text, p_ean text, p_emoji text, p_price numeric,
+  p_image_url text default null, p_sku text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_id int := p_product_id; v_cat smallint; v_owner smallint; v_last numeric; v_new boolean := false;
+  v_ean text := nullif(regexp_replace(coalesce(p_ean, ''), '\D', '', 'g'), '');
+begin
+  if not is_market_member(p_market) then raise exception 'Sem permissão para este supermercado.'; end if;
+  if coalesce(trim(p_name), '') = '' then raise exception 'Informe o nome do produto.'; end if;
+  if p_price is not null and (p_price <= 0 or p_price > 100000) then raise exception 'Preço inválido.'; end if;
+  select id into v_cat from categories
+   where slug = lower(trim(p_category)) or lower(name) = lower(trim(p_category)) limit 1;
+
+  if v_id is null and v_ean is not null then select id into v_id from products where ean = v_ean; end if;
+  if v_id is null then
+    select id into v_id from products
+     where lower(name) = lower(trim(p_name))
+       and lower(coalesce(brand, '')) = lower(coalesce(trim(p_brand), ''))
+       and lower(coalesce(unit, '')) = lower(coalesce(trim(p_unit), ''))
+     limit 1;
+  end if;
+
+  if v_id is null then
+    if v_cat is null then raise exception 'Categoria "%" não existe.', coalesce(p_category, ''); end if;
+    insert into products (name, brand, unit, category_id, emoji, ean, image_url, created_by_market)
+    values (trim(p_name), nullif(trim(p_brand), ''), nullif(trim(p_unit), ''), v_cat,
+            coalesce(nullif(p_emoji, ''), '🛒'), v_ean, nullif(p_image_url, ''), p_market)
+    returning id into v_id;
+    v_new := true;
+  else
+    select created_by_market into v_owner from products where id = v_id;
+    if v_owner = p_market then
+      update products set name = trim(p_name), brand = nullif(trim(p_brand), ''), unit = nullif(trim(p_unit), ''),
+             category_id = coalesce(v_cat, category_id), emoji = coalesce(nullif(p_emoji, ''), emoji),
+             ean = coalesce(v_ean, ean), active = true, updated_at = now()
+       where id = v_id;
+    end if;
+    if nullif(p_image_url, '') is not null then
+      update products set image_url = p_image_url where id = v_id and (image_url is null or v_owner = p_market);
+    end if;
+  end if;
+
+  insert into market_products (supermarket_id, product_id, sku, image_url, active, updated_at)
+  values (p_market, v_id, nullif(trim(p_sku), ''), nullif(p_image_url, ''), true, now())
+  on conflict (supermarket_id, product_id) do update set
+    sku = coalesce(excluded.sku, market_products.sku),
+    image_url = coalesce(excluded.image_url, market_products.image_url),
+    active = true, updated_at = now();
+
+  if p_price is not null then
+    select price into v_last from prices where product_id = v_id and supermarket_id = p_market
+     order by collected_at desc limit 1;
+    if v_last is distinct from round(p_price, 2) then
+      insert into prices (product_id, supermarket_id, price, source) values (v_id, p_market, round(p_price, 2), 'mercado');
+    end if;
+  end if;
+  return jsonb_build_object('product_id', v_id, 'created', v_new);
+end $$;
+
+create or replace function public.market_remove_product(p_market smallint, p_product int)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_market_member(p_market) then raise exception 'Sem permissão para este supermercado.'; end if;
+  insert into market_products (supermarket_id, product_id, active) values (p_market, p_product, false)
+  on conflict (supermarket_id, product_id) do update set active = false, updated_at = now();
+  update promotions set active = false where supermarket_id = p_market and product_id = p_product;
+end $$;
+
+-- Produtos do mercado com preço atual, posição no ranking de preço e promoção
+create or replace function public.market_catalog(p_market smallint)
+returns table (product_id int, name text, brand text, unit text, category text, emoji text, ean text,
+               sku text, image_url text, own boolean, price numeric, price_at timestamptz,
+               min_other numeric, avg_other numeric, rank int, n_markets int, active boolean,
+               promo_id bigint, promo_price numeric, promo_kind text, promo_ends timestamptz)
+language sql stable security definer set search_path = public as $$
+  with latest as (
+    select distinct on (pr.product_id, pr.supermarket_id) pr.product_id, pr.supermarket_id, pr.price, pr.collected_at
+    from prices pr order by pr.product_id, pr.supermarket_id, pr.collected_at desc
+  ), live as (
+    select l.* from latest l
+    left join market_products mp on mp.supermarket_id = l.supermarket_id and mp.product_id = l.product_id
+    where coalesce(mp.active, true)
+  ), ranked as (
+    select product_id, supermarket_id, price,
+           rank() over (partition by product_id order by price)::int as rk,
+           count(*) over (partition by product_id)::int as n
+    from live
+  )
+  select p.id, p.name, p.brand, p.unit, c.slug, p.emoji, p.ean, mp.sku,
+         coalesce(mp.image_url, p.image_url), p.created_by_market = p_market,
+         l.price, l.collected_at,
+         (select min(price) from live o where o.product_id = p.id and o.supermarket_id <> p_market),
+         (select round(avg(price), 2) from live o where o.product_id = p.id and o.supermarket_id <> p_market),
+         r.rk, r.n, coalesce(mp.active, true),
+         pm.id, pm.promo_price, pm.kind, pm.ends_at
+  from products p
+  join categories c on c.id = p.category_id
+  join latest l on l.product_id = p.id and l.supermarket_id = p_market
+  left join market_products mp on mp.product_id = p.id and mp.supermarket_id = p_market
+  left join ranked r on r.product_id = p.id and r.supermarket_id = p_market
+  left join lateral (select * from promotions x where x.product_id = p.id and x.supermarket_id = p_market
+                       and x.active and x.ends_at > now() order by x.starts_at desc limit 1) pm on true
+  where is_market_member(p_market)
+  order by coalesce(mp.active, true) desc, p.name
+$$;
+
+-- Importação em massa (planilha). Cada linha: ean, nome, marca, unidade, categoria,
+-- preco, preco_promo, tipo_promo, inicio_promo, fim_promo, foto_url, sku, emoji
+create or replace function public.market_import(p_market smallint, p_rows jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb; i int := 0; ok int := 0; created int := 0; promos int := 0; errs jsonb := '[]'::jsonb;
+  res jsonb; v_pid int; v_promo numeric; v_kind text; v_start timestamptz; v_end timestamptz;
+begin
+  if not is_market_member(p_market) then raise exception 'Sem permissão para este supermercado.'; end if;
+  if jsonb_array_length(p_rows) > 2000 then raise exception 'Envie no máximo 2.000 linhas por vez.'; end if;
+  for r in select * from jsonb_array_elements(p_rows) loop
+    i := i + 1;
+    begin
+      res := market_save_product(p_market, null, r->>'nome', r->>'marca', r->>'unidade', r->>'categoria',
+                                 r->>'ean', r->>'emoji', nullif(r->>'preco', '')::numeric,
+                                 nullif(r->>'foto_url', ''), r->>'sku');
+      v_pid := (res->>'product_id')::int;
+      ok := ok + 1; if (res->>'created')::boolean then created := created + 1; end if;
+      v_promo := nullif(r->>'preco_promo', '')::numeric;
+      if v_promo is not null then
+        v_kind := case when lower(coalesce(r->>'tipo_promo', '')) like 'exclusiv%' then 'exclusiva' else 'geral' end;
+        v_start := coalesce(nullif(r->>'inicio_promo', '')::timestamptz, now());
+        v_end := coalesce(nullif(r->>'fim_promo', '')::timestamptz + interval '23 hours 59 minutes', now() + interval '7 days');
+        update promotions set active = false where supermarket_id = p_market and product_id = v_pid and active;
+        insert into promotions (supermarket_id, product_id, kind, promo_price, starts_at, ends_at)
+        values (p_market, v_pid, v_kind, v_promo, v_start, v_end);
+        promos := promos + 1;
+      end if;
+    exception when others then
+      errs := errs || jsonb_build_object('linha', coalesce((r->>'_linha')::int, i), 'erro', sqlerrm);
+    end;
+  end loop;
+  return jsonb_build_object('total', i, 'ok', ok, 'created', created, 'promos', promos, 'errors', errs);
+end $$;
+
+revoke all on function public.market_save_product(smallint,int,text,text,text,text,text,text,numeric,text,text) from public, anon;
+revoke all on function public.market_remove_product(smallint,int) from public, anon;
+revoke all on function public.market_catalog(smallint) from public, anon;
+revoke all on function public.market_import(smallint,jsonb) from public, anon;
+grant execute on function public.market_save_product(smallint,int,text,text,text,text,text,text,numeric,text,text) to authenticated;
+grant execute on function public.market_remove_product(smallint,int) to authenticated;
+grant execute on function public.market_catalog(smallint) to authenticated;
+grant execute on function public.market_import(smallint,jsonb) to authenticated;
+
+-- ---------- Catálogo público com promoções, fotos e itens removidos -------
+create or replace view public.v_products with (security_invoker = true) as
+with latest as (
+  select distinct on (pr.product_id, pr.supermarket_id)
+         pr.product_id, pr.supermarket_id, pr.price, pr.collected_at, pr.source
+  from public.prices pr
+  order by pr.product_id, pr.supermarket_id, pr.collected_at desc
+),
+live as (
+  select l.*, pm.promo_price, pm.kind as promo_kind, pm.code as promo_code, pm.title as promo_title,
+         pm.ends_at as promo_ends, pm.max_per_client,
+         least(l.price, coalesce(pm.promo_price, l.price)) as eff
+  from latest l
+  left join public.market_products mp on mp.supermarket_id = l.supermarket_id and mp.product_id = l.product_id
+  left join lateral (select * from public.promotions x
+                      where x.product_id = l.product_id and x.supermarket_id = l.supermarket_id
+                        and x.active and now() between x.starts_at and x.ends_at and x.promo_price < l.price
+                      order by x.promo_price limit 1) pm on true
+  where coalesce(mp.active, true)
+),
+past as (
+  select distinct on (product_id, supermarket_id)
+         product_id, supermarket_id, price
+  from public.prices
+  where collected_at <= now() - interval '7 days'
+  order by product_id, supermarket_id, collected_at desc
+)
+select
+  p.id, p.name, p.brand, p.unit, p.emoji, p.image_url, p.ean,
+  c.slug as category_slug, c.name as category_name,
+  min(l.eff)  as min_price,
+  max(l.eff)  as max_price,
+  max(l.collected_at) as updated_at,
+  round(((avg(l.price) filter (where pa.price is not null))
+        / nullif(avg(pa.price), 0) - 1) * 100, 1) as change_pct,
+  jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+      'market_id', l.supermarket_id,
+      'price',     l.eff,
+      'regular',   case when l.promo_price is not null then l.price end,
+      'prev',      pa.price,
+      'at',        l.collected_at,
+      'src',       l.source,
+      'promo',     case when l.promo_price is not null then jsonb_build_object(
+                     'kind', l.promo_kind, 'code', l.promo_code, 'title', l.promo_title,
+                     'ends', l.promo_ends, 'max', l.max_per_client) end
+    )) order by l.eff) as prices,
+  coalesce(p.image_url, (select mp.image_url from public.market_products mp
+                          where mp.product_id = p.id and mp.image_url is not null and mp.active
+                          order by mp.updated_at desc limit 1)) as photo
+from public.products p
+join public.categories c on c.id = p.category_id
+join live l on l.product_id = p.id
+left join past pa on pa.product_id = l.product_id and pa.supermarket_id = l.supermarket_id
+where p.active
+group by p.id, c.slug, c.name;
+grant select on public.v_products to anon, authenticated;
+
+-- ---------- Rancho: onde a pessoa comprou de verdade ---------------------
+alter table public.shopping_lists
+  add column if not exists bought_market smallint references public.supermarkets(id),
+  add column if not exists spent numeric(10,2),
+  add column if not exists base_total numeric(10,2),
+  add column if not exists items_count int;
+
+-- ---------- Eventos anônimos de uso (base das métricas) -------------------
+-- Nada de dado pessoal: guardamos bairro/zona, sexo e faixa etária só de
+-- quem tem cadastro completo, e os painéis só mostram grupos com 5+ pessoas.
+create table if not exists public.events (
+  id             bigserial primary key,
+  created_at     timestamptz not null default now(),
+  kind           text not null check (kind in ('search','view','add','route','rancho_done','bought','promo_view')),
+  session_id     text,
+  user_id        uuid,
+  product_id     int references public.products(id) on delete set null,
+  supermarket_id smallint references public.supermarkets(id) on delete set null,
+  query          text,
+  results        int,
+  neighborhood   text,
+  zone           text,
+  gender         text,
+  age_band       text,
+  value          numeric(10,2)
+);
+create index if not exists events_kind_time on public.events (kind, created_at desc);
+create index if not exists events_market on public.events (supermarket_id, created_at desc);
+create index if not exists events_product on public.events (product_id, created_at desc);
+alter table public.events enable row level security;  -- sem políticas: ninguém lê direto
+
+create or replace function public.track(p_events jsonb)
+returns int language plpgsql security definer set search_path = public as $$
+declare
+  e jsonb; n int := 0; pf profiles; v_nb text; v_age text;
+begin
+  if jsonb_typeof(p_events) <> 'array' or jsonb_array_length(p_events) > 50 then return 0; end if;
+  if auth.uid() is not null then select * into pf from profiles where id = auth.uid(); end if;
+  v_age := case when pf.birth_date is null then null
+                when age(pf.birth_date) < interval '25 years' then '18-24'
+                when age(pf.birth_date) < interval '35 years' then '25-34'
+                when age(pf.birth_date) < interval '45 years' then '35-44'
+                when age(pf.birth_date) < interval '60 years' then '45-59'
+                else '60+' end;
+  for e in select * from jsonb_array_elements(p_events) loop
+    continue when coalesce(e->>'kind', '') not in ('search','view','add','route','rancho_done','bought','promo_view');
+    v_nb := coalesce(nullif(pf.neighborhood, ''), nullif(left(e->>'neighborhood', 60), ''));
+    insert into events (kind, session_id, user_id, product_id, supermarket_id, query, results,
+                        neighborhood, zone, gender, age_band, value)
+    values (e->>'kind', left(e->>'session', 40), auth.uid(),
+            (select id from products where id = nullif(e->>'product_id', '')::int),
+            (select id from supermarkets where id = nullif(e->>'market_id', '')::smallint),
+            nullif(lower(left(trim(e->>'query'), 60)), ''), nullif(e->>'results', '')::int,
+            v_nb, zone_of(v_nb), nullif(pf.gender, 'nao_informar'), v_age,
+            nullif(e->>'value', '')::numeric);
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+revoke all on function public.track(jsonb) from public;
+grant execute on function public.track(jsonb) to anon, authenticated;
+
+-- ---------- Painel de métricas do supermercado ---------------------------
+create or replace function public.market_dashboard(p_market smallint, p_days int default 30)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  v_since timestamptz := now() - make_interval(days => greatest(1, least(p_days, 365)));
+  v_prev  timestamptz := now() - make_interval(days => 2 * greatest(1, least(p_days, 365)));
+  k int := 5;  -- tamanho mínimo de grupo para mostrar dados demográficos
+  out jsonb;
+begin
+  if not is_market_member(p_market) then raise exception 'Sem permissão para este supermercado.'; end if;
+  with ev as (select *, coalesce(user_id::text, session_id) as who from events where created_at >= v_since),
+  evp as (select * from events where created_at >= v_prev and created_at < v_since),
+  latest as (
+    select distinct on (pr.product_id, pr.supermarket_id) pr.product_id, pr.supermarket_id, pr.price
+    from prices pr order by pr.product_id, pr.supermarket_id, pr.collected_at desc
+  ),
+  live as (
+    select l.* from latest l left join market_products mp
+      on mp.supermarket_id = l.supermarket_id and mp.product_id = l.product_id
+    where coalesce(mp.active, true)
+  ),
+  mine as (select l.product_id, l.price, (select min(price) from live o where o.product_id = l.product_id) as best,
+                  (select avg(price) from live o where o.product_id = l.product_id and o.supermarket_id <> p_market) as avg_other
+           from live l where l.supermarket_id = p_market),
+  wins as (  -- "vendas" estimadas: ranchos concluídos que saem mais baratos aqui + compras confirmadas + rotas abertas
+    select s.id, s.name, s.color,
+      count(*) filter (where e.kind = 'bought'      and e.created_at >= now() - interval '1 day')  as bought_d,
+      count(*) filter (where e.kind = 'bought'      and e.created_at >= now() - interval '7 days') as bought_w,
+      count(*) filter (where e.kind = 'bought')                                                    as bought_m,
+      count(*) filter (where e.kind = 'rancho_done' and e.created_at >= now() - interval '1 day')  as best_d,
+      count(*) filter (where e.kind = 'rancho_done' and e.created_at >= now() - interval '7 days') as best_w,
+      count(*) filter (where e.kind = 'rancho_done')                                               as best_m,
+      count(*) filter (where e.kind = 'route'       and e.created_at >= now() - interval '1 day')  as route_d,
+      count(*) filter (where e.kind = 'route'       and e.created_at >= now() - interval '7 days') as route_w,
+      count(*) filter (where e.kind = 'route')                                                     as route_m,
+      coalesce(sum(e.value) filter (where e.kind = 'bought'), 0)                                   as spent_m
+    from supermarkets s left join events e on e.supermarket_id = s.id and e.created_at >= now() - interval '30 days'
+    where s.active group by s.id
+  )
+  select jsonb_build_object(
+    'period_days', p_days,
+    'kpis', jsonb_build_object(
+      'searches',      (select count(*) from ev where kind = 'search'),
+      'searches_prev', (select count(*) from evp where kind = 'search'),
+      'people',        (select count(distinct who) from ev),
+      'people_prev',   (select count(distinct coalesce(user_id::text, session_id)) from evp),
+      'views',         (select count(*) from ev where kind = 'view' and product_id in (select product_id from mine)),
+      'adds',          (select count(*) from ev where kind = 'add' and product_id in (select product_id from mine)),
+      'routes',        (select count(*) from ev where kind = 'route' and supermarket_id = p_market),
+      'routes_prev',   (select count(*) from evp where kind = 'route' and supermarket_id = p_market),
+      'ranchos',       (select count(*) from ev where kind = 'rancho_done'),
+      'rancho_wins',   (select count(*) from ev where kind = 'rancho_done' and supermarket_id = p_market),
+      'bought',        (select count(*) from ev where kind = 'bought' and supermarket_id = p_market),
+      'products',      (select count(*) from mine),
+      'cheapest',      (select count(*) from mine where price <= best),
+      'price_index',   (select round(avg(price / nullif(avg_other, 0)) * 100, 1) from mine where avg_other is not null),
+      'promos_live',   (select count(*) from promotions where supermarket_id = p_market and active and now() between starts_at and ends_at)
+    ),
+    'top_searches', coalesce((select jsonb_agg(x) from (
+        select query, count(*) n, count(distinct who) people, round(avg(results)) results
+        from ev where kind = 'search' and query is not null group by query order by 2 desc limit 15) x), '[]'),
+    'no_results', coalesce((select jsonb_agg(x) from (
+        select query, count(*) n from ev where kind = 'search' and coalesce(results, 0) = 0 and query is not null
+        group by query order by 2 desc limit 10) x), '[]'),
+    'top_products', coalesce((select jsonb_agg(x) from (
+        select p.id, p.name, p.brand, p.unit, p.emoji,
+               count(*) filter (where e.kind = 'view') views, count(*) filter (where e.kind = 'add') adds,
+               m.price my_price, m.best, (m.price <= m.best) is_best
+        from ev e join products p on p.id = e.product_id left join mine m on m.product_id = p.id
+        where e.kind in ('view','add') group by p.id, m.price, m.best order by count(*) desc limit 15) x), '[]'),
+    'top_brands', coalesce((select jsonb_agg(x) from (
+        select coalesce(nullif(p.brand, ''), 'Sem marca') brand, count(*) n,
+               count(*) filter (where e.kind = 'add') adds
+        from ev e join products p on p.id = e.product_id
+        where e.kind in ('view','add') and coalesce(p.brand, '') not in ('', 'Granel')
+        group by 1 order by 2 desc limit 10) x), '[]'),
+    'top_categories', coalesce((select jsonb_agg(x) from (
+        select c.name, c.icon, count(*) n from ev e join products p on p.id = e.product_id join categories c on c.id = p.category_id
+        where e.kind in ('view','add') group by c.id order by 3 desc) x), '[]'),
+    'ranking', coalesce((select jsonb_agg(w order by (w.bought_m * 3 + w.best_m * 2 + w.route_m) desc) from wins w), '[]'),
+    'zones', coalesce((select jsonb_agg(x) from (
+        select coalesce(zone, 'Não informada') zone,
+               count(*) filter (where kind = 'search') searches,
+               count(*) filter (where kind = 'add') adds,
+               count(*) filter (where kind = 'rancho_done') ranchos,
+               count(*) filter (where kind = 'route' and supermarket_id = p_market) routes_me,
+               count(distinct who) people
+        from ev group by 1 order by count(*) desc) x), '[]'),
+    'neighborhoods', coalesce((select jsonb_agg(x) from (
+        select neighborhood, zone, count(*) filter (where kind = 'search') searches,
+               count(*) filter (where kind in ('add','rancho_done')) ranchos, count(distinct who) people
+        from ev where neighborhood is not null group by 1, 2 having count(distinct who) >= k
+        order by count(*) desc limit 12) x), '[]'),
+    'gender', coalesce((select jsonb_agg(x) from (
+        select gender, count(distinct who) people,
+               count(*) filter (where kind = 'rancho_done') ranchos, count(*) filter (where kind = 'add') adds
+        from ev where gender is not null group by 1 having count(distinct who) >= k order by 2 desc) x), '[]'),
+    'age', coalesce((select jsonb_agg(x order by x.age_band) from (
+        select age_band, count(distinct who) people, count(*) filter (where kind in ('add','rancho_done')) ranchos
+        from ev where age_band is not null group by 1 having count(distinct who) >= k) x), '[]'),
+    'hours', coalesce((select jsonb_agg(x) from (
+        select extract(dow from created_at at time zone 'America/Manaus')::int dow,
+               extract(hour from created_at at time zone 'America/Manaus')::int h, count(*) n
+        from ev where kind in ('search','view','add') group by 1, 2) x), '[]'),
+    'daily', coalesce((select jsonb_agg(x order by x.d) from (
+        select (created_at at time zone 'America/Manaus')::date d,
+               count(*) filter (where kind = 'search') searches,
+               count(*) filter (where kind = 'view' and product_id in (select product_id from mine)) views,
+               count(*) filter (where kind = 'add' and product_id in (select product_id from mine)) adds,
+               count(*) filter (where kind = 'route' and supermarket_id = p_market) routes
+        from ev group by 1) x), '[]'),
+    'opportunities', coalesce((select jsonb_agg(x) from (
+        select p.id, p.name, p.brand, p.unit, p.emoji, m.price my_price, m.best, round(m.price - m.best, 2) gap,
+               (select count(distinct l.user_id) from shopping_list_items i join shopping_lists l on l.id = i.list_id
+                 where i.product_id = p.id and l.month >= date_trunc('month', now()) - interval '1 month')
+             + (select count(*) from ev where kind = 'add' and product_id = p.id) demand
+        from mine m join products p on p.id = m.product_id
+        where m.price > m.best order by demand desc, (m.price - m.best) / m.best desc limit 12) x), '[]'),
+    'promos', coalesce((select jsonb_agg(x) from (
+        select pm.id, p.name, p.emoji, pm.kind, pm.promo_price, pm.code, pm.starts_at, pm.ends_at,
+               (select count(*) from events e where e.product_id = pm.product_id and e.kind = 'view' and e.created_at >= pm.starts_at) views,
+               (select count(*) from events e where e.product_id = pm.product_id and e.kind = 'add' and e.created_at >= pm.starts_at) adds
+        from promotions pm join products p on p.id = pm.product_id
+        where pm.supermarket_id = p_market and pm.active and pm.ends_at > now() order by pm.ends_at) x), '[]')
+  ) into out;
+  return out;
+end $$;
+revoke all on function public.market_dashboard(smallint, int) from public, anon;
+grant execute on function public.market_dashboard(smallint, int) to authenticated;

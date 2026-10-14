@@ -17,6 +17,10 @@ export const CONFIG = {
   DEMO_FALLBACK: true,
 };
 
+// Zonas administrativas de Manaus (mesma tabela public.bairros do banco)
+const ZONES = {"Adrianópolis": "Centro-Sul", "Aleixo": "Centro-Sul", "Alvorada": "Centro-Oeste", "Cachoeirinha": "Sul", "Centro": "Sul", "Chapada": "Centro-Sul", "Cidade de Deus": "Norte", "Cidade Nova": "Norte", "Compensa": "Oeste", "Coroado": "Leste", "Dom Pedro": "Centro-Oeste", "Educandos": "Sul", "Flores": "Centro-Sul", "Gilberto Mestrinho": "Leste", "Japiim": "Sul", "Jorge Teixeira": "Leste", "Lago Azul": "Norte", "Novo Aleixo": "Norte", "Novo Israel": "Norte", "Parque 10 de Novembro": "Centro-Sul", "Petrópolis": "Sul", "Planalto": "Centro-Oeste", "Ponta Negra": "Oeste", "Redenção": "Centro-Oeste", "Santo Antônio": "Oeste", "São José Operário": "Leste", "Tarumã": "Oeste", "Zumbi dos Palmares": "Leste"};
+export const ZONE_NAMES = ['Norte', 'Sul', 'Leste', 'Oeste', 'Centro-Sul', 'Centro-Oeste'];
+
 // Bairros para quem não quer liberar o GPS (coordenadas aproximadas do centro do bairro)
 export const BAIRROS = [
   ['Adrianópolis', -3.1010, -60.0120], ['Aleixo', -3.0900, -59.9950],
@@ -33,4 +37,4 @@ export const BAIRROS = [
   ['Ponta Negra', -3.0700, -60.0950], ['Redenção', -3.0670, -60.0500],
   ['Santo Antônio', -3.1270, -60.0500], ['São José Operário', -3.0820, -59.9420],
   ['Tarumã', -3.0300, -60.0700], ['Zumbi dos Palmares', -3.0880, -59.9520],
-].map(([name, lat, lng]) => ({ name, lat, lng }));
+].map(([name, lat, lng]) => ({ name, lat, lng, zone: ZONES[name] }));

@@ -36,7 +36,7 @@ export async function loadCatalog() {
     console.warn('[TáBarato] usando dados de demonstração:', e.message || e);
     MODE = 'demo';
     const { DEMO } = await import('./demo-data.js');
-    return { ...DEMO, products: buildDemoProducts(DEMO) };
+    return { ...DEMO, products: applyPortalDemo(buildDemoProducts(DEMO)) };
   }
 }
 
@@ -47,9 +47,36 @@ function normalize(p) {
     max_price: Number(p.max_price),
     change_pct: p.change_pct == null ? null : Number(p.change_pct),
     prices: (p.prices || [])
-      .map((x) => ({ market_id: x.market_id, price: Number(x.price), prev: x.prev == null ? null : Number(x.prev), at: x.at, src: x.src }))
+      .map((x) => ({ market_id: x.market_id, price: Number(x.price), regular: x.regular == null ? null : Number(x.regular), prev: x.prev == null ? null : Number(x.prev), at: x.at, src: x.src, promo: x.promo || null }))
       .sort((a, b) => a.price - b.price),
   };
+}
+
+// Em modo demonstração, o portal dos mercados grava no aparelho (tb.portalDemo);
+// aplicamos aqui para o site refletir produtos, fotos e promoções criados lá.
+function applyPortalDemo(products) {
+  const d = ls.get('tb.portalDemo', null);
+  if (!d) return products;
+  const now = Date.now();
+  for (const np of d.newProducts || []) if (!products.some((p) => p.id === np.id)) products.push({ ...np, prices: [] });
+  for (const p of products) {
+    for (const [k, v] of Object.entries(d.listings || {})) {
+      const [mid, pid] = k.split(':').map(Number);
+      if (pid !== p.id) continue;
+      let x = p.prices.find((y) => y.market_id === mid);
+      if (v.active === false) { p.prices = p.prices.filter((y) => y.market_id !== mid); continue; }
+      if (v.price != null) { if (!x) { x = { market_id: mid, prev: null }; p.prices.push(x); } x.price = v.price; x.at = v.at || new Date().toISOString(); }
+      if (v.photo) p.photo = v.photo;
+    }
+    for (const pr of d.promos || []) {
+      if (pr.product_id !== p.id || !pr.active || new Date(pr.ends_at) < now || new Date(pr.starts_at) > now) continue;
+      const x = p.prices.find((y) => y.market_id === pr.supermarket_id);
+      if (x && pr.promo_price < x.price) { x.regular = x.price; x.price = pr.promo_price; x.promo = { kind: pr.kind, code: pr.code, ends: pr.ends_at }; }
+    }
+    p.prices.sort((a, b) => a.price - b.price);
+    if (p.prices.length) { p.min_price = p.prices[0].price; p.max_price = p.prices[p.prices.length - 1].price; p.updated_at ||= p.prices[0].at; }
+  }
+  return products.filter((p) => p.prices.length);
 }
 
 // Reproduz a view v_products em JS
@@ -187,11 +214,14 @@ export async function completeProfile(f) {
     ls.set('tb.demoProfile', p); return p;
   }
   const c = await client();
-  const { data, error } = await c.rpc('complete_profile', {
+  const args = {
     p_full_name: f.full_name, p_phone: f.phone, p_birth_date: f.birth_date,
     p_neighborhood: f.neighborhood, p_cep: f.cep || null,
     p_preferred_markets: f.preferred_markets || [], p_accepts_offers: !!f.accepts_offers,
-  });
+  };
+  let { data, error } = await c.rpc('complete_profile', { ...args, p_gender: f.gender || null });
+  // banco ainda sem a versão nova da função (sem p_gender): tenta a antiga
+  if (error && /p_gender|PGRST202|function/i.test(error.message + error.code)) ({ data, error } = await c.rpc('complete_profile', args));
   if (error) throw error;
   return data;
 }
@@ -327,11 +357,15 @@ export async function loadRancho(month) {
 export async function saveRancho(meta, items) {
   if (MODE === 'demo') return;
   const c = await client();
-  const { data: list, error } = await c.from('shopping_lists').upsert({
+  const row = {
     month: meta.month + '-01', name: meta.name, status: meta.status,
     completed_at: meta.completedAt || null, best_market: meta.bestMarket || null,
-    best_total: meta.bestTotal || null, savings: meta.savings || null, updated_at: new Date().toISOString(),
-  }, { onConflict: 'user_id,month' }).select('id').single();
+    best_total: meta.bestTotal || null, savings: meta.savings ?? null, updated_at: new Date().toISOString(),
+  };
+  const extra = { base_total: meta.baseTotal ?? null, items_count: items.length, bought_market: meta.bought ?? null, spent: meta.spent ?? null };
+  let { data: list, error } = await c.from('shopping_lists').upsert({ ...row, ...extra }, { onConflict: 'user_id,month' }).select('id').single();
+  // banco sem as colunas novas: grava só o básico
+  if (error && /column|PGRST204/i.test(error.message + error.code)) ({ data: list, error } = await c.from('shopping_lists').upsert(row, { onConflict: 'user_id,month' }).select('id').single());
   if (error) throw error;
   await c.from('shopping_list_items').delete().eq('list_id', list.id);
   if (items.length) {
@@ -368,3 +402,30 @@ export async function toggleFavorite(userId, productId, on) {
   if (on) await c.from('favorites').insert({ user_id: userId, product_id: productId });
   else await c.from('favorites').delete().eq('product_id', productId);
 }
+
+// ---------------------------------------------------------------- métricas de uso (anônimas)
+export async function track(events) {
+  if (MODE === 'demo' || !events.length) return;
+  const c = await client();
+  await c.rpc('track', { p_events: events });
+}
+
+// histórico de ranchos do usuário (para a página "Você")
+export async function myRanchos() {
+  if (MODE === 'demo') return [];
+  const c = await client();
+  const { data, error } = await c.from('shopping_lists')
+    .select('month, name, status, completed_at, best_market, best_total, savings, base_total, bought_market, spent, items_count')
+    .order('month', { ascending: false }).limit(24);
+  if (error) throw error;
+  return data;
+}
+
+export async function setRanchoBought(month, fields) {
+  if (MODE === 'demo') return;
+  const c = await client();
+  const { error } = await c.from('shopping_lists').update(fields).eq('month', month + '-01');
+  if (error) throw error;
+}
+
+export const sbClient = client;

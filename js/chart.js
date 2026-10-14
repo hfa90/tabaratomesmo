@@ -3,12 +3,12 @@ const W = 640, H = 240, PAD = { l: 52, r: 14, t: 14, b: 28 };
 let uid = 0;
 const registry = new Map();
 
-export function lineChart(series, { format = (v) => v.toFixed(2) } = {}) {
+export function lineChart(series, { format = (v) => v.toFixed(2), label = null } = {}) {
   if (!series.length) return '<p class="muted">Sem histórico para este período.</p>';
   const all = series.flatMap((s) => s.points);
   const t0 = Math.min(...all.map((p) => p.t)), t1 = Math.max(...all.map((p) => p.t));
   let v0 = Math.min(...all.map((p) => p.v)), v1 = Math.max(...all.map((p) => p.v));
-  const padV = (v1 - v0) * 0.12 || v1 * 0.05; v0 -= padV; v1 += padV;
+  const padV = (v1 - v0) * 0.12 || v1 * 0.05; const nonNeg = v0 >= 0; v0 -= padV; v1 += padV; if (nonNeg && v0 < 0) v0 = 0;
   const x = (t) => PAD.l + ((t - t0) / Math.max(t1 - t0, 1)) * (W - PAD.l - PAD.r);
   const y = (v) => PAD.t + (1 - (v - v0) / (v1 - v0)) * (H - PAD.t - PAD.b);
 
@@ -39,7 +39,7 @@ export function lineChart(series, { format = (v) => v.toFixed(2) } = {}) {
   }).join('');
 
   return `<div class="c-wrap" id="${id}">
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Histórico de preços dos últimos ${days} dias">
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${label || `Histórico de preços dos últimos ${days} dias`}">
       ${grid}${xt}${lines}
       <line class="c-cursor" x1="0" x2="0" y1="${PAD.t}" y2="${H - PAD.b}" visibility="hidden"/>
       <rect class="c-hit" x="${PAD.l}" y="0" width="${W - PAD.l - PAD.r}" height="${H}" fill="transparent"/>

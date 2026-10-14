@@ -19,6 +19,8 @@ Comparador de preços de supermercados de Manaus: Nova Era, Supermercados DB, Ve
   - cada preço informado libera +2 comparações para quem está no cadastro rápido;
   - um preço entra no site quando **duas pessoas confirmam o mesmo valor (±3%) em 48 h**, ou quando alguém confiável (3+ envios aprovados) informa estando na loja. Valores muito fora do último preço são recusados e há limite de 60 envios por dia.
 - **Mapa** das lojas (Leaflet + OpenStreetMap).
+- **Página Você**: quanto a pessoa já economizou (total, por mês e projeção), o supermercado onde mais compra, histórico dos ranchos, conquistas, fiscal do preço e dados da conta. Funciona até sem conta (guarda no aparelho).
+- **Área do supermercado** (`parceiros.html`): cada mercado cadastra, edita e remove produtos, envia fotos reais, cria promoções **exclusivas do site** (com código para o caixa) ou **gerais da loja**, importa produtos em massa pela planilha [`assets/modelo-importacao-tabaratomesmo.xlsx`](assets/modelo-importacao-tabaratomesmo.xlsx) e acompanha métricas: buscas, buscas sem resultado, produtos e marcas mais vistos, ranking de preferência de compra (dia/semana/mês), regiões e bairros, sexo e faixa etária de quem faz o rancho, horários de pico, produtos em que está perdendo clientes e desempenho das promoções.
 - **Cadastro em duas etapas**: o cadastro rápido (nome, e-mail, senha) libera 15 comparações; o cadastro completo (celular, nascimento, bairro, mercados preferidos) libera uso sem limite. Sem cadastro: 3 comparações.
 - Usuários podem informar preços vistos na loja (`price_reports`, para moderação).
 - PWA: instalável no Android e no iOS ("Adicionar à tela de início").
@@ -37,6 +39,16 @@ Stack: HTML, CSS e JavaScript puros (ES modules, sem build) + Supabase (Postgres
    Authentication → Providers → Email. Com ele ligado, o usuário confirma pelo e-mail antes de entrar.
 
 Enquanto o schema não estiver aplicado, o site funciona em **modo demonstração** (faixa amarela no topo) com os mesmos dados do seed.
+
+### 1b. Dar acesso a um supermercado
+1. No SQL Editor, gere um código de convite para o mercado (o `id` está na tabela `supermarkets`):
+   ```sql
+   insert into public.market_invites (supermarket_id) values (5) returning code;
+   ```
+2. Envie o código ao responsável. Ele abre `parceiros.html`, cria o acesso com e-mail, senha e o código, e já cai no portal.
+   Cada código vale 5 acessos por 30 dias (colunas `uses_left` e `expires_at`).
+
+As métricas vêm da tabela `events` (buscas, produtos vistos, itens no rancho, rotas abertas, ranchos concluídos e compras confirmadas), gravada pela função `track()`. Ninguém lê essa tabela direto: o portal recebe só números agregados pela `market_dashboard()`, e dados de bairro, sexo e idade só aparecem em grupos com 5 pessoas ou mais. "Quem está vendendo mais" é uma estimativa de preferência pelo site (compras confirmadas pelos clientes, ranchos que saem mais baratos em cada mercado e rotas abertas), não o faturamento das lojas.
 
 ### 2. Logomarcas oficiais
 Coloque os arquivos em `assets/logos/` com estes nomes (PNG ou troque a extensão na coluna `logo_url`):
@@ -79,6 +91,13 @@ js/core.js            estado e componentes compartilhados
 js/app.js             interface, localização, cadastro, mapa
 js/rancho.js          rancho do mês e relatório (distância, vale a pena, proteínas)
 js/fiscal.js          colaboração: conferir preços, pontos, níveis, ranking
+js/account.js         página Você (economia, mercado preferido, histórico, conquistas)
+js/track.js           eventos de uso anônimos para as métricas
+parceiros.html        área do supermercado
+js/portal.js          portal: painel, produtos, promoções, importação
+js/portal-api.js      dados do portal (Supabase ou demonstração)
+css/portal.css        estilos do portal
+assets/modelo-importacao-tabaratomesmo.xlsx   planilha modelo de importação
 js/chart.js           gráfico de histórico em SVG
 js/demo-data.js       dados de demonstração (gerados do seed)
 supabase/schema.sql   banco completo

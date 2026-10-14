@@ -3,10 +3,12 @@ import * as api from './api.js';
 import { lineChart } from './chart.js';
 import {
   S, $, $$, esc, brl, pct, km, reduceMotion, haversine, isOn, visiblePrices,
-  initials, logo, logoFull, priceTag, changeBadge, stepper, hooks, ago,
+  initials, logo, logoFull, priceTag, changeBadge, stepper, hooks, ago, media, promoPill,
 } from './core.js';
 import * as rancho from './rancho.js';
 import * as fiscal from './fiscal.js';
+import * as account from './account.js';
+import { track } from './track.js';
 
 
 function card(p, i) {
@@ -16,40 +18,27 @@ function card(p, i) {
   const bm = S.markets.get(best.market_id);
   const nb = S.nearest.get(best.market_id);
   const others = prices.slice(1);
-  const unknown = [...S.markets.values()].filter((m) => isOn(m.id) && !p.prices.some((x) => x.market_id === m.id));
   const c = p.change_pct;
-  const chg = c != null && Math.abs(c) >= 0.5
-    ? `<span class="chg-t ${c < 0 ? 'down' : 'up'}" title="Variação média em 7 dias">${c < 0 ? '▼' : '▲'} ${Math.abs(c).toFixed(1).replace('.', ',')}%</span>` : '';
+  // no card só aparece queda relevante; altas ficam no detalhe e na ordenação "Subiram"
+  const trend = c != null && (c <= -1 || (S.sort === 'alta' && c >= 0.5))
+    ? `<span class="trend ${c < 0 ? 'down' : 'up'}" title="Variação média em 7 dias">${c < 0 ? '▼' : '▲'} ${Math.abs(c).toFixed(1).replace('.', ',')}%</span>` : '';
+  const promo = prices.find((x) => x.promo);
   return `<article class="card" data-pid="${p.id}" style="--i:${Math.min(i, 12)}">
     <button class="card__hit" data-open-product="${p.id}" aria-label="Comparar ${esc(p.name)} ${esc(p.brand || '')}"></button>
-    <header class="card__head">
-      <span class="card__emoji" aria-hidden="true">${p.emoji || '🛒'}</span>
-      <div class="card__title">
-        <h3>${esc(p.name)}</h3>
-        <p>${esc([p.brand, p.unit].filter(Boolean).join(', '))}</p>
-      </div>
-      <button class="fav ${S.favs.has(p.id) ? 'is-on' : ''}" data-fav="${p.id}" aria-pressed="${S.favs.has(p.id)}" aria-label="Favoritar">
-        <svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.8 4.3 7.2C19.5 16.4 12 21 12 21z"/></svg>
-      </button>
-    </header>
-
-    <div class="card__price">
-      ${priceTag(best.price)}
-      <div class="card__where">
-        ${logo(bm, 'md')}
-        <span><b>${esc(bm.name)}</b><small>${nb ? `${km(nb.km)}` : 'menor preço'}${chg ? ' ' + chg : ''}</small></span>
-      </div>
+    ${media(p)}
+    <div class="card__title">
+      <h3>${esc(p.name)}</h3>
+      <p>${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</p>
     </div>
-
-    <ul class="mini" aria-label="Preço nos outros supermercados">
-      ${others.length ? others.map((x) => `<li title="${esc(S.markets.get(x.market_id).name)}">${logo(S.markets.get(x.market_id), 'xs')}<span>${brl(x.price).replace('R$', '').trim()}</span></li>`).join('')
-        : '<li class="mini__only">Só neste mercado</li>'}
-    </ul>
-
+    <div class="card__price">${priceTag(best.price)}${best.regular ? `<s class="was">${brl(best.regular)}</s>` : ''}${trend}${promo ? promoPill(promo) : ''}</div>
+    <div class="card__where">${logo(bm, 'xs')}<span>${esc(bm.name)}${nb ? ` · ${km(nb.km)}` : ''}</span></div>
     <footer class="card__foot">
-      ${unknown.length ? `<button class="ask" data-fiscal-one="${p.id}" data-fiscal-m="${unknown[0].id}" title="Sem preço em: ${esc(unknown.map((m) => m.name).join(', '))}">${unknown.length} sem preço. Você sabe?</button>` : '<span></span>'}
+      <span class="card__others">${others.length ? `+${others.length} ${others.length > 1 ? 'mercados' : 'mercado'}, até ${brl(others[others.length - 1].price)}` : 'Só neste mercado'}</span>
       ${stepper(p.id)}
     </footer>
+    <button class="fav ${S.favs.has(p.id) ? 'is-on' : ''}" data-fav="${p.id}" aria-pressed="${S.favs.has(p.id)}" aria-label="Favoritar">
+      <svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.8 4.3 7.2C19.5 16.4 12 21 12 21z"/></svg>
+    </button>
   </article>`;
 }
 
@@ -88,39 +77,53 @@ function renderGrid() {
 }
 
 function renderChips() {
-  const chips = [{ slug: 'all', name: 'Tudo', icon: '🛒' }, ...S.categories, { slug: 'fav', name: 'Favoritos', icon: '♥' }];
+  const chips = [{ slug: 'all', name: 'Tudo' }, ...S.categories, { slug: 'fav', name: 'Favoritos' }];
   $('#catChips').innerHTML = chips.map((c) =>
-    `<button class="chip ${S.category === c.slug ? 'is-on' : ''}" data-cat="${c.slug}" aria-pressed="${S.category === c.slug}"><span aria-hidden="true">${c.icon || ''}</span>${esc(c.name)}</button>`).join('');
+    `<button class="chip ${S.category === c.slug ? 'is-on' : ''}" data-cat="${c.slug}" aria-pressed="${S.category === c.slug}">${esc(c.name)}</button>`).join('');
 }
 
+const marketsByDistance = () => [...S.markets.values()].map((m) => ({ m, n: S.nearest.get(m.id) }))
+  .sort((a, b) => (a.n?.km ?? 999) - (b.n?.km ?? 999) || a.m.name.localeCompare(b.m.name));
+
+/** uma linha só: "Comparando 5 mercados · mais perto: Nova Era, 124 m · Ajustar" */
 function renderNearby() {
-  const ms = [...S.markets.values()].map((m) => ({ m, n: S.nearest.get(m.id) }))
-    .sort((a, b) => (a.n?.km ?? 999) - (b.n?.km ?? 999) || a.m.name.localeCompare(b.m.name));
-  $('#nearbyHint').innerHTML = S.pos
-    ? `Toque para tirar ou incluir na comparação.`
-    : `<button class="linkish" data-open="loc">Ative a localização</button> para ver o mais perto.`;
-  $('#nearbyRow').innerHTML = ms.map(({ m, n }, i) => `
-    <button class="market ${isOn(m.id) ? '' : 'is-off'} ${S.pos && i === 0 ? 'is-closest' : ''}" data-market="${m.id}" aria-pressed="${isOn(m.id)}">
-      ${logo(m, 'md')}
-      <span class="market__txt"><b>${esc(m.name.replace(/^Supermercados\s+/, ''))}</b>
-      <small>${n ? `${S.pos && i === 0 ? 'mais perto, ' : ''}${km(n.km)}` : `${S.stores.filter((s) => s.supermarket_id === m.id).length} lojas`}</small></span>
-    </button>`).join('');
+  const on = [...S.markets.values()].filter((m) => isOn(m.id));
+  const closest = marketsByDistance().find((x) => isOn(x.m.id) && x.n);
+  $('#marketCount').textContent = S.markets.size;
+  $('#compareLine').innerHTML = `
+    <span class="logos">${on.map((m) => logo(m, 'xs')).join('')}</span>
+    <span>Comparando <b>${on.length === S.markets.size ? `todos os ${on.length}` : `${on.length} de ${S.markets.size}`}</b> mercados<span class="cl-near">${closest ? ` · mais perto: <b>${esc(closest.m.name)}</b>, ${km(closest.n.km)}` : ''}</span></span>
+    <em>Ajustar</em>`;
+  const list = $('#marketsList');
+  if (list) list.innerHTML = marketsByDistance().map(({ m, n }) => `
+    <li><label class="mk-row">${logo(m, 'md')}
+      <span><b>${esc(m.name)}</b><small>${n ? `Loja mais perto: ${esc(n.store.neighborhood || n.store.name)}, ${km(n.km)}` : `${S.stores.filter((s) => s.supermarket_id === m.id).length} lojas em Manaus`}</small></span>
+      <span class="switch"><input type="checkbox" data-market-toggle="${m.id}" ${isOn(m.id) ? 'checked' : ''} aria-label="Incluir ${esc(m.name)}" /><i></i></span>
+    </label></li>`).join('');
 }
 
-function renderSpotlight() {
-  const rows = S.products.flatMap((p) => p.prices.filter((x) => x.prev).map((x) => ({ p, x, c: (x.price / x.prev - 1) * 100 })))
-    .filter((r) => r.c < 0).sort((a, b) => a.c - b.c);
-  const r = rows[0]; const el = $('#spotlight');
-  if (!r) { el.hidden = true; return; }
-  const m = S.markets.get(r.x.market_id);
-  el.innerHTML = `<button class="spot__card" data-open-product="${r.p.id}">
-    <span class="spot__kicker">Maior queda da semana</span>
-    <span class="spot__emoji" aria-hidden="true">${r.p.emoji || '🛒'}</span>
-    <span class="spot__name">${esc(r.p.name)}<small>${esc([r.p.brand, r.p.unit].filter(Boolean).join(', '))}</small></span>
-    <span class="spot__row">${priceTag(r.x.price, 'tag--xl')}
-      <span class="spot__was">era <s>${brl(r.x.prev)}</s><b>▼ ${Math.abs(r.c).toFixed(1).replace('.', ',')}%</b></span></span>
-    <span class="spot__m"><span class="spot__logo">${logoFull(m)}</span>no ${esc(m.name)}</span>
-  </button>`;
+/** faixa de destaques: promoções dos mercados primeiro, depois as maiores quedas */
+function renderDeals() {
+  const promos = S.products.flatMap((p) => p.prices.filter((x) => x.promo && isOn(x.market_id)).map((x) => ({ p, x, promo: true })))
+    .sort((a, b) => (b.x.regular - b.x.price) / b.x.regular - (a.x.regular - a.x.price) / a.x.regular);
+  const drops = S.products.flatMap((p) => p.prices.filter((x) => x.prev && !x.promo && isOn(x.market_id)).map((x) => ({ p, x, c: (x.price / x.prev - 1) * 100 })))
+    .filter((r) => r.c <= -3).sort((a, b) => a.c - b.c);
+  const seen = new Set();
+  const rows = [...promos, ...drops].filter((r) => (seen.has(r.p.id) ? false : seen.add(r.p.id))).slice(0, 10);
+  const el = $('#deals');
+  if (!rows.length) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<div class="sec-head"><h2>${promos.length ? 'Ofertas da semana' : 'Baixaram de preço'}</h2></div>
+    <div class="deals__row">${rows.map(({ p, x, promo }) => {
+      const m = S.markets.get(x.market_id);
+      const was = promo ? x.regular : x.prev;
+      return `<button class="deal" data-open-product="${p.id}" ${promo ? `data-promo-view="${p.id}:${m.id}"` : ''}>
+        ${media(p, 'card__media')}
+        <span class="deal__txt"><b>${esc(p.name)}</b>
+          <span class="deal__price">${brl(x.price)}<s>${brl(was)}</s></span>
+          <small>${logo(m, 'xs')} ${esc(m.name)} ${promo ? promoPill(x) : `<span class="trend down">▼ ${Math.abs((x.price / x.prev - 1) * 100).toFixed(0)}%</span>`}</small></span>
+      </button>`;
+    }).join('')}</div>`;
 }
 
 // ======================================================================
@@ -208,10 +211,17 @@ function closeSheet(sel) {
   setTimeout(() => { el.hidden = true; if (!$$('.sheet.is-open').length) document.body.classList.remove('no-scroll'); }, reduceMotion ? 0 : 260);
   lastFocus?.focus?.({ preventScroll: true });
 }
+// clicar fora do painel fecha (só se o clique começou fora, para não fechar ao selecionar texto)
+let downOnBackdrop = false;
+document.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target.classList?.contains('sheet__backdrop') || e.target.classList?.contains('sheet'); });
+document.addEventListener('click', (e) => {
+  if (downOnBackdrop && (e.target.classList.contains('sheet__backdrop') || e.target.classList.contains('sheet'))) closeSheet(e.target.closest('.sheet'));
+  downOnBackdrop = false;
+});
 // arrastar para fechar (mobile)
 $$('.sheet__panel').forEach((panel) => {
   let y0 = null, dy = 0;
-  panel.addEventListener('touchstart', (e) => { if (panel.scrollTop <= 0 && e.target.closest('.sheet__grip, .sheet__title, .pd__head')) y0 = e.touches[0].clientY; }, { passive: true });
+  panel.addEventListener('touchstart', (e) => { if (panel.scrollTop <= 0 && e.target.closest('.sheet__grip, .sheet__title, .pd__head, .mk-list')) y0 = e.touches[0].clientY; }, { passive: true });
   panel.addEventListener('touchmove', (e) => { if (y0 == null) return; dy = Math.max(0, e.touches[0].clientY - y0); panel.style.transform = `translateY(${dy}px)`; }, { passive: true });
   panel.addEventListener('touchend', () => { if (y0 == null) return; panel.style.transform = ''; if (dy > 110) closeSheet(panel.closest('.sheet')); y0 = null; dy = 0; });
 });
@@ -246,48 +256,64 @@ async function canCompare() {
 async function openProduct(pid) {
   const p = S.products.find((x) => x.id === pid);
   if (!p || !(await canCompare())) return;
+  track('view', { product_id: pid, market_id: visiblePrices(p)[0]?.market_id });
   const prices = visiblePrices(p).length ? visiblePrices(p) : p.prices;
   const best = prices[0], worst = prices[prices.length - 1];
+  const bm = S.markets.get(best.market_id);
   const span = Math.max(worst.price - best.price, 0.01);
+  const unknown = [...S.markets.values()].filter((m) => isOn(m.id) && !p.prices.some((x) => x.market_id === m.id));
+  const promos = prices.filter((x) => x.promo);
   $('#sheetBody').innerHTML = `
     <div class="pd">
       <div class="pd__head">
-        <span class="pd__emoji" aria-hidden="true">${p.emoji || '🛒'}</span>
+        ${media(p, 'pd__media')}
         <div>
-          <p class="muted">${esc(p.category_name)}</p>
+          <p class="muted small">${esc(p.category_name)}</p>
           <h2 id="sheetTitle" class="sheet__title">${esc(p.name)}</h2>
-          <p class="muted">${esc([p.brand, p.unit].filter(Boolean).join(', '))}</p>
+          <p class="muted small">${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</p>
         </div>
       </div>
       <div class="pd__hero">
-        ${priceTag(best.price, 'tag--xl')}
         <div>
-          <p>Mais barato no <b>${esc(S.markets.get(best.market_id).name)}</b></p>
-          ${changeBadge(p.change_pct)}
+          <p>Menor preço no <b>${esc(bm.name)}</b></p>
+          ${priceTag(best.price, 'lg')} ${best.regular ? `<s class="was">${brl(best.regular)}</s>` : ''}
         </div>
+        ${changeBadge(p.change_pct)}
       </div>
 
-      <h3 class="pd__h">Preço em cada mercado</h3>
-      <ol class="bars">
-        ${prices.map((x, j) => {
-          const m = S.markets.get(x.market_id); const n = S.nearest.get(x.market_id);
-          const w = 18 + 82 * ((x.price - best.price) / span);
-          const ch = x.prev ? (x.price / x.prev - 1) * 100 : null;
-          return `<li class="bar ${j === 0 ? 'is-best' : ''}">
-            ${logo(m, 'md')}
-            <div class="bar__main">
-              <div class="bar__top"><b>${esc(m.name)}</b><span class="bar__price">${brl(x.price)}</span></div>
-              <div class="bar__track"><span style="--w:${w}%;--c:${esc(m.color)}"></span></div>
-              <div class="bar__meta">
-                <span>${j === 0 ? 'Menor preço' : `+${brl(x.price - best.price)} (${pct((x.price / best.price - 1) * 100)})`}</span>
-                ${ch != null && Math.abs(ch) >= 0.5 ? `<span class="${ch < 0 ? 'down' : 'up'}">${ch < 0 ? '▼' : '▲'} ${Math.abs(ch).toFixed(1).replace('.', ',')}% em 7d</span>` : ''}
-                ${x.src === 'comunidade' ? `<span class="by-crowd">informado por vizinhos ${ago(x.at)}</span>` : ''}
-                ${n ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${n.store.lat},${n.store.lng}" target="_blank" rel="noopener">${esc(n.store.neighborhood)}, ${km(n.km)}</a>` : ''}
+      ${promos.map((x) => {
+        const m = S.markets.get(x.market_id);
+        const ends = x.promo.ends ? new Date(x.promo.ends).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '';
+        return x.promo.kind === 'exclusiva'
+          ? `<div class="promo-box is-excl">${logo(m, 'md')}<p><b>Preço exclusivo do Tá Barato Mesmo?</b><br/>${brl(x.price)} no ${esc(m.name)}${ends ? ` até ${ends}` : ''}. Mostre o código no caixa.</p>${x.promo.code ? `<span class="promo-code">${esc(x.promo.code)}</span>` : ''}</div>`
+          : `<div class="promo-box">${logo(m, 'md')}<p><b>Oferta no ${esc(m.name)}</b><br/>De ${brl(x.regular)} por ${brl(x.price)}${ends ? `, até ${ends}` : ''}.</p></div>`;
+      }).join('')}
+
+      <div>
+        <h3 class="pd__h">Preço em cada mercado</h3>
+        <ol class="bars">
+          ${prices.map((x, j) => {
+            const m = S.markets.get(x.market_id); const n = S.nearest.get(x.market_id);
+            const w = 14 + 86 * ((x.price - best.price) / span);
+            const ch = x.prev ? (x.price / x.prev - 1) * 100 : null;
+            return `<li class="bar ${j === 0 ? 'is-best' : ''}">
+              ${logo(m, 'md')}
+              <div class="bar__main">
+                <div class="bar__top"><b>${esc(m.name)} ${promoPill(x)}</b><span class="bar__price">${brl(x.price)}</span></div>
+                <div class="bar__track"><span style="--w:${w}%"></span></div>
+                <div class="bar__meta">
+                  <span>${j === 0 ? 'Menor preço' : `+${brl(x.price - best.price)} (${pct((x.price / best.price - 1) * 100)})`}</span>
+                  ${ch != null && Math.abs(ch) >= 0.5 ? `<span class="${ch < 0 ? 'down' : 'up'}">${ch < 0 ? '▼' : '▲'} ${Math.abs(ch).toFixed(1).replace('.', ',')}% em 7 dias</span>` : ''}
+                  ${x.src === 'comunidade' ? `<span>informado por vizinhos ${ago(x.at)}</span>` : ''}
+                  ${n ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${n.store.lat},${n.store.lng}" target="_blank" rel="noopener" data-route="${m.id}">${esc(n.store.neighborhood)}, ${km(n.km)}</a>` : ''}
+                </div>
               </div>
-            </div>
-          </li>`;
-        }).join('')}
-      </ol>
+            </li>`;
+          }).join('')}
+        </ol>
+      </div>
+
+      ${unknown.length ? `<div class="ask-row"><span>Sem preço em ${esc(unknown.map((m) => m.name).join(', '))}.</span><button class="btn btn--sm btn--ghost" data-fiscal-one="${p.id}" data-fiscal-m="${unknown[0].id}">Eu sei o preço</button></div>` : ''}
 
       <div class="pd__chart">
         <div class="pd__charthead">
@@ -302,8 +328,8 @@ async function openProduct(pid) {
       </div>
 
       <div class="pd__actions">
-        ${stepper(p.id)}
-        <button class="btn btn--ghost" data-report="${p.id}">Viu outro preço? Informe</button>
+        ${S.list.get(p.id) ? stepper(p.id) : `<button class="btn btn--primary" data-add="${p.id}">Adicionar ao rancho</button>`}
+        <button class="btn btn--ghost" data-report="${p.id}">Viu outro preço?</button>
       </div>
       <p class="muted small">Atualizado ${new Date(p.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}. ${api.MODE === 'demo' ? 'Dados de demonstração.' : ''}</p>
     </div>`;
@@ -337,11 +363,12 @@ function updateListBadge() {
   $$('[data-list-count]').forEach((b) => { b.hidden = !n; b.textContent = n; });
 }
 function setQty(pid, q) {
+  if (q > 0 && !S.list.has(pid)) { const p = S.products.find((x) => x.id === pid); track('add', { product_id: pid, market_id: p && visiblePrices(p)[0]?.market_id }); }
   if (q <= 0) S.list.delete(pid); else S.list.set(pid, q);
   saveList(); rancho.onListChange();
-  $$(`[data-pid="${pid}"] .card__foot .stepper, [data-pid="${pid}"] .card__foot .btn--add`).forEach((el) => (el.outerHTML = stepper(pid)));
+  $$(`[data-pid="${pid}"] .card__foot .stepper, [data-pid="${pid}"] .card__foot .add-btn`).forEach((el) => (el.outerHTML = stepper(pid)));
   const pd = $('#productSheet');
-  if (!pd.hidden && Number(pd.dataset.pid) === pid) { const a = $('.pd__actions .stepper, .pd__actions .btn--add', pd); if (a) a.outerHTML = stepper(pid); }
+  if (!pd.hidden && Number(pd.dataset.pid) === pid) { const a = $('.pd__actions > .stepper, .pd__actions > [data-add]', pd); if (a) a.outerHTML = q > 0 ? stepper(pid) : `<button class="btn btn--primary" data-add="${pid}">Adicionar ao rancho</button>`; }
   if (location.hash === '#lista') renderList();
 }
 const renderList = () => rancho.render();
@@ -445,6 +472,10 @@ function openAuth(mode = 'signup', reason = '') {
           <label>CEP<input name="cep" inputmode="numeric" autocomplete="postal-code" placeholder="69000-000" value="${esc(p.cep || '')}" /></label>
           <label>Bairro<input name="neighborhood" list="bairrosDl" required value="${esc(p.neighborhood || S.pos?.label || '')}" /></label>
         </div>
+        <fieldset class="pick">
+          <legend>Sexo <span class="muted">(usado só em números agregados, nunca individualmente)</span></legend>
+          <div class="radios">${[['feminino', 'Feminino'], ['masculino', 'Masculino'], ['outro', 'Outro'], ['nao_informar', 'Prefiro não informar']].map(([v, l]) => `<label><input type="radio" name="gender" value="${v}" ${p.gender === v ? 'checked' : ''} />${l}</label>`).join('')}</div>
+        </fieldset>
         <datalist id="bairrosDl">${BAIRROS.map((b) => `<option value="${esc(b.name)}">`).join('')}</datalist>
         <fieldset class="pick">
           <legend>Onde você costuma comprar?</legend>
@@ -526,6 +557,7 @@ function bindAuthForms() {
       neighborhood: cf.neighborhood.value.trim(), cep: cf.cep.value.trim(),
       preferred_markets: $$('input[name=markets]:checked', cf).map((i) => Number(i.value)),
       accepts_offers: cf.accepts_offers.checked,
+      gender: cf.querySelector('input[name=gender]:checked')?.value || 'nao_informar',
     };
     if (data.full_name.split(/\s+/).length < 2) return formError(cf, 'Informe nome e sobrenome.');
     if (data.phone.replace(/\D/g, '').length < 10) return formError(cf, 'Informe um celular com DDD.');
@@ -555,55 +587,7 @@ function renderProfileBanner() {
   $('#profileBannerText').textContent = 'Complete o cadastro para comparar sem limite.';
 }
 
-function renderAccount() {
-  const link = $('#accountLink');
-  if (!S.user) {
-    link.textContent = 'Entrar';
-    $('#accountBody').innerHTML = `
-      <div class="acc-empty">
-        <p>Crie sua conta para comparar quantos produtos quiser, salvar favoritos e informar preços.</p>
-        <div class="acc-steps">
-          <div><b>1. Cadastro rápido</b><span>Nome, e-mail e senha. Libera ${CONFIG.QUICK_COMPARISONS} comparações.</span></div>
-          <div><b>2. Cadastro completo</b><span>Celular, bairro e mercados preferidos. Comparações sem limite.</span></div>
-        </div>
-        <button class="btn btn--primary" data-auth="signup">Criar conta</button>
-        <button class="btn btn--ghost" data-auth="login">Já tenho conta</button>
-      </div>`;
-    return;
-  }
-  const p = S.profile || {};
-  const name = p.full_name || S.user.user_metadata?.full_name || S.user.email;
-  link.textContent = name.split(' ')[0];
-  const done = !!p.completed_at;
-  const pref = (p.preferred_markets || []).map((id) => S.markets.get(id)).filter(Boolean);
-  const favs = S.products.filter((x) => S.favs.has(x.id));
-  $('#accountBody').innerHTML = `
-    <div class="acc">
-      <div class="acc__card">
-        <div class="avatar" aria-hidden="true">${esc(initials(name))}</div>
-        <div><b>${esc(name)}</b><small>${esc(S.user.email || '')}</small>
-        <span class="status ${done ? 'status--ok' : ''}">${done ? 'Cadastro completo' : `Cadastro rápido, ${Math.max(CONFIG.QUICK_COMPARISONS - (p.comparisons_used || 0), 0)} comparações restantes`}</span></div>
-      </div>
-      ${done ? `<dl class="acc__dl">
-        <div><dt>Celular</dt><dd>${esc(p.phone || '')}</dd></div>
-        <div><dt>Bairro</dt><dd>${esc(p.neighborhood || '')}</dd></div>
-        <div><dt>Mercados</dt><dd>${pref.length ? pref.map((m) => logo(m, 'xs')).join('') : 'Todos'}</dd></div>
-      </dl><button class="btn btn--ghost" data-open="complete">Editar dados</button>`
-      : `<button class="btn btn--primary" data-open="complete">Completar cadastro</button>`}
-      <h2 class="pd__h">Fiscal do preço</h2>
-      <div id="fiscalAcc" class="fiscal-acc"><div class="skeleton" style="height:120px"></div></div>
-      <h2 class="pd__h">Casa e deslocamento</h2>
-      <div class="acc__home">
-        <p>${rancho.homePos()?.source === 'home' ? `Sua casa: <b>${esc(rancho.homePos().label || 'definida')}</b>` : 'Defina onde fica sua casa para o relatório do rancho calcular distância e custo de deslocamento.'}</p>
-        <button class="btn btn--ghost btn--sm" data-open="home">${rancho.homePos()?.source === 'home' ? 'Alterar casa' : 'Definir minha casa'}</button>
-      </div>
-      <h2 class="pd__h">Favoritos</h2>
-      ${favs.length ? `<div class="grid grid--compact">${favs.map(card).join('')}</div>` : `<p class="muted">Toque no coração de um produto para acompanhar o preço dele aqui.</p>`}
-      ${api.MODE === 'demo' ? '<p class="note">Modo demonstração: o banco ainda não respondeu, então a conta fica só neste aparelho.</p>' : ''}
-      <button class="btn btn--text" id="logout">Sair da conta</button>
-    </div>`;
-  fiscal.renderAccount($('#fiscalAcc'));
-}
+function renderAccount() { account.render(); }
 
 // ======================================================================
 //  Rotas
@@ -654,17 +638,8 @@ document.addEventListener('click', async (e) => {
   if (d.openProduct) return openProduct(Number(d.openProduct));
   if (d.report) return openReport(Number(d.report));
   if (d.range) return drawHistory(Number($('#productSheet').dataset.pid), Number(d.range));
-  if (d.sort) { S.sort = d.sort; $$('#sortTabs button').forEach((b) => b.setAttribute('aria-selected', b === t)); return renderGrid(); }
   if (d.cat) { S.category = d.cat; renderChips(); return renderGrid(); }
-  if (d.market) {
-    const id = Number(d.market);
-    if (S.enabled.size === 0) S.enabled = new Set([...S.markets.keys()]);
-    if (S.enabled.has(id)) { if (S.enabled.size === 1) return toast('Deixe pelo menos um mercado na comparação.', 'warn'); S.enabled.delete(id); }
-    else S.enabled.add(id);
-    if (S.enabled.size === S.markets.size) S.enabled.clear();
-    api.store.set('tb.enabled', [...S.enabled]);
-    renderNearby(); renderGrid(); return;
-  }
+  if (d.route) track('route', { market_id: Number(d.route) });
   if (d.bairro) { const b = BAIRROS[Number(d.bairro)]; return applyLoc({ lat: b.lat, lng: b.lng, label: b.name }); }
   if (d.mapf !== undefined) { S.mapFilter = d.mapf ? Number(d.mapf) : null; return drawMap(); }
   if (d.fly) {
@@ -676,6 +651,7 @@ document.addEventListener('click', async (e) => {
   }
   if (d.auth) return openAuth(d.auth);
   if (d.open === 'loc') return openLoc('pos');
+  if (d.open === 'markets') return openSheet('#marketsSheet');
   if (d.open === 'home') return openLoc('home', () => renderAccount());
   if (d.open === 'complete') return openAuth('complete');
   if (t.id === 'locBtn') return openLoc('pos');
@@ -688,11 +664,32 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { const open = $$('.sheet.is-open').pop(); if (open) closeSheet(open); }
 });
 
-let qTimer;
+let qTimer, trackTimer;
 $('#searchInput').addEventListener('input', (e) => {
-  clearTimeout(qTimer);
+  clearTimeout(qTimer); clearTimeout(trackTimer);
   qTimer = setTimeout(() => { S.q = e.target.value; renderGrid(); }, 120);
+  // registra a busca quando a pessoa para de digitar
+  trackTimer = setTimeout(() => { const v = e.target.value.trim(); if (v.length >= 3) track('search', { query: v, results: filtered().length }); }, 1500);
 });
+$('#sortSelect').addEventListener('change', (e) => { S.sort = e.target.value; renderGrid(); });
+document.addEventListener('change', (e) => {
+  const id = Number(e.target.dataset?.marketToggle); if (!id) return;
+  if (S.enabled.size === 0) S.enabled = new Set([...S.markets.keys()]);
+  if (!e.target.checked) {
+    if (S.enabled.size === 1) { e.target.checked = true; return toast('Deixe pelo menos um mercado na comparação.', 'warn'); }
+    S.enabled.delete(id);
+  } else S.enabled.add(id);
+  if (S.enabled.size === S.markets.size) S.enabled.clear();
+  api.store.set('tb.enabled', [...S.enabled]);
+  renderNearby(); renderDeals(); renderGrid();
+});
+// borda na barra de filtros quando ela gruda no topo
+{
+  const sentinel = Object.assign(document.createElement('div'), { style: 'height:1px;margin-bottom:-1px' });
+  $('.toolbar').before(sentinel);
+  new IntersectionObserver(([en]) => $('.toolbar').classList.toggle('is-stuck', !en.isIntersecting && en.boundingClientRect.top < 100),
+    { rootMargin: '-70px 0px 0px 0px' }).observe(sentinel);
+}
 
 window.addEventListener('hashchange', route);
 
@@ -707,7 +704,7 @@ function toggleTheme() {
   const dark = document.documentElement.dataset.theme !== 'dark';
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   api.store.set('tb.theme', dark ? 'dark' : 'light');
-  $('meta[name=theme-color]').content = dark ? '#0B2C22' : '#0E3B2E';
+  $('meta[name=theme-color]').content = dark ? '#111513' : '#FFFFFF';
   $('#themeBtn').setAttribute('aria-pressed', dark);
   $('#themeBtn').setAttribute('aria-label', dark ? 'Usar tema claro' : 'Usar tema escuro');
 }
@@ -718,7 +715,7 @@ async function refreshCatalog() {
   if (location.hash === '#lista') renderList();
 }
 Object.assign(hooks, {
-  setQty, toast, openSheet, closeSheet, openAuth, refreshCatalog,
+  setQty, toast, openSheet, closeSheet, openAuth, refreshCatalog, card,
   afterListLoad: () => { updateListBadge(); renderGrid(); if (location.hash === '#lista') renderList(); },
   openHome: (cb) => openLoc('home', cb),
   afterContribution: () => { fiscal.renderHome(); if (S.user) api.getProfile().then((p) => { S.profile = p; renderProfileBanner(); }).catch(() => {}); },
@@ -734,7 +731,7 @@ async function boot() {
 
   if (S.pos) { computeNearest(); $('#locLabel').textContent = S.pos.label || 'Minha localização'; $('#locBtn').classList.add('is-set'); }
   rancho.meta();
-  renderChips(); renderNearby(); renderSpotlight(); renderGrid(); route();
+  renderChips(); renderNearby(); renderDeals(); renderGrid(); route();
   fiscal.renderHome(); fiscal.checkAtStore();
 
   // Se o usuário já autorizou a localização antes, atualiza em silêncio

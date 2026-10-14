@@ -68,21 +68,34 @@ document.addEventListener('error', (e) => {
 
 export function priceTag(v, size = '') {
   const [int, dec] = v.toFixed(2).split('.');
-  return `<span class="tag ${size}"><span class="tag__cur">R$</span><span class="tag__int">${Number(int).toLocaleString('pt-BR')}</span><span class="tag__dec">,${dec}</span></span>`;
+  return `<span class="price ${size ? 'price--' + size.replace('tag--', '') : ''}"><small>R$</small>${Number(int).toLocaleString('pt-BR')},${dec}</span>`;
+}
+
+/** foto do produto (enviada pelo mercado) ou o emoji da categoria */
+export function media(p, cls = 'card__media') {
+  const src = p.photo || p.image_url;
+  return `<span class="${cls}" aria-hidden="true">${src ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" />` : (p.emoji || '🛒')}</span>`;
+}
+
+/** selo de promoção de um preço ({ promo: { kind, code, ends } }) */
+export function promoPill(x) {
+  if (!x?.promo) return '';
+  return x.promo.kind === 'exclusiva'
+    ? `<span class="pill pill--excl" title="Preço exclusivo para quem vem pelo Tá Barato Mesmo?">Só pelo app</span>`
+    : `<span class="pill pill--promo">Oferta</span>`;
 }
 
 export function changeBadge(c) {
-  if (c == null || Math.abs(c) < 0.5) return `<span class="chg chg--flat">estável em 7 dias</span>`;
+  if (c == null || Math.abs(c) < 0.5) return `<span class="trend muted">estável em 7 dias</span>`;
   const down = c < 0;
-  return `<span class="chg ${down ? 'chg--down' : 'chg--up'}" title="Variação média nos últimos 7 dias">
-    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="${down ? 'M6 10 1.5 4h9z' : 'M6 2l4.5 6h-9z'}" fill="currentColor"/></svg>
-    ${down ? 'caiu' : 'subiu'} ${pct(Math.abs(c)).replace('+', '')} em 7 dias</span>`;
+  return `<span class="trend ${down ? 'down' : 'up'}" title="Variação média nos últimos 7 dias">${down ? '▼' : '▲'} ${Math.abs(c).toFixed(1).replace('.', ',')}% em 7 dias</span>`;
 }
 
+const PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
 export function stepper(pid) {
   const q = S.list.get(pid) || 0;
-  if (!q) return `<button class="btn btn--sm btn--add" data-add="${pid}" aria-label="Adicionar à lista">+ Lista</button>`;
-  return `<span class="stepper" role="group" aria-label="Quantidade na lista">
+  if (!q) return `<button class="add-btn" data-add="${pid}" aria-label="Adicionar ao rancho" title="Adicionar ao rancho">${PLUS}</button>`;
+  return `<span class="stepper" role="group" aria-label="Quantidade no rancho">
     <button data-dec="${pid}" aria-label="Diminuir">−</button><output>${q}</output><button data-inc="${pid}" aria-label="Aumentar">+</button></span>`;
 }
 

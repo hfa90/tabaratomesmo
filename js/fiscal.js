@@ -65,7 +65,7 @@ export function mystery() {
 
 // ---------------------------------------------------------------- bloco da página inicial
 export async function renderHome() {
-  const el = $('#crowd'); if (!el || !S.products.length) return;
+  const el = $('#mysteryBox'); if (!el || !S.products.length) return;
   const my = mystery();
   if (!my) { el.innerHTML = ''; return; }
   el.innerHTML = `<article class="mystery">

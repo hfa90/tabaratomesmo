@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#FFFFFF" />
+  <meta name="robots" content="noindex" />
+  <title>Área do supermercado | Tá Barato Mesmo?</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/portal.css" />
+  <script>
+    try { if (localStorage.getItem('tb.theme') === '"dark"') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
+  </script>
+</head>
+<body class="portal">
+  <header class="topbar">
+    <div class="topbar__inner">
+      <a class="brand" href="./" aria-label="Voltar ao site">
+        <span class="brand__tag" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M4 6a2 2 0 0 1 2-2h10.6a2 2 0 0 1 1.4.6l9.4 9.4a2 2 0 0 1 0 2.8l-10.6 10.6a2 2 0 0 1-2.8 0L4.6 18a2 2 0 0 1-.6-1.4z" fill="currentColor"/><circle cx="10" cy="10" r="2.4" fill="var(--surface)"/></svg></span>
+        <span class="brand__name">Tá Barato Mesmo?</span>
+        <span class="pt-badge">Supermercados</span>
+      </a>
+      <div id="marketPicker"></div>
+      <button class="icon-btn" id="logoutBtn" type="button" aria-label="Sair" title="Sair" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="pt" id="portal">
+    <nav class="pt-nav" id="ptNav" aria-label="Seções do portal" hidden>
+      <a href="#painel" data-pt="painel"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Painel</span></a>
+      <a href="#produtos" data-pt="produtos"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4zm0 0v10l9 4 9-4V7M12 11v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Produtos</span></a>
+      <a href="#promocoes" data-pt="promocoes"><svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 0 1 2-2h6.2a2 2 0 0 1 1.4.6l8.8 8.8a2 2 0 0 1 0 2.8l-6.2 6.2a2 2 0 0 1-2.8 0L3.6 12.6A2 2 0 0 1 3 11.2zM8 9.5A1.5 1.5 0 1 0 8 6.5a1.5 1.5 0 0 0 0 3z" fill="currentColor"/></svg><span>Promoções</span></a>
+      <a href="#importar" data-pt="importar"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Importar</span></a>
+    </nav>
+    <main class="pt-main" id="ptMain">
+      <div class="skeleton" style="height:240px"></div>
+    </main>
+  </div>
+
+  <div class="sheet" id="ptSheet" role="dialog" aria-modal="true" aria-labelledby="ptSheetTitle" hidden>
+    <div class="sheet__backdrop"></div>
+    <div class="sheet__panel">
+      <div class="sheet__grip" aria-hidden="true"></div>
+      <button class="sheet__close" data-close aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <div id="ptSheetBody"></div>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toasts" aria-live="polite"></div>
+  <script type="module" src="js/portal.js"></script>
+</body>
+</html>
