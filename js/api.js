@@ -47,7 +47,7 @@ function normalize(p) {
     max_price: Number(p.max_price),
     change_pct: p.change_pct == null ? null : Number(p.change_pct),
     prices: (p.prices || [])
-      .map((x) => ({ market_id: x.market_id, price: Number(x.price), prev: x.prev == null ? null : Number(x.prev), at: x.at }))
+      .map((x) => ({ market_id: x.market_id, price: Number(x.price), prev: x.prev == null ? null : Number(x.prev), at: x.at, src: x.src }))
       .sort((a, b) => a.price - b.price),
   };
 }
@@ -200,9 +200,10 @@ export async function registerComparison() {
   if (MODE === 'demo') {
     const p = ls.get('tb.demoProfile');
     if (p.completed_at) return { allowed: true, completed: true };
-    if (p.comparisons_used >= CONFIG.QUICK_COMPARISONS) return { allowed: false, completed: false, used: p.comparisons_used, limit: CONFIG.QUICK_COMPARISONS };
+    const limit = CONFIG.QUICK_COMPARISONS + 2 * ls.get('tb.demoReports', []).length;
+    if (p.comparisons_used >= limit) return { allowed: false, completed: false, used: p.comparisons_used, limit };
     p.comparisons_used++; ls.set('tb.demoProfile', p);
-    return { allowed: true, completed: false, used: p.comparisons_used, limit: CONFIG.QUICK_COMPARISONS };
+    return { allowed: true, completed: false, used: p.comparisons_used, limit };
   }
   const c = await client();
   const { data, error } = await c.rpc('register_comparison');
@@ -210,10 +211,142 @@ export async function registerComparison() {
   return data;
 }
 
-export async function reportPrice({ product_id, supermarket_id, price, note }) {
+export async function reportPrice({ product_id, supermarket_id, price, note, lat, lng }) {
+  if (MODE === 'demo') {
+    const reps = ls.get('tb.demoReports', []);
+    const { DEMO } = await import('./demo-data.js');
+    const near = lat != null && DEMO.stores.some((s) => s.supermarket_id === supermarket_id && kmBetween(lat, lng, s.lat, s.lng) <= 0.5);
+    const last = DEMO.prices.filter((r) => r[0] === product_id && r[1] === supermarket_id).sort((a, b) => a[3] - b[3])[0];
+    if (last && (price < last[2] * 0.4 || price > last[2] * 2.5)) throw new Error(`Esse valor está muito diferente do último preço registrado (R$ ${last[2].toFixed(2).replace('.', ',')}). Confira e tente de novo.`);
+    const points = 10 + (near ? 5 : 0) + (!last || last[3] > 3 ? 5 : 0) + (!last ? 10 : 0);
+    const row = { product_id, supermarket_id, price, at_store: near, points, status: 'pendente', created_at: new Date().toISOString() };
+    reps.push(row); ls.set('tb.demoReports', reps);
+    return row;
+  }
+  const c = await client();
+  const { data, error } = await c.from('price_reports')
+    .insert({ product_id, supermarket_id, price, note: note || null, lat: lat ?? null, lng: lng ?? null })
+    .select('status, points, at_store').single();
+  if (error) throw error;
+  return data;
+}
+
+const kmBetween = (lat1, lng1, lat2, lng2) => {
+  const r = Math.PI / 180, dLat = (lat2 - lat1) * r, dLng = (lng2 - lng1) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLng / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+};
+
+// ---------------------------------------------------------------- colaboração
+export async function reportTargets(marketId, limit = 6) {
+  if (MODE === 'demo') {
+    const { DEMO } = await import('./demo-data.js');
+    const mine = new Set(ls.get('tb.demoReports', []).filter((r) => r.supermarket_id === marketId).map((r) => r.product_id));
+    return DEMO.products.filter((p) => !mine.has(p.id)).map((p) => {
+      const last = DEMO.prices.filter((r) => r[0] === p.id && r[1] === marketId).sort((a, b) => a[3] - b[3])[0];
+      return { product_id: p.id, last_price: last ? last[2] : null, last_at: last ? new Date(Date.now() - last[3] * 864e5).toISOString() : null, demand: 0, age: last ? last[3] : 999 };
+    }).sort((a, b) => b.age - a.age || Math.random() - 0.5).slice(0, limit);
+  }
+  const c = await client();
+  const { data, error } = await c.rpc('report_targets', { p_market: marketId, p_limit: limit });
+  if (error) throw error;
+  return data.map((r) => ({ ...r, last_price: r.last_price == null ? null : Number(r.last_price) }));
+}
+
+export async function myImpact() {
+  if (MODE === 'demo') {
+    const reps = ls.get('tb.demoReports', []);
+    const pts = reps.reduce((s, r) => s + r.points, 0);
+    return { reports: reps.length, approved: 0, points: pts, month_points: pts, helped: 0, rank: 1 };
+  }
+  const c = await client();
+  const { data, error } = await c.rpc('my_impact');
+  if (error) throw error;
+  return data;
+}
+
+export async function leaderboard(neighborhood = null) {
+  if (MODE === 'demo') {
+    const reps = ls.get('tb.demoReports', []);
+    const p = ls.get('tb.demoProfile');
+    if (!reps.length || !p) return [];
+    const [a, b] = (p.full_name || 'Você').split(' ');
+    return [{ name: `${a} ${b ? b[0] + '.' : ''}`.trim(), neighborhood: p.neighborhood || '', points: reps.reduce((s, r) => s + r.points, 0), reports: reps.length, is_me: true }];
+  }
+  const c = await client();
+  const { data, error } = await c.rpc('leaderboard', { p_neighborhood: neighborhood, p_limit: 10 });
+  if (error) throw error;
+  return data;
+}
+
+export async function communityStats() {
+  if (MODE === 'demo') return { reports_7d: ls.get('tb.demoReports', []).length, contributors_30d: ls.get('tb.demoReports', []).length ? 1 : 0, community_prices: 0 };
+  const c = await client();
+  const { data, error } = await c.rpc('community_stats');
+  if (error) throw error;
+  return data;
+}
+
+// Preço médio das proteínas por dia da semana
+export async function proteinWeekday() {
+  if (MODE === 'demo') {
+    const { DEMO } = await import('./demo-data.js');
+    const carnes = new Set(DEMO.products.filter((p) => p.category_slug === 'carnes').map((p) => p.id));
+    const groups = new Map(), means = new Map();
+    for (const [pid, mid, price, days] of DEMO.prices) {
+      if (!carnes.has(pid)) continue;
+      const dow = new Date(Date.now() - days * 864e5 - 3 * 36e5).getDay();
+      const k = `${pid}:${mid}:${dow}`, km_ = `${pid}:${mid}`;
+      (groups.get(k) || groups.set(k, []).get(k)).push(price);
+      (means.get(km_) || means.set(km_, []).get(km_)).push(price);
+    }
+    const avg = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+    return [...groups].map(([k, arr]) => {
+      const [pid, mid, dow] = k.split(':').map(Number);
+      const a = avg(arr), m = avg(means.get(`${pid}:${mid}`));
+      return { product_id: pid, market_id: mid, dow, avg_price: Math.round(a * 100) / 100, idx: Math.round((a / m - 1) * 1000) / 10, samples: arr.length };
+    });
+  }
+  const c = await client();
+  const { data, error } = await c.from('v_protein_weekday').select('*');
+  if (error) throw error;
+  return data.map((r) => ({ product_id: r.product_id, market_id: r.supermarket_id, dow: r.dow, avg_price: Number(r.avg_price), idx: Number(r.idx), samples: r.samples }));
+}
+
+// ---------------------------------------------------------------- rancho (lista mensal)
+export async function loadRancho(month) {
+  if (MODE === 'demo') return null;
+  const c = await client();
+  const { data, error } = await c.from('shopping_lists')
+    .select('id, name, month, status, completed_at, shopping_list_items(product_id, qty, checked)')
+    .eq('month', month + '-01').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function saveRancho(meta, items) {
   if (MODE === 'demo') return;
   const c = await client();
-  const { error } = await c.from('price_reports').insert({ product_id, supermarket_id, price, note });
+  const { data: list, error } = await c.from('shopping_lists').upsert({
+    month: meta.month + '-01', name: meta.name, status: meta.status,
+    completed_at: meta.completedAt || null, best_market: meta.bestMarket || null,
+    best_total: meta.bestTotal || null, savings: meta.savings || null, updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,month' }).select('id').single();
+  if (error) throw error;
+  await c.from('shopping_list_items').delete().eq('list_id', list.id);
+  if (items.length) {
+    const { error: e2 } = await c.from('shopping_list_items')
+      .insert(items.map((i) => ({ list_id: list.id, product_id: i.product_id, qty: i.qty, checked: !!i.checked })));
+    if (e2) throw e2;
+  }
+}
+
+export async function updateProfile(fields) {
+  if (MODE === 'demo') { ls.set('tb.demoProfile', { ...ls.get('tb.demoProfile'), ...fields }); return; }
+  const c = await client();
+  const { data: u } = await c.auth.getUser();
+  if (!u.user) return;
+  const { error } = await c.from('profiles').update(fields).eq('id', u.user.id);
   if (error) throw error;
 }
 

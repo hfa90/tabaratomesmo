@@ -1,79 +1,13 @@
 import { CONFIG, BAIRROS } from './config.js';
 import * as api from './api.js';
 import { lineChart } from './chart.js';
+import {
+  S, $, $$, esc, brl, pct, km, reduceMotion, haversine, isOn, visiblePrices,
+  initials, logo, priceTag, changeBadge, stepper, hooks, ago,
+} from './core.js';
+import * as rancho from './rancho.js';
+import * as fiscal from './fiscal.js';
 
-// ======================================================================
-//  Estado
-// ======================================================================
-const S = {
-  markets: new Map(), stores: [], categories: [], products: [],
-  pos: api.store.get('tb.pos'), nearest: new Map(),
-  sort: 'baratos', category: 'all', q: '',
-  enabled: new Set(api.store.get('tb.enabled', [])), // mercados ligados (vazio = todos)
-  list: new Map(api.store.get('tb.list', [])),
-  favs: new Set(),
-  user: null, profile: null,
-  anonUsed: api.store.get('tb.anonUsed', 0),
-  map: null, mapLayers: null, mapFilter: null,
-};
-
-const $ = (s, r = document) => r.querySelector(s);
-const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const brl = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const pct = (v) => (v > 0 ? '+' : '') + v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
-const km = (d) => (d < 1 ? Math.round(d * 1000) + ' m' : d.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' km');
-const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-function haversine(a, b) {
-  const R = 6371, r = Math.PI / 180;
-  const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-const isOn = (mid) => S.enabled.size === 0 || S.enabled.has(mid);
-const visiblePrices = (p) => p.prices.filter((x) => isOn(x.market_id));
-
-// ======================================================================
-//  Componentes
-// ======================================================================
-function initials(name) {
-  return name.replace(/^Supermercados?\s+/i, '').split(/\s+/).filter((w) => w.length > 2 || /^[A-Z]{2,}$/.test(w))
-    .slice(0, 2).map((w) => w[0]).join('').toUpperCase() || name.slice(0, 2).toUpperCase();
-}
-
-/** Logomarca oficial (assets/logos/*.png). Se o arquivo não existir, mostra monograma. */
-function logo(m, size = 'sm') {
-  return `<span class="logo logo--${size}" style="--c:${esc(m.color || '#0E3B2E')}" title="${esc(m.name)}">
-    <i aria-hidden="true">${esc(initials(m.name))}</i>
-    ${m.logo_url ? `<img src="${esc(m.logo_url)}" alt="${esc(m.name)}" loading="lazy" decoding="async" />` : ''}
-  </span>`;
-}
-// imagem quebrada → remove e deixa o monograma
-document.addEventListener('error', (e) => {
-  if (e.target.tagName === 'IMG' && e.target.closest('.logo')) e.target.remove();
-}, true);
-
-function priceTag(v, size = '') {
-  const [int, dec] = v.toFixed(2).split('.');
-  return `<span class="tag ${size}"><span class="tag__cur">R$</span><span class="tag__int">${Number(int).toLocaleString('pt-BR')}</span><span class="tag__dec">,${dec}</span></span>`;
-}
-
-function changeBadge(c) {
-  if (c == null || Math.abs(c) < 0.5) return `<span class="chg chg--flat">estável em 7 dias</span>`;
-  const down = c < 0;
-  return `<span class="chg ${down ? 'chg--down' : 'chg--up'}" title="Variação média nos últimos 7 dias">
-    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="${down ? 'M6 10 1.5 4h9z' : 'M6 2l4.5 6h-9z'}" fill="currentColor"/></svg>
-    ${down ? 'caiu' : 'subiu'} ${pct(Math.abs(c)).replace('+', '')} em 7 dias</span>`;
-}
-
-function stepper(pid) {
-  const q = S.list.get(pid) || 0;
-  if (!q) return `<button class="btn btn--sm btn--add" data-add="${pid}" aria-label="Adicionar à lista">+ Lista</button>`;
-  return `<span class="stepper" role="group" aria-label="Quantidade na lista">
-    <button data-dec="${pid}" aria-label="Diminuir">−</button><output>${q}</output><button data-inc="${pid}" aria-label="Aumentar">+</button></span>`;
-}
 
 function card(p, i) {
   const prices = visiblePrices(p);
@@ -113,6 +47,8 @@ function card(p, i) {
           ${logo(m, 'xs')}<span class="mini__p">${brl(x.price)}</span>${j ? `<span class="mini__d">+${diff.toFixed(2).replace('.', ',')}</span>` : ''}
         </li>`;
       }).join('')}
+      ${[...S.markets.values()].filter((m) => isOn(m.id) && !p.prices.some((x) => x.market_id === m.id)).map((m) =>
+        `<li class="is-unknown"><button data-fiscal-one="${p.id}" data-fiscal-m="${m.id}" title="Ninguém informou o preço no ${esc(m.name)}. Você sabe?">${logo(m, 'xs')}<span class="mini__p">R$ ?</span></button></li>`).join('')}
     </ul>
 
     <footer class="card__foot">
@@ -228,6 +164,25 @@ function setPos(pos) {
   renderNearby(); renderGrid();
   if (S.map) drawMap();
   if (location.hash === '#lista') renderList();
+  fiscal.checkAtStore();
+}
+
+// A mesma folha de localização serve para "onde estou" e "onde fica minha casa"
+let locMode = 'pos', locCb = null;
+function openLoc(mode = 'pos', cb = null) {
+  locMode = mode; locCb = cb;
+  $('#locTitle').textContent = mode === 'home' ? 'Onde fica sua casa?' : 'Onde você está?';
+  $('#locIntro').textContent = mode === 'home'
+    ? 'Usamos para calcular a distância até cada mercado e se vale a pena ir mais longe. Fica salvo só na sua conta.'
+    : 'Usamos sua posição só no seu aparelho, para calcular a distância até as lojas.';
+  $('#useGps').textContent = mode === 'home' ? 'Estou em casa agora: usar minha localização' : 'Usar a localização do aparelho';
+  openSheet('#locSheet');
+}
+function applyLoc(pos) {
+  if (locMode === 'home') {
+    rancho.setHome(pos); closeSheet('#locSheet'); toast(`Casa definida: ${pos.label}.`);
+    const cb = locCb; locCb = null; locMode = 'pos'; cb?.();
+  } else { setPos(pos); closeSheet('#locSheet'); }
 }
 
 function requestGps() {
@@ -235,11 +190,12 @@ function requestGps() {
   const btn = $('#useGps'); btn.disabled = true; btn.textContent = 'Localizando…';
   navigator.geolocation.getCurrentPosition(
     (g) => {
-      btn.disabled = false; btn.textContent = 'Usar a localização do aparelho';
+      btn.disabled = false;
       const p = { lat: g.coords.latitude, lng: g.coords.longitude };
       const near = BAIRROS.map((b) => ({ b, d: haversine(p, b) })).sort((a, b) => a.d - b.d)[0];
-      setPos({ ...p, label: near.d < 4 ? near.b.name : 'Sua localização', gps: true });
-      closeSheet('#locSheet');
+      const wasHome = locMode === 'home';
+      applyLoc({ ...p, label: near.d < 4 ? near.b.name : 'Sua localização', gps: !wasHome });
+      if (wasHome) return;
       const closest = [...S.nearest.entries()].sort((a, b) => a[1].km - b[1].km)[0];
       if (closest) toast(`Mais perto: ${S.markets.get(closest[0]).name}, a ${km(closest[1].km)}.`);
     },
@@ -297,7 +253,7 @@ async function canCompare() {
   try {
     const r = await api.registerComparison();
     if (r.allowed) {
-      if (!r.completed && S.profile) { S.profile.comparisons_used = r.used; renderProfileBanner(); }
+      if (!r.completed && S.profile) { S.profile.comparisons_used = r.used; S.compLimit = r.limit; renderProfileBanner(); }
       return true;
     }
     openAuth('complete', `Você usou as ${r.limit} comparações do cadastro rápido. Complete o cadastro para comparar sem limite.`);
@@ -345,6 +301,7 @@ async function openProduct(pid) {
               <div class="bar__meta">
                 <span>${j === 0 ? 'Menor preço' : `+${brl(x.price - best.price)} (${pct((x.price / best.price - 1) * 100)})`}</span>
                 ${ch != null && Math.abs(ch) >= 0.5 ? `<span class="${ch < 0 ? 'down' : 'up'}">${ch < 0 ? '▼' : '▲'} ${Math.abs(ch).toFixed(1).replace('.', ',')}% em 7d</span>` : ''}
+                ${x.src === 'comunidade' ? `<span class="by-crowd">informado por vizinhos ${ago(x.at)}</span>` : ''}
                 ${n ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${n.store.lat},${n.store.lng}" target="_blank" rel="noopener">${esc(n.store.neighborhood)}, ${km(n.km)}</a>` : ''}
               </div>
             </div>
@@ -366,7 +323,7 @@ async function openProduct(pid) {
 
       <div class="pd__actions">
         ${stepper(p.id)}
-        <button class="btn btn--ghost" data-report="${p.id}">Informar preço diferente</button>
+        <button class="btn btn--ghost" data-report="${p.id}">Viu outro preço? Informe</button>
       </div>
       <p class="muted small">Atualizado ${new Date(p.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}. ${api.MODE === 'demo' ? 'Dados de demonstração.' : ''}</p>
     </div>`;
@@ -389,114 +346,25 @@ async function drawHistory(pid, days) {
   }
 }
 
-function openReport(pid) {
-  if (!S.user) return openAuth('signup', 'Entre para informar preços e ajudar a comunidade.');
-  const p = S.products.find((x) => x.id === pid);
-  $('#sheetBody').insertAdjacentHTML('beforeend', `
-    <form class="form report" id="reportForm">
-      <h3 class="pd__h">Viu outro preço na loja?</h3>
-      <div class="form__row">
-        <label>Supermercado<select name="market" required>${[...S.markets.values()].map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></label>
-        <label>Preço (R$)<input name="price" inputmode="decimal" required placeholder="0,00" /></label>
-      </div>
-      <label>Observação (opcional)<input name="note" maxlength="140" placeholder="Ex.: promoção até domingo" /></label>
-      <button class="btn btn--primary btn--block">Enviar preço</button>
-    </form>`);
-  const f = $('#reportForm'); f.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
-  f.price.focus({ preventScroll: true });
-  f.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const price = parseFloat(f.price.value.replace(/\./g, '').replace(',', '.'));
-    if (!(price > 0)) return toast('Informe um preço válido.', 'warn');
-    try {
-      await api.reportPrice({ product_id: p.id, supermarket_id: Number(f.market.value), price, note: f.note.value || null });
-      f.outerHTML = `<p class="ok-box">Preço enviado. Vamos conferir e atualizar.</p>`;
-      toast('Preço enviado.');
-    } catch (err) { toast(err.message, 'warn'); }
-  });
-}
+function openReport(pid) { fiscal.open({ product: pid }); }
 
 // ======================================================================
 //  Lista de compras
 // ======================================================================
 function saveList() { api.store.set('tb.list', [...S.list]); updateListBadge(); }
 function updateListBadge() {
-  const n = [...S.list.values()].reduce((a, b) => a + b, 0);
+  const n = S.list.size;
   $$('[data-list-count]').forEach((b) => { b.hidden = !n; b.textContent = n; });
 }
 function setQty(pid, q) {
   if (q <= 0) S.list.delete(pid); else S.list.set(pid, q);
-  saveList();
+  saveList(); rancho.onListChange();
   $$(`[data-pid="${pid}"] .card__foot .stepper, [data-pid="${pid}"] .card__foot .btn--add`).forEach((el) => (el.outerHTML = stepper(pid)));
   const pd = $('#productSheet');
   if (!pd.hidden && Number(pd.dataset.pid) === pid) { const a = $('.pd__actions .stepper, .pd__actions .btn--add', pd); if (a) a.outerHTML = stepper(pid); }
   if (location.hash === '#lista') renderList();
 }
-
-function renderList() {
-  const items = [...S.list].map(([pid, q]) => ({ p: S.products.find((x) => x.id === pid), q })).filter((r) => r.p);
-  if (!items.length) {
-    $('#cartItems').innerHTML = `<li class="empty-box"><p><b>Sua lista está vazia.</b></p><p class="muted">Use “+ Lista” nos produtos para montar o carrinho e descobrir onde ele sai mais barato.</p><a class="btn btn--primary" href="#ofertas">Ver ofertas</a></li>`;
-    $('#cartSummary').innerHTML = ''; return;
-  }
-  $('#cartItems').innerHTML = items.map(({ p, q }) => {
-    const b = visiblePrices(p)[0] || p.prices[0];
-    return `<li class="cart__item" data-pid="${p.id}">
-      <span class="card__emoji" aria-hidden="true">${p.emoji || '🛒'}</span>
-      <div class="cart__txt"><b>${esc(p.name)}</b><small>${esc([p.brand, p.unit].filter(Boolean).join(', '))}</small>
-      <small class="cart__best">${logo(S.markets.get(b.market_id), 'xs')} ${brl(b.price)} no ${esc(S.markets.get(b.market_id).name)}</small></div>
-      <div class="card__foot">${stepper(p.id)}</div>
-    </li>`;
-  }).join('');
-
-  // total por mercado
-  const totals = [...S.markets.values()].filter((m) => isOn(m.id)).map((m) => {
-    let total = 0, missing = 0;
-    for (const { p, q } of items) { const x = p.prices.find((r) => r.market_id === m.id); if (x) total += x.price * q; else missing += q; }
-    return { m, total, missing, n: S.nearest.get(m.id) };
-  }).sort((a, b) => a.missing - b.missing || a.total - b.total);
-  const complete = totals.filter((t) => !t.missing);
-  const combo = items.reduce((s, { p, q }) => s + (visiblePrices(p)[0] || p.prices[0]).price * q, 0);
-  const comboMarkets = new Set(items.map(({ p }) => (visiblePrices(p)[0] || p.prices[0]).market_id));
-  const best = complete[0];
-  const worst = complete[complete.length - 1];
-  const nearest = S.pos ? [...totals].filter((t) => t.n).sort((a, b) => a.n.km - b.n.km)[0] : null;
-
-  $('#cartSummary').innerHTML = `
-    <div class="sum-hero">
-      <p class="muted">Comprando tudo no mais barato de cada item</p>
-      ${priceTag(combo, 'tag--xl')}
-      <p class="small">em ${comboMarkets.size} ${comboMarkets.size > 1 ? 'mercados' : 'mercado'}: ${[...comboMarkets].map((id) => logo(S.markets.get(id), 'xs')).join('')}</p>
-    </div>
-    ${best ? `<div class="sum-best">
-      <p>Num lugar só, o melhor é</p>
-      <div class="sum-best__m">${logo(best.m, 'lg')}<div><b>${esc(best.m.name)}</b><span>${brl(best.total)}</span></div></div>
-      ${worst && worst !== best ? `<p class="small">Você economiza <b>${brl(worst.total - best.total)}</b> em relação ao ${esc(worst.m.name)}.</p>` : ''}
-    </div>` : ''}
-    <ol class="totals">
-      ${totals.map((t) => `<li class="${t === best ? 'is-best' : ''} ${t === nearest ? 'is-near' : ''}">
-        ${logo(t.m, 'sm')}
-        <span class="totals__n">${esc(t.m.name)}${t.n ? `<small>${km(t.n.km)}</small>` : ''}</span>
-        <span class="totals__v">${brl(t.total)}${t.missing ? `<small>faltam ${t.missing} ${t.missing > 1 ? 'itens' : 'item'}</small>` : ''}</span>
-      </li>`).join('')}
-    </ol>
-    <div class="sum-actions">
-      <button class="btn btn--ghost" id="shareList">Compartilhar lista</button>
-      <button class="btn btn--text" id="clearList">Limpar</button>
-    </div>`;
-}
-
-async function shareList() {
-  const lines = [...S.list].map(([pid, q]) => {
-    const p = S.products.find((x) => x.id === pid); const b = visiblePrices(p)[0] || p.prices[0];
-    return `${q}x ${p.name} ${p.brand || ''} (${p.unit}): ${brl(b.price)} no ${S.markets.get(b.market_id).name}`;
-  });
-  const text = `Minha lista no Tá Barato Mesmo?\n\n${lines.join('\n')}\n\n${location.origin}${location.pathname}`;
-  try {
-    if (navigator.share) await navigator.share({ title: 'Minha lista', text });
-    else { await navigator.clipboard.writeText(text); toast('Lista copiada.'); }
-  } catch {}
-}
+const renderList = () => rancho.render();
 
 // ======================================================================
 //  Mapa
@@ -698,9 +566,10 @@ function bindAuthForms() {
 function renderProfileBanner() {
   const p = S.profile; const el = $('#profileBanner');
   if (!S.user || !p || p.completed_at) { el.hidden = true; return; }
-  const used = p.comparisons_used || 0, left = Math.max(CONFIG.QUICK_COMPARISONS - used, 0);
+  const lim = S.compLimit || CONFIG.QUICK_COMPARISONS;
+  const used = p.comparisons_used || 0, left = Math.max(lim - used, 0);
   el.hidden = false;
-  $('#profileRing').style.setProperty('--p', used / CONFIG.QUICK_COMPARISONS);
+  $('#profileRing').style.setProperty('--p', Math.min(used / lim, 1));
   $('#profileRing').textContent = left;
   $('#profileBannerTitle').textContent = left ? `${left} ${left > 1 ? 'comparações restantes' : 'comparação restante'}` : 'Comparações esgotadas';
   $('#profileBannerText').textContent = 'Complete o cadastro para comparar sem limite.';
@@ -741,11 +610,19 @@ function renderAccount() {
         <div><dt>Mercados</dt><dd>${pref.length ? pref.map((m) => logo(m, 'xs')).join('') : 'Todos'}</dd></div>
       </dl><button class="btn btn--ghost" data-open="complete">Editar dados</button>`
       : `<button class="btn btn--primary" data-open="complete">Completar cadastro</button>`}
+      <h2 class="pd__h">Fiscal do preço</h2>
+      <div id="fiscalAcc" class="fiscal-acc"><div class="skeleton" style="height:120px"></div></div>
+      <h2 class="pd__h">Casa e deslocamento</h2>
+      <div class="acc__home">
+        <p>${rancho.homePos()?.source === 'home' ? `Sua casa: <b>${esc(rancho.homePos().label || 'definida')}</b>` : 'Defina onde fica sua casa para o relatório do rancho calcular distância e custo de deslocamento.'}</p>
+        <button class="btn btn--ghost btn--sm" data-open="home">${rancho.homePos()?.source === 'home' ? 'Alterar casa' : 'Definir minha casa'}</button>
+      </div>
       <h2 class="pd__h">Favoritos</h2>
       ${favs.length ? `<div class="grid grid--compact">${favs.map(card).join('')}</div>` : `<p class="muted">Toque no coração de um produto para acompanhar o preço dele aqui.</p>`}
       ${api.MODE === 'demo' ? '<p class="note">Modo demonstração: o banco ainda não respondeu, então a conta fica só neste aparelho.</p>' : ''}
       <button class="btn btn--text" id="logout">Sair da conta</button>
     </div>`;
+  fiscal.renderAccount($('#fiscalAcc'));
 }
 
 // ======================================================================
@@ -808,7 +685,7 @@ document.addEventListener('click', async (e) => {
     api.store.set('tb.enabled', [...S.enabled]);
     renderNearby(); renderGrid(); return;
   }
-  if (d.bairro) { const b = BAIRROS[Number(d.bairro)]; setPos({ lat: b.lat, lng: b.lng, label: b.name }); return closeSheet('#locSheet'); }
+  if (d.bairro) { const b = BAIRROS[Number(d.bairro)]; return applyLoc({ lat: b.lat, lng: b.lng, label: b.name }); }
   if (d.mapf !== undefined) { S.mapFilter = d.mapf ? Number(d.mapf) : null; return drawMap(); }
   if (d.fly) {
     const s = S.stores.find((x) => x.id === Number(d.fly));
@@ -818,12 +695,11 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (d.auth) return openAuth(d.auth);
-  if (d.open === 'loc') return openSheet('#locSheet');
+  if (d.open === 'loc') return openLoc('pos');
+  if (d.open === 'home') return openLoc('home', () => renderAccount());
   if (d.open === 'complete') return openAuth('complete');
-  if (t.id === 'locBtn') return openSheet('#locSheet');
+  if (t.id === 'locBtn') return openLoc('pos');
   if (t.id === 'useGps') return requestGps();
-  if (t.id === 'shareList') return shareList();
-  if (t.id === 'clearList') { S.list.clear(); saveList(); renderList(); renderGrid(); return; }
   if (t.id === 'logout') { await api.signOut(); location.hash = '#ofertas'; toast('Você saiu da conta.'); }
 });
 
@@ -846,6 +722,18 @@ function skeleton() {
   $('#productGrid').innerHTML = Array.from({ length: 6 }, () => `<div class="card card--skel"><div class="skeleton" style="height:48px"></div><div class="skeleton" style="height:64px;width:60%"></div><div class="skeleton" style="height:40px"></div></div>`).join('');
 }
 
+async function refreshCatalog() {
+  const data = await api.loadCatalog();
+  S.products = data.products; renderGrid(); renderTicker();
+  if (location.hash === '#lista') renderList();
+}
+Object.assign(hooks, {
+  setQty, toast, openSheet, closeSheet, openAuth, refreshCatalog,
+  afterListLoad: () => { updateListBadge(); renderGrid(); if (location.hash === '#lista') renderList(); },
+  openHome: (cb) => openLoc('home', cb),
+  afterContribution: () => { fiscal.renderHome(); if (S.user) api.getProfile().then((p) => { S.profile = p; renderProfileBanner(); }).catch(() => {}); },
+});
+
 async function boot() {
   skeleton(); renderBairros(); updateListBadge();
   const data = await api.loadCatalog();
@@ -855,7 +743,9 @@ async function boot() {
   S.enabled = new Set([...S.enabled].filter((id) => S.markets.has(id)));
 
   if (S.pos) { computeNearest(); $('#locLabel').textContent = S.pos.label || 'Minha localização'; $('#locBtn').classList.add('is-set'); }
+  rancho.meta();
   renderChips(); renderNearby(); renderSpotlight(); renderTicker(); renderGrid(); route();
+  fiscal.renderHome(); fiscal.checkAtStore();
 
   // Se o usuário já autorizou a localização antes, atualiza em silêncio
   try {
@@ -865,14 +755,18 @@ async function boot() {
       const near = BAIRROS.map((b) => ({ b, d: haversine(p, b) })).sort((a, b) => a.d - b.d)[0];
       setPos({ ...p, label: near.d < 4 ? near.b.name : 'Sua localização', gps: true });
     });
-    else if (!S.pos) setTimeout(() => { if (!S.pos && !$$('.sheet.is-open').length) openSheet('#locSheet'); }, 1400);
+    else if (!S.pos) setTimeout(() => { if (!S.pos && !$$('.sheet.is-open').length) openLoc('pos'); }, 1400);
   } catch {}
 
   api.onAuth(async (user) => {
     S.user = user;
     S.profile = user ? await api.getProfile().catch(() => null) : null;
     S.favs = new Set(user ? await api.loadFavorites().catch(() => []) : []);
-    renderProfileBanner(); renderAccount(); renderGrid();
+    if (user && S.profile?.transport) { const m = rancho.MODES[S.profile.transport]; if (m && S.transport.mode !== S.profile.transport) S.transport = { mode: S.profile.transport, value: m.value }; }
+    if (user && S.profile?.home_lat && !S.home) S.home = { lat: S.profile.home_lat, lng: S.profile.home_lng, label: S.profile.home_label || S.profile.neighborhood };
+    renderProfileBanner(); renderAccount(); renderGrid(); fiscal.renderHome();
+    if (user) await rancho.syncFromServer();
+    if (location.hash === '#lista') renderList();
   });
   await api.initAuth();
 

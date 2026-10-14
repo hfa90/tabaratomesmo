@@ -6,7 +6,18 @@ Comparador de preços de supermercados de Manaus: Nova Era, Supermercados DB, Ve
 - Usa a **localização** do usuário (ou o bairro escolhido) para indicar o mercado mais perto e a distância de cada loja.
 - Abas **Mais baratos**, **Baixaram**, **Subiram** (variação dos últimos 7 dias) e **Maior economia**.
 - Detalhe do produto com barras comparativas, histórico de 7/15/30 dias e rota até a loja.
-- **Lista de compras** com o total em cada mercado e a combinação mais barata.
+- **Rancho do mês**: lista mensal (com atalho "cesta básica", busca para adicionar e caixinhas para marcar no mercado). Ao concluir, o relatório mostra:
+  - em qual supermercado o rancho inteiro sai mais barato e quanto você economiza em relação ao mercado mais perto de casa;
+  - distância de casa, tempo e custo de deslocamento (carro, moto, ônibus, aplicativo ou a pé, com valores editáveis) e se **vale a pena** ir mais longe;
+  - se dividir a compra entre 2 mercados numa volta só compensa;
+  - **melhores dias da semana para comprar proteínas**, por produto e mercado (view `v_protein_weekday`).
+- **Colaboração de preços** (usuários informam o que viram na prateleira):
+  - "R$ ?" nos cards onde nenhum preço foi informado, e o **preço misterioso da semana**;
+  - aviso **"Você está no mercado X?"** quando o GPS indica que a pessoa está numa loja (pontos extras);
+  - modo **Conferir preços**: 6 produtos mais desatualizados ou mais procurados, com "Está igual" em um toque;
+  - pontos (10 a 30 por preço), níveis (Novato do rancho → Lenda do encarte), **ranking do bairro** e "seus preços ajudam N pessoas";
+  - cada preço informado libera +2 comparações para quem está no cadastro rápido;
+  - um preço entra no site quando **duas pessoas confirmam o mesmo valor (±3%) em 48 h**, ou quando alguém confiável (3+ envios aprovados) informa estando na loja. Valores muito fora do último preço são recusados e há limite de 60 envios por dia.
 - **Mapa** das lojas (Leaflet + OpenStreetMap).
 - **Cadastro em duas etapas**: o cadastro rápido (nome, e-mail, senha) libera 15 comparações; o cadastro completo (celular, nascimento, bairro, mercados preferidos) libera uso sem limite. Sem cadastro: 3 comparações.
 - Usuários podem informar preços vistos na loja (`price_reports`, para moderação).
@@ -44,10 +55,12 @@ As cores ficam na coluna `supermarkets.color` e podem ser ajustadas para as core
 ### 3. Lojas e preços reais
 - `stores`: as coordenadas do seed são **aproximadas** (`approx = true`, aparecem com `*`). Atualize `lat`, `lng`, `address` e mude `approx` para `false`.
 - `prices`: cada coleta é uma linha nova (`product_id`, `supermarket_id`, `price`, `collected_at`). A view `v_products` calcula o preço atual e a variação de 7 dias sozinha.
-- `price_reports`: preços enviados pelos usuários, com `status` pendente/aprovado/rejeitado.
+- `price_reports`: preços enviados pelos usuários. A aprovação é automática pelas regras acima; você também pode aprovar manualmente inserindo em `prices` com `source = 'comunidade'`.
+- `shopping_lists` / `shopping_list_items`: ranchos mensais dos usuários logados (quem não tem conta guarda a lista só no aparelho).
+- O seed simula um dia de oferta de carnes por rede para o quadro de proteínas; com dados reais, o quadro passa a refletir as coletas.
 
 ### 4. Publicar (GitHub Pages)
-Settings → Pages → Branch `main` / pasta `/ (root)`. O arquivo `.nojekyll` já está no repositório.
+O site já está publicado em https://hfa90.github.io/tabaratomesmo/ a partir da branch `gh-pages` (mantida igual à `main`). O arquivo `.nojekyll` já está no repositório.
 
 ## Rodar localmente
 ```bash
@@ -62,7 +75,10 @@ index.html            páginas (ofertas, mapa, lista, conta) e sheets
 css/styles.css        estilos, mobile first, tema claro/escuro
 js/config.js          URL/anon key do Supabase, limites de comparação, bairros
 js/api.js             acesso ao Supabase + modo demonstração
-js/app.js             interface, localização, cadastro, lista, mapa
+js/core.js            estado e componentes compartilhados
+js/app.js             interface, localização, cadastro, mapa
+js/rancho.js          rancho do mês e relatório (distância, vale a pena, proteínas)
+js/fiscal.js          colaboração: conferir preços, pontos, níveis, ranking
 js/chart.js           gráfico de histórico em SVG
 js/demo-data.js       dados de demonstração (gerados do seed)
 supabase/schema.sql   banco completo

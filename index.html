@@ -36,7 +36,7 @@
       <nav class="topnav" aria-label="Seções">
         <a href="#ofertas" data-nav="ofertas">Ofertas</a>
         <a href="#mapa" data-nav="mapa">Mapa</a>
-        <a href="#lista" data-nav="lista">Minha lista <b class="badge" data-list-count hidden></b></a>
+        <a href="#lista" data-nav="lista">Rancho do mês <b class="badge" data-list-count hidden></b></a>
         <a href="#conta" data-nav="conta" id="accountLink">Entrar</a>
       </nav>
     </div>
@@ -53,6 +53,7 @@
   <main id="app">
     <!-- ===== OFERTAS ===== -->
     <section class="view" id="view-ofertas" data-view="ofertas">
+      <div class="store-banner" id="storeBanner" hidden></div>
       <div class="hero">
         <div class="hero__copy">
           <h1 class="hero__title">O mesmo carrinho, <span class="nowrap">em 5 mercados</span> de Manaus.</h1>
@@ -75,6 +76,8 @@
         </div>
         <div class="nearby__row" id="nearbyRow"></div>
       </div>
+
+      <div class="crowd-wrap" id="crowd"></div>
 
       <div class="toolbar">
         <div class="seg" role="tablist" aria-label="Ordenar ofertas" id="sortTabs">
@@ -101,16 +104,18 @@
       <ol class="store-list" id="storeList"></ol>
     </section>
 
-    <!-- ===== LISTA ===== -->
+    <!-- ===== RANCHO DO MÊS ===== -->
     <section class="view" id="view-lista" data-view="lista" hidden>
-      <div class="view__head">
-        <h1>Minha lista</h1>
-        <p class="muted">Veja quanto a lista custa em cada mercado e a combinação mais barata.</p>
-      </div>
+      <div id="ranchoHead"></div>
       <div class="list-layout">
-        <ul class="cart" id="cartItems"></ul>
+        <div class="list-main">
+          <div id="ranchoAdd"></div>
+          <ul class="cart" id="cartItems"></ul>
+        </div>
         <aside class="cart-summary" id="cartSummary"></aside>
       </div>
+      <div id="ranchoReport"></div>
+      <div class="rbar" id="ranchoBar" hidden></div>
     </section>
 
     <!-- ===== CONTA ===== -->
@@ -124,7 +129,7 @@
   <nav class="tabbar" aria-label="Navegação principal">
     <a href="#ofertas" data-nav="ofertas"><svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 0 1 2-2h6.2a2 2 0 0 1 1.4.6l8.8 8.8a2 2 0 0 1 0 2.8l-6.2 6.2a2 2 0 0 1-2.8 0L3.6 12.6A2 2 0 0 1 3 11.2zM8 9.5A1.5 1.5 0 1 0 8 6.5a1.5 1.5 0 0 0 0 3z" fill="currentColor"/></svg><span>Ofertas</span></a>
     <a href="#mapa" data-nav="mapa"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="currentColor"/></svg><span>Mapa</span></a>
-    <a href="#lista" data-nav="lista"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L21 8H6.2M9.5 20.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm8 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Lista</span><b class="badge" data-list-count hidden></b></a>
+    <a href="#lista" data-nav="lista"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L21 8H6.2M9.5 20.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm8 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Rancho</span><b class="badge" data-list-count hidden></b></a>
     <a href="#conta" data-nav="conta"><svg viewBox="0 0 24 24"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zm0 2c-4.4 0-8 2.5-8 5.5V21h16v-1.5c0-3-3.6-5.5-8-5.5z" fill="currentColor"/></svg><span>Conta</span></a>
   </nav>
 
@@ -155,10 +160,20 @@
       <div class="sheet__grip" aria-hidden="true"></div>
       <button class="icon-btn sheet__close" data-close aria-label="Fechar">✕</button>
       <h2 id="locTitle" class="sheet__title">Onde você está?</h2>
-      <p class="muted">Usamos sua posição só no seu aparelho, para calcular a distância até as lojas.</p>
+      <p class="muted" id="locIntro">Usamos sua posição só no seu aparelho, para calcular a distância até as lojas.</p>
       <button class="btn btn--primary btn--block" id="useGps" type="button">Usar a localização do aparelho</button>
       <p class="or"><span>ou escolha seu bairro</span></p>
       <div class="bairros" id="bairroList"></div>
+    </div>
+  </div>
+
+  <!-- ===== SHEET: FISCAL DE PREÇOS ===== -->
+  <div class="sheet" id="fiscalSheet" role="dialog" aria-modal="true" aria-labelledby="fiscalTitle" hidden>
+    <div class="sheet__backdrop" data-close></div>
+    <div class="sheet__panel">
+      <div class="sheet__grip" aria-hidden="true"></div>
+      <button class="icon-btn sheet__close" data-close aria-label="Fechar">✕</button>
+      <div id="fiscalBody"></div>
     </div>
   </div>
 
