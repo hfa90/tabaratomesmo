@@ -88,7 +88,7 @@ export async function catalog(mid) {
 export async function saveProduct(mid, f) {
   if (MODE === 'demo') {
     const d = demoState();
-    let pid = f.product_id;
+    let pid = f.product_id; let created = false;
     if (!pid) {
       const { DEMO } = await import('./demo-data.js');
       const n = (s) => (s || '').trim().toLowerCase();
@@ -97,7 +97,7 @@ export async function saveProduct(mid, f) {
       else {
         const cat = DEMO.categories.find((c) => c.slug === f.category || n(c.name) === n(f.category));
         if (!cat) throw new Error(`Categoria "${f.category || ''}" não existe.`);
-        pid = d.nextId++;
+        pid = d.nextId++; created = true;
         d.newProducts.push({ id: pid, name: f.name.trim(), brand: f.brand || null, unit: f.unit || null, emoji: f.emoji || '🛒', ean: f.ean || null,
           category_slug: cat.slug, category_name: cat.name, own: true, photo: f.image_url || null });
       }
@@ -109,7 +109,7 @@ export async function saveProduct(mid, f) {
     d.listings[k] = { ...d.listings[k], active: true, sku: f.sku || d.listings[k]?.sku, ean: f.ean || d.listings[k]?.ean,
       ...(f.price != null ? { price: Number(f.price), at: new Date().toISOString() } : {}), ...(f.image_url ? { photo: f.image_url } : {}) };
     saveDemo(d);
-    return { product_id: pid, created: !f.product_id };
+    return { product_id: pid, created };
   }
   const c = await api.sbClient();
   const { data, error } = await c.rpc('market_save_product', {
