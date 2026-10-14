@@ -660,3 +660,41 @@ where mk.carries < case when m.slug = 'baratao-da-carne' and sd.cat not in ('car
 
 raise notice 'Seed concluído.';
 end $seed$;
+
+-- =====================================================================
+--  ATUALIZAÇÃO DO SEED (para quem rodou a primeira versão do schema):
+--  recria o histórico de demonstração das proteínas com coleta diária e
+--  um dia de oferta por rede, para o quadro "melhores dias".
+--  Só mexe em preços com source = 'seed'.
+-- =====================================================================
+do $prot$
+begin
+  if (select count(*) from public.prices pr
+        join public.products p on p.id = pr.product_id
+        join public.categories c on c.id = p.category_id
+       where c.slug = 'carnes' and pr.source = 'seed') between 1 and 1000 then
+    create temp table _base on commit drop as
+      select pr.product_id, pr.supermarket_id, avg(pr.price) as base
+      from public.prices pr
+      join public.products p on p.id = pr.product_id
+      join public.categories c on c.id = p.category_id
+      where c.slug = 'carnes' and pr.source = 'seed'
+      group by 1, 2;
+    delete from public.prices pr using public.products p, public.categories c
+     where p.id = pr.product_id and c.id = p.category_id and c.slug = 'carnes' and pr.source = 'seed';
+    insert into public.prices (product_id, supermarket_id, price, collected_at, source)
+    select b.product_id, b.supermarket_id,
+      round((b.base
+        * (1 - ((abs(hashtext('t' || b.product_id || ':' || b.supermarket_id)) % 1000) / 1000.0 - 0.5) * 0.2 * d.n / 34.0)
+        * case extract(dow from now() - (d.n || ' days')::interval)::int
+            when abs(hashtext('dow' || m.slug)) % 7 then 0.91
+            when (abs(hashtext('dow' || m.slug)) % 7 + 1) % 7 then 0.96
+            else 1 end
+        * (1 + (random() - 0.5) * 0.02))::numeric, 2),
+      now() - (d.n || ' days')::interval - interval '3 hours', 'seed'
+    from _base b
+    join public.supermarkets m on m.id = b.supermarket_id
+    cross join generate_series(0, 34) as d(n);
+    raise notice 'Histórico das proteínas atualizado.';
+  end if;
+end $prot$;
