@@ -3,6 +3,7 @@ import * as api from './api.js';
 import * as P from './portal-api.js';
 import { lineChart } from './chart.js';
 import { $, $$, esc, brl, logo, reduceMotion } from './core.js';
+import { hbars, kpi, heatmap, fmtN, pctTxt, DOW } from './viz.js';
 
 const st = {
   user: null, markets: [], mid: null, categories: [],
@@ -10,11 +11,8 @@ const st = {
   q: '', filter: 'all', cat: 'all', importRows: null, importPhotos: new Map(),
 };
 const market = () => st.markets.find((m) => m.id === st.mid);
-const fmtN = (n) => Number(n || 0).toLocaleString('pt-BR');
-const pctTxt = (a, b) => (b ? `${a >= b ? '+' : ''}${Math.round(((a - b) / b) * 100)}%` : '');
 const dateBR = (d) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '');
 const GENDER = { feminino: 'Mulheres', masculino: 'Homens', outro: 'Outro' };
-const DOW = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 // ---------------------------------------------------------------- utilidades de interface
 function toast(msg, kind = '') {
@@ -111,6 +109,13 @@ function renderJoin(msg = '') {
 async function enter() {
   try { st.markets = await P.myMarkets(); } catch (e) { return renderLogin('login', e.message); }
   if (!st.markets.length) return renderJoin();
+  const usable = st.markets.filter((m) => !m.blocked);
+  if (!usable.length) {
+    $('#ptNav').hidden = true; $('#logoutBtn').hidden = false;
+    $('#ptMain').innerHTML = `<section class="pt-auth"><div class="pt-auth__card" style="margin:0 auto"><h2>Acesso indisponível</h2><p class="muted">${esc(st.markets[0].blocked)}</p><p class="small muted" style="margin-top:12px">Fale com a equipe do Tá Barato Mesmo? se precisar de ajuda.</p></div></section>`;
+    return;
+  }
+  st.markets = usable;
   const saved = api.store.get('tb.ptMarket');
   st.mid = st.markets.some((m) => m.id === saved) ? saved : st.markets[0].id;
   st.catalog = st.promos = st.dash = null;
@@ -138,36 +143,6 @@ function route() {
 window.addEventListener('hashchange', route);
 
 // ================================================================ PAINEL
-function hbars(rows, { label, value, fmt = fmtN, note = null, max = null, color = 'var(--brand)' }) {
-  if (!rows?.length) return '<p class="muted small">Ainda sem dados neste período.</p>';
-  const mx = max ?? Math.max(...rows.map(value), 1);
-  return `<ol class="hb">${rows.map((r) => `<li title="${esc(label(r, true) || '')}">
-    <span class="hb__l">${label(r)}</span><span class="hb__v">${fmt(value(r))}</span>
-    <span class="hb__t"><span style="--w:${Math.max(2, (value(r) / mx) * 100)}%;--c:${typeof color === 'function' ? color(r) : color}"></span></span>
-    ${note ? `<small class="hb__n">${note(r)}</small>` : ''}</li>`).join('')}</ol>`;
-}
-
-function kpi(label, v, { prev = null, hint = '', fmt = fmtN, accent = false } = {}) {
-  const d = prev != null && prev > 0 ? pctTxt(v, prev) : '';
-  return `<div class="kpi ${accent ? 'kpi--accent' : ''}"><span class="kpi__l">${label}</span><b class="kpi__v">${fmt(v)}</b>
-    <span class="kpi__h">${d ? `<em class="${v >= prev ? 'down' : 'up'}">${d}</em> vs período anterior` : hint}</span></div>`;
-}
-
-function heatmap(hours) {
-  const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
-  for (const r of hours || []) grid[r.dow][r.h] += r.n;
-  const mx = Math.max(1, ...grid.flat());
-  const hrs = [...Array(18).keys()].map((i) => i + 6);
-  let best = { d: 0, h: 0, n: -1 };
-  grid.forEach((row, d) => row.forEach((n, h) => { if (n > best.n) best = { d, h, n }; }));
-  return `<p class="small" style="margin-bottom:10px">Pico: <b>${DOW[best.d].toLowerCase()} às ${best.h}h</b>. Bom horário para publicar promoções e reforçar equipe e reposição.</p>
-    <div class="hm" role="table" aria-label="Uso do site por dia da semana e hora">
-      <div class="hm__row" role="row"><span></span>${hrs.map((h) => `<span class="hm__h" role="columnheader">${h % 3 === 0 ? h : ''}</span>`).join('')}</div>
-      ${grid.map((row, d) => `<div class="hm__row" role="row"><span class="hm__d" role="rowheader">${DOW[d]}</span>${hrs.map((h) =>
-        `<span class="hm__c" role="cell" style="--a:${(row[h] / mx).toFixed(2)}" title="${DOW[d]} ${h}h: ${fmtN(row[h])} ações"></span>`).join('')}</div>`).join('')}
-    </div>`;
-}
-
 async function renderDashboard() {
   const main = $('#ptMain');
   const m = market();

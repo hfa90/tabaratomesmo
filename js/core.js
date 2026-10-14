@@ -17,6 +17,7 @@ export const S = {
   user: null, profile: null,
   anonUsed: api.store.get('tb.anonUsed', 0),
   map: null, mapLayers: null, mapFilter: null,
+  settings: {}, // app_settings (admin): collab_enabled, banner…
 };
 
 export const $ = (s, r = document) => r.querySelector(s);

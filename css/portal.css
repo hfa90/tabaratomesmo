@@ -129,3 +129,40 @@ body.portal { padding-bottom: 0; }
 }
 .tbl .icon-btn { display: inline-grid; vertical-align: middle; width: 34px; height: 34px; }
 .pt-grid { align-items: start; }
+
+/* ---------- administração (admin.html) ---------- */
+.pt-badge--admin { background: var(--ink); color: var(--surface); }
+.pt-who { font-size: .8rem; color: var(--muted); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-cards { display: grid; gap: 12px; }
+.mk-card { gap: 12px; }
+.mk-card.is-off { opacity: .7; }
+.mk-card__top { display: flex; align-items: center; gap: 12px; }
+.mk-card__top h2 { font-size: 1.1rem; }
+.mk-card__top small { display: block; }
+.mk-card__flags { display: flex; gap: 18px; flex-wrap: wrap; font-size: .875rem; font-weight: 600; }
+.mk-card__flags > span { display: inline-flex; align-items: center; gap: 8px; }
+.cfg-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.cfg-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.cfg-list li:last-child { border-bottom: 0; }
+.cfg-list li span { display: grid; gap: 2px; }
+.code-big { font: 700 .95rem/1 ui-monospace, Menlo, Consolas, monospace !important; letter-spacing: .08em; padding: 4px 8px !important; }
+.sel--sm { height: 34px; min-width: 0; font-size: .85rem; }
+.form--inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 12px; }
+.form--inline label { flex: 1; min-width: 160px; }
+.form--inline label:has(input[type=number]) { flex: 0 0 auto; min-width: 0; }
+.form--inline .sel { width: auto; }
+.pager { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-top: 10px; flex-wrap: wrap; }
+.pager > span:first-child { margin-right: auto; }
+.rep-list { display: grid; gap: 10px; }
+.rep-item { display: flex !important; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.rep-item h2 { font: 700 1rem var(--body); }
+.mini-photo { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; }
+.tbl td small.down, .tbl td small.up { display: block; font-weight: 700; }
+@media (min-width: 800px) { .mk-cards { grid-template-columns: repeat(2, 1fr); } }
+@media print {
+  .topbar, .pt-nav, .pt-head .seg, .toast-wrap, .c-legend { display: none !important; }
+  .pt { display: block; } .pt-main { padding: 0; }
+  .panel { break-inside: avoid; border-color: #ccc; }
+  body { background: #fff; }
+}
+.portal .sheet:not(.sheet--narrow) .sheet__panel { max-width: 860px; }

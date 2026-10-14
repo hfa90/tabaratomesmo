@@ -30,7 +30,8 @@ export async function loadCatalog() {
     if (err) throw err;
     if (!p.data.length) throw new Error('sem produtos');
     MODE = 'live';
-    return { supermarkets: m.data, stores: s.data, categories: cat.data, products: p.data.map(normalize) };
+    const active = new Set(m.data.map((x) => x.id));
+    return { supermarkets: m.data, stores: s.data.filter((x) => active.has(x.supermarket_id)), categories: cat.data, products: p.data.map(normalize) };
   } catch (e) {
     if (!CONFIG.DEMO_FALLBACK) throw e;
     console.warn('[TáBarato] usando dados de demonstração:', e.message || e);
@@ -429,3 +430,21 @@ export async function setRanchoBought(month, fields) {
 }
 
 export const sbClient = client;
+
+// ---------------------------------------------------------------- configurações do administrador
+export async function loadSettings() {
+  if (MODE === 'demo') return ls.get('tb.adminDemo', null)?.settings || {};
+  try {
+    const c = await client();
+    const { data, error } = await c.from('app_settings').select('key, value');
+    if (error) return {};
+    return Object.fromEntries(data.map((r) => [r.key, r.value]));
+  } catch { return {}; }
+}
+
+export async function amIMaster() {
+  if (MODE === 'demo') return false;
+  const c = await client();
+  const { data, error } = await c.rpc('am_i_master');
+  return !error && !!data;
+}

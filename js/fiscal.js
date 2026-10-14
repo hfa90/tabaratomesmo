@@ -82,6 +82,7 @@ function lastIn(p, mid) { return p.prices.find((x) => x.market_id === mid) || nu
 
 /** open({ market }) confere vários produtos num mercado; open({ product, market? }) um produto em todos os mercados */
 export async function open({ market = null, product = null } = {}) {
+  if (S.settings?.collab_enabled === false) return hooks.toast?.('O envio de preços está pausado no momento.', 'warn');
   if (!S.user) return hooks.openAuth('signup', 'Crie sua conta para informar preços, somar pontos e aparecer no ranking do seu bairro.');
   session = { pts: 0, sent: 0 };
   const body = $('#fiscalBody');

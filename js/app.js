@@ -709,6 +709,20 @@ function toggleTheme() {
   $('#themeBtn').setAttribute('aria-label', dark ? 'Usar tema claro' : 'Usar tema escuro');
 }
 
+/** configurações ligadas e desligadas pelo administrador (app_settings) */
+function applySettings() {
+  const st = S.settings;
+  if (Number.isFinite(Number(st.anon_comparisons))) CONFIG.ANON_COMPARISONS = Number(st.anon_comparisons);
+  if (Number.isFinite(Number(st.quick_comparisons))) CONFIG.QUICK_COMPARISONS = Number(st.quick_comparisons);
+  const msg = typeof st.banner === 'string' ? st.banner.trim() : '';
+  let el = $('#siteBanner');
+  if (msg) {
+    if (!el) { el = Object.assign(document.createElement('div'), { id: 'siteBanner', className: 'site-banner' }); $('.topbar').after(el); }
+    el.innerHTML = `<p>${esc(msg)}</p>`;
+  } else el?.remove();
+  document.body.classList.toggle('no-collab', st.collab_enabled === false);
+}
+
 async function refreshCatalog() {
   const data = await api.loadCatalog();
   S.products = data.products; renderGrid();
@@ -725,6 +739,8 @@ async function boot() {
   skeleton(); renderBairros(); updateListBadge();
   const data = await api.loadCatalog();
   data.supermarkets.forEach((m) => S.markets.set(m.id, m));
+  S.settings = await api.loadSettings();
+  applySettings();
   S.stores = data.stores; S.categories = data.categories; S.products = data.products;
   // remove mercados ligados que não existem mais
   S.enabled = new Set([...S.enabled].filter((id) => S.markets.has(id)));

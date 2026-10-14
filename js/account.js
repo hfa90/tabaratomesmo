@@ -146,6 +146,7 @@ function dataPanel() {
     <p class="small">${rancho.homePos()?.source === 'home' ? `Sua casa: <b>${esc(rancho.homePos().label || 'definida')}</b>` : 'Defina onde fica sua casa para o relatório do rancho calcular distância e custo de deslocamento.'}</p>
     <div class="row-actions"><button class="btn btn--ghost btn--sm" data-open="home">${rancho.homePos()?.source === 'home' ? 'Alterar casa' : 'Definir minha casa'}</button></div>
   </section>
+  <div id="adminLink"></div>
   ${api.MODE === 'demo' ? '<p class="note">Modo demonstração: o banco ainda não respondeu, então a conta fica só neste aparelho.</p>' : ''}
   <button class="btn btn--text" id="logout">Sair da conta</button>`;
 }
@@ -218,6 +219,7 @@ export async function render() {
     fiscal.renderHome(); fiscal.renderAccount($('#fiscalAcc'));
   } else {
     box.innerHTML = `<div class="me">${dataPanel()}</div>`;
+    api.amIMaster().then((ok) => { const el = $('#adminLink'); if (ok && el) el.innerHTML = `<section class="panel"><div class="panel__head"><h2>Administração</h2></div><p class="small muted">Sua conta é administradora master.</p><div class="row-actions"><a class="btn btn--primary" href="admin.html">Abrir a administração</a><a class="btn btn--ghost" href="parceiros.html">Área do supermercado</a></div></section>`; }).catch(() => {});
   }
 }
 

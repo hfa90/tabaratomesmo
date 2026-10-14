@@ -96,6 +96,60 @@ create table if not exists public.price_reports (
   created_at     timestamptz not null default now()
 );
 
+-- ---------- ADMINISTRAÇÃO: configurações e administradores master --------
+-- Configurações que o administrador liga e desliga em admin.html
+create table if not exists public.app_settings (
+  key         text primary key,
+  value       jsonb not null,
+  label       text,
+  updated_at  timestamptz not null default now(),
+  updated_by  uuid
+);
+insert into public.app_settings (key, value, label) values
+ ('anon_comparisons',  '3',    'Comparações sem cadastro'),
+ ('quick_comparisons', '15',   'Comparações com cadastro rápido'),
+ ('collab_enabled',    'true', 'Usuários podem informar preços'),
+ ('promos_enabled',    'true', 'Promoções dos mercados aparecem no site'),
+ ('portal_enabled',    'true', 'Área do supermercado liberada'),
+ ('tracking_enabled',  'true', 'Coleta de métricas de uso'),
+ ('banner',            '""',   'Aviso no topo do site (vazio = sem aviso)')
+on conflict (key) do nothing;
+
+create or replace function public.setting(p_key text)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select value from app_settings where key = p_key
+$$;
+create or replace function public.setting_on(p_key text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select (value #>> '{}')::boolean from app_settings where key = p_key), true)
+$$;
+
+-- Administradores master (por e-mail da conta)
+create table if not exists public.platform_admins (
+  email      text primary key,
+  added_by   text,
+  created_at timestamptz not null default now()
+);
+insert into public.platform_admins (email, added_by) values ('haydenfernandes.ti@gmail.com', 'instalação')
+on conflict (email) do nothing;
+
+create or replace function public.is_master()
+returns boolean language sql stable security definer set search_path = public, auth as $$
+  select exists (select 1 from platform_admins pa join auth.users u on lower(u.email) = lower(pa.email)
+                 where u.id = auth.uid())
+$$;
+
+alter table public.app_settings enable row level security;
+alter table public.platform_admins enable row level security;  -- sem políticas: só funções leem
+do $$ begin
+  drop policy if exists "public read" on public.app_settings;
+  create policy "public read" on public.app_settings for select using (true);
+end $$;
+grant select on public.app_settings to anon, authenticated;
+
+alter table public.profiles add column if not exists blocked boolean not null default false;
+alter table public.supermarkets add column if not exists portal_enabled boolean not null default true;
+
 -- ---------- PERFIL AUTOMÁTICO NO CADASTRO ------------------------------
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -135,7 +189,7 @@ create trigger profiles_protect before update on public.profiles
 create or replace function public.register_comparison()
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
-  v_limit int := 15;
+  v_limit int := coalesce((public.setting('quick_comparisons') #>> '{}')::int, 15);
   p public.profiles;
 begin
   if auth.uid() is null then
@@ -145,6 +199,9 @@ begin
   select * into p from public.profiles where id = auth.uid();
   if not found then
     insert into public.profiles (id) values (auth.uid()) returning * into p;
+  end if;
+  if p.blocked then
+    return jsonb_build_object('allowed', false, 'completed', false, 'reason', 'blocked', 'used', p.comparisons_used, 'limit', 0);
   end if;
   if p.completed_at is not null then
     update public.profiles set comparisons_used = comparisons_used + 1 where id = p.id;
@@ -357,6 +414,8 @@ declare
   v_store record; v_prev numeric; v_recent boolean;
 begin
   new.user_id := coalesce(auth.uid(), new.user_id);
+  if not setting_on('collab_enabled') then raise exception 'O envio de preços está pausado no momento.'; end if;
+  if (select blocked from profiles where id = new.user_id) then raise exception 'Sua conta não pode enviar preços.'; end if;
   new.status := 'pendente';
   new.confirmed_by := null;
   if (select count(*) from price_reports where user_id = new.user_id and created_at > now() - interval '1 day') >= 60 then
@@ -782,9 +841,11 @@ create table if not exists public.market_members (
   user_id        uuid not null references auth.users(id) on delete cascade,
   supermarket_id smallint not null references public.supermarkets(id) on delete cascade,
   role           text not null default 'editor' check (role in ('admin','editor')),
+  suspended      boolean not null default false,
   created_at     timestamptz not null default now(),
   primary key (user_id, supermarket_id)
 );
+alter table public.market_members add column if not exists suspended boolean not null default false;
 -- Código de convite: você gera um por mercado e envia ao responsável.
 --   insert into public.market_invites (supermarket_id) values (1) returning code;
 create table if not exists public.market_invites (
@@ -805,7 +866,11 @@ grant select on public.market_members to authenticated;
 
 create or replace function public.is_market_member(p_market smallint)
 returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from market_members where user_id = auth.uid() and supermarket_id = p_market)
+  select setting_on('portal_enabled') and exists (
+    select 1 from market_members m join supermarkets s on s.id = m.supermarket_id
+    left join profiles pf on pf.id = m.user_id
+    where m.user_id = auth.uid() and m.supermarket_id = p_market
+      and not m.suspended and s.active and s.portal_enabled and not coalesce(pf.blocked, false))
 $$;
 grant execute on function public.is_market_member(smallint) to authenticated;
 
@@ -824,10 +889,15 @@ begin
   return jsonb_build_object('supermarket_id', v.supermarket_id);
 end $$;
 
+drop function if exists public.my_markets();
 create or replace function public.my_markets()
-returns table (id smallint, name text, slug text, logo_url text, color text, role text)
+returns table (id smallint, name text, slug text, logo_url text, color text, role text, blocked text)
 language sql stable security definer set search_path = public as $$
-  select s.id, s.name, s.slug, s.logo_url, s.color, m.role
+  select s.id, s.name, s.slug, s.logo_url, s.color, m.role,
+         case when not setting_on('portal_enabled') then 'A área do supermercado está temporariamente fechada.'
+              when not s.active then 'Este supermercado está desativado no site.'
+              when not s.portal_enabled then 'O acesso deste supermercado ao portal está suspenso.'
+              when m.suspended then 'Seu acesso a este supermercado está suspenso.' end
   from market_members m join supermarkets s on s.id = m.supermarket_id
   where m.user_id = auth.uid() order by s.name
 $$;
@@ -1099,7 +1169,9 @@ live as (
   left join lateral (select * from public.promotions x
                       where x.product_id = l.product_id and x.supermarket_id = l.supermarket_id
                         and x.active and now() between x.starts_at and x.ends_at and x.promo_price < l.price
+                        and public.setting_on('promos_enabled')
                       order by x.promo_price limit 1) pm on true
+  join public.supermarkets sm on sm.id = l.supermarket_id and sm.active
   where coalesce(mp.active, true)
 ),
 past as (
@@ -1176,7 +1248,9 @@ declare
   e jsonb; n int := 0; pf profiles; v_nb text; v_age text;
 begin
   if jsonb_typeof(p_events) <> 'array' or jsonb_array_length(p_events) > 50 then return 0; end if;
+  if not setting_on('tracking_enabled') then return 0; end if;
   if auth.uid() is not null then select * into pf from profiles where id = auth.uid(); end if;
+  if coalesce(pf.blocked, false) then return 0; end if;
   v_age := case when pf.birth_date is null then null
                 when age(pf.birth_date) < interval '25 years' then '18-24'
                 when age(pf.birth_date) < interval '35 years' then '25-34'
@@ -1330,3 +1404,469 @@ begin
 end $$;
 revoke all on function public.market_dashboard(smallint, int) from public, anon;
 grant execute on function public.market_dashboard(smallint, int) to authenticated;
+
+-- =====================================================================
+--  ADMINISTRADOR MASTER (página admin.html)
+--  Todas as funções abaixo conferem is_master() antes de qualquer coisa.
+-- =====================================================================
+create table if not exists public.admin_log (
+  id         bigserial primary key,
+  created_at timestamptz not null default now(),
+  admin      text,
+  action     text not null,
+  detail     jsonb
+);
+alter table public.admin_log enable row level security;
+
+create or replace function public.admin_guard()
+returns text language plpgsql stable security definer set search_path = public, auth as $$
+declare v text;
+begin
+  if not is_master() then raise exception 'Acesso restrito ao administrador master.'; end if;
+  select email into v from auth.users where id = auth.uid();
+  return v;
+end $$;
+
+create or replace function public.admin_note(p_action text, p_detail jsonb)
+returns void language sql security definer set search_path = public, auth as $$
+  insert into admin_log (admin, action, detail) select email, p_action, p_detail from auth.users where id = auth.uid();
+$$;
+
+create or replace function public.am_i_master()
+returns boolean language sql stable security definer set search_path = public, auth as $$ select is_master() $$;
+
+-- ---------- Visão geral e métricas de toda a plataforma -----------------
+create or replace function public.admin_overview(p_days int default 30)
+returns jsonb language plpgsql stable security definer set search_path = public, auth as $$
+declare
+  v_since timestamptz := now() - make_interval(days => greatest(1, least(p_days, 365)));
+  v_prev  timestamptz := now() - make_interval(days => 2 * greatest(1, least(p_days, 365)));
+  out jsonb;
+begin
+  perform admin_guard();
+  with ev as (select *, coalesce(user_id::text, session_id) who from events where created_at >= v_since),
+  evp as (select *, coalesce(user_id::text, session_id) who from events where created_at >= v_prev and created_at < v_since),
+  pf as (select p.*, u.created_at as signed_up, u.last_sign_in_at, zone_of(p.neighborhood) zone,
+                case when p.birth_date is null then null
+                     when age(p.birth_date) < interval '25 years' then '18-24'
+                     when age(p.birth_date) < interval '35 years' then '25-34'
+                     when age(p.birth_date) < interval '45 years' then '35-44'
+                     when age(p.birth_date) < interval '60 years' then '45-59' else '60+' end age_band
+         from profiles p join auth.users u on u.id = p.id)
+  select jsonb_build_object(
+    'kpis', jsonb_build_object(
+      'users',            (select count(*) from pf),
+      'users_new',        (select count(*) from pf where signed_up >= v_since),
+      'users_new_prev',   (select count(*) from pf where signed_up >= v_prev and signed_up < v_since),
+      'users_complete',   (select count(*) from pf where completed_at is not null),
+      'users_active',     (select count(*) from pf where last_sign_in_at >= v_since),
+      'users_blocked',    (select count(*) from pf where blocked),
+      'visitors',         (select count(distinct who) from ev),
+      'visitors_prev',    (select count(distinct who) from evp),
+      'searches',         (select count(*) from ev where kind = 'search'),
+      'searches_prev',    (select count(*) from evp where kind = 'search'),
+      'views',            (select count(*) from ev where kind = 'view'),
+      'adds',             (select count(*) from ev where kind = 'add'),
+      'ranchos',          (select count(*) from ev where kind = 'rancho_done'),
+      'bought',           (select count(*) from ev where kind = 'bought'),
+      'spent',            (select coalesce(sum(value), 0) from ev where kind = 'bought'),
+      'routes',           (select count(*) from ev where kind = 'route'),
+      'savings',          (select coalesce(sum(savings), 0) from shopping_lists where completed_at >= v_since),
+      'savings_all',      (select coalesce(sum(savings), 0) from shopping_lists),
+      'lists',            (select count(*) from shopping_lists where updated_at >= v_since),
+      'reports',          (select count(*) from price_reports where created_at >= v_since),
+      'reports_pending',  (select count(*) from price_reports where status = 'pendente'),
+      'products',         (select count(*) from products where active),
+      'markets',          (select count(*) from supermarkets where active),
+      'members',          (select count(*) from market_members where not suspended),
+      'promos_live',      (select count(*) from promotions where active and now() between starts_at and ends_at)
+    ),
+    'daily', coalesce((select jsonb_agg(x order by x.d) from (
+        select d::date d,
+          (select count(*) from pf where signed_up::date = d::date) signups,
+          (select count(distinct who) from ev where (created_at at time zone 'America/Manaus')::date = d::date) visitors,
+          (select count(*) from ev where kind = 'search' and (created_at at time zone 'America/Manaus')::date = d::date) searches,
+          (select count(*) from ev where kind in ('rancho_done') and (created_at at time zone 'America/Manaus')::date = d::date) ranchos
+        from generate_series((v_since at time zone 'America/Manaus')::date, (now() at time zone 'America/Manaus')::date, interval '1 day') d) x), '[]'),
+    'zones', coalesce((select jsonb_agg(x order by x.users desc) from (
+        select z.zone,
+          (select count(*) from pf where pf.zone = z.zone) users,
+          (select count(*) from ev where ev.zone = z.zone and kind = 'search') searches,
+          (select count(*) from ev where ev.zone = z.zone and kind = 'rancho_done') ranchos,
+          (select count(*) from ev where ev.zone = z.zone and kind = 'add') adds,
+          (select count(distinct who) from ev where ev.zone = z.zone) visitors
+        from (select distinct zone from bairros) z) x), '[]'),
+    'neighborhoods', coalesce((select jsonb_agg(x) from (
+        select coalesce(neighborhood, 'Não informado') neighborhood, zone_of(neighborhood) zone, count(*) users,
+               count(*) filter (where completed_at is not null) complete
+        from pf group by 1, 2 order by 3 desc limit 25) x), '[]'),
+    'gender', coalesce((select jsonb_agg(x) from (
+        select coalesce(gender, 'sem dado') gender, count(*) users,
+               (select count(*) from ev where ev.gender = pf.gender and kind = 'rancho_done') ranchos
+        from pf group by gender order by 2 desc) x), '[]'),
+    'age', coalesce((select jsonb_agg(x order by x.age_band) from (
+        select coalesce(age_band, 'sem dado') age_band, count(*) users from pf group by 1) x), '[]'),
+    'top_searches', coalesce((select jsonb_agg(x) from (
+        select query, count(*) n, count(distinct who) people from ev where kind = 'search' and query is not null
+        group by 1 order by 2 desc limit 20) x), '[]'),
+    'no_results', coalesce((select jsonb_agg(x) from (
+        select query, count(*) n from ev where kind = 'search' and coalesce(results, 0) = 0 and query is not null
+        group by 1 order by 2 desc limit 15) x), '[]'),
+    'top_products', coalesce((select jsonb_agg(x) from (
+        select p.id, p.name, p.brand, p.emoji, count(*) filter (where e.kind = 'view') views, count(*) filter (where e.kind = 'add') adds
+        from ev e join products p on p.id = e.product_id where e.kind in ('view','add') group by p.id order by count(*) desc limit 15) x), '[]'),
+    'hours', coalesce((select jsonb_agg(x) from (
+        select extract(dow from created_at at time zone 'America/Manaus')::int dow,
+               extract(hour from created_at at time zone 'America/Manaus')::int h, count(*) n
+        from ev group by 1, 2) x), '[]'),
+    'markets', coalesce((select jsonb_agg(x order by x.score desc) from (
+        select s.id, s.name, s.color, s.logo_url, s.active, s.portal_enabled,
+          (select count(*) from ev where kind = 'bought' and supermarket_id = s.id) bought,
+          (select coalesce(sum(value), 0) from ev where kind = 'bought' and supermarket_id = s.id) spent,
+          (select count(*) from ev where kind = 'rancho_done' and supermarket_id = s.id) rancho_wins,
+          (select count(*) from ev where kind = 'route' and supermarket_id = s.id) routes,
+          (select count(*) from ev where kind in ('view','add') and supermarket_id = s.id) interest,
+          (select count(*) from market_products mp where mp.supermarket_id = s.id and mp.active)
+            + (select count(distinct product_id) from prices pr where pr.supermarket_id = s.id
+                 and not exists (select 1 from market_products mp where mp.supermarket_id = s.id and mp.product_id = pr.product_id)) products,
+          (select count(*) from promotions pm where pm.supermarket_id = s.id and pm.active and now() between pm.starts_at and pm.ends_at) promos,
+          (select max(collected_at) from prices pr where pr.supermarket_id = s.id) last_price,
+          (select count(*) from ev where kind = 'bought' and supermarket_id = s.id) * 3
+            + (select count(*) from ev where kind = 'rancho_done' and supermarket_id = s.id) * 2
+            + (select count(*) from ev where kind = 'route' and supermarket_id = s.id) score
+        from supermarkets s) x), '[]'),
+    'reports_by_status', coalesce((select jsonb_object_agg(status, n) from (select status, count(*) n from price_reports group by 1) x), '{}')
+  ) into out;
+  return out;
+end $$;
+
+-- ---------- Supermercados -----------------------------------------------
+create or replace function public.admin_markets()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  return coalesce((select jsonb_agg(x order by x.name) from (
+    select s.*, (select count(*) from market_members m where m.supermarket_id = s.id) members,
+           (select count(*) from market_members m where m.supermarket_id = s.id and m.suspended) members_suspended,
+           (select count(*) from market_invites i where i.supermarket_id = s.id and i.uses_left > 0 and i.expires_at > now()) invites,
+           (select count(*) from stores st where st.supermarket_id = s.id) stores_count
+    from supermarkets s) x), '[]');
+end $$;
+
+create or replace function public.admin_save_market(p jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_id smallint := nullif(p->>'id', '')::smallint; r supermarkets;
+begin
+  perform admin_guard();
+  if coalesce(trim(p->>'name'), '') = '' then raise exception 'Informe o nome do supermercado.'; end if;
+  if v_id is null then
+    insert into supermarkets (slug, name, logo_url, color, website, active, portal_enabled)
+    values (coalesce(nullif(trim(p->>'slug'), ''), lower(regexp_replace(unaccent_safe(p->>'name'), '[^a-zA-Z0-9]+', '-', 'g'))),
+            trim(p->>'name'), nullif(p->>'logo_url', ''), coalesce(nullif(p->>'color', ''), '#0F5A3E'), nullif(p->>'website', ''),
+            coalesce((p->>'active')::boolean, true), coalesce((p->>'portal_enabled')::boolean, true))
+    returning * into r;
+  else
+    update supermarkets set name = trim(p->>'name'), slug = coalesce(nullif(trim(p->>'slug'), ''), slug),
+      logo_url = nullif(p->>'logo_url', ''), color = coalesce(nullif(p->>'color', ''), color), website = nullif(p->>'website', ''),
+      active = coalesce((p->>'active')::boolean, active), portal_enabled = coalesce((p->>'portal_enabled')::boolean, portal_enabled)
+    where id = v_id returning * into r;
+  end if;
+  perform admin_note('salvar mercado', to_jsonb(r));
+  return to_jsonb(r);
+exception when unique_violation then
+  raise exception 'Já existe um supermercado com esse identificador (slug). Escolha outro.';
+end $$;
+
+create or replace function public.unaccent_safe(t text)
+returns text language sql immutable as $$
+  select translate(coalesce(t, ''), 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC')
+$$;
+
+create or replace function public.admin_set_market_flag(p_market smallint, p_flag text, p_on boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  if p_flag = 'active' then update supermarkets set active = p_on where id = p_market;
+  elsif p_flag = 'portal_enabled' then update supermarkets set portal_enabled = p_on where id = p_market;
+  else raise exception 'Opção desconhecida.'; end if;
+  perform admin_note('mercado ' || p_flag, jsonb_build_object('market', p_market, 'on', p_on));
+end $$;
+
+create or replace function public.admin_delete_market(p_market smallint, p_confirm text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v supermarkets;
+begin
+  perform admin_guard();
+  select * into v from supermarkets where id = p_market;
+  if not found then raise exception 'Supermercado não encontrado.'; end if;
+  if p_confirm is distinct from v.slug then raise exception 'Digite % para confirmar.', v.slug; end if;
+  delete from supermarkets where id = p_market;
+  perform admin_note('excluir mercado', to_jsonb(v));
+end $$;
+
+-- lojas
+create or replace function public.admin_save_store(p jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  if nullif(p->>'id', '') is null then
+    insert into stores (supermarket_id, name, address, neighborhood, lat, lng, approx, opening_hours)
+    values ((p->>'supermarket_id')::smallint, p->>'name', nullif(p->>'address', ''), nullif(p->>'neighborhood', ''),
+            (p->>'lat')::float8, (p->>'lng')::float8, coalesce((p->>'approx')::boolean, false), nullif(p->>'opening_hours', ''));
+  else
+    update stores set name = p->>'name', address = nullif(p->>'address', ''), neighborhood = nullif(p->>'neighborhood', ''),
+      lat = (p->>'lat')::float8, lng = (p->>'lng')::float8, approx = coalesce((p->>'approx')::boolean, approx),
+      opening_hours = nullif(p->>'opening_hours', '')
+    where id = (p->>'id')::int;
+  end if;
+  perform admin_note('salvar loja', p);
+end $$;
+
+create or replace function public.admin_delete_store(p_store int)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  delete from stores where id = p_store;
+  perform admin_note('excluir loja', jsonb_build_object('store', p_store));
+end $$;
+
+-- ---------- Acessos ao portal ---------------------------------------------
+create or replace function public.admin_market_access(p_market smallint)
+returns jsonb language plpgsql stable security definer set search_path = public, auth as $$
+begin
+  perform admin_guard();
+  return jsonb_build_object(
+    'members', coalesce((select jsonb_agg(x order by x.created_at) from (
+       select m.user_id, u.email, p.full_name, m.role, m.suspended, m.created_at, u.last_sign_in_at
+       from market_members m join auth.users u on u.id = m.user_id left join profiles p on p.id = m.user_id
+       where m.supermarket_id = p_market) x), '[]'),
+    'invites', coalesce((select jsonb_agg(x order by x.created_at desc) from (
+       select code, role, uses_left, expires_at, created_at, (uses_left > 0 and expires_at > now()) valid
+       from market_invites where supermarket_id = p_market) x), '[]'),
+    'stores', coalesce((select jsonb_agg(x order by x.name) from (select * from stores where supermarket_id = p_market) x), '[]'));
+end $$;
+
+create or replace function public.admin_create_invite(p_market smallint, p_role text default 'admin', p_uses int default 5, p_days int default 30)
+returns text language plpgsql security definer set search_path = public as $$
+declare v text;
+begin
+  perform admin_guard();
+  insert into market_invites (supermarket_id, role, uses_left, expires_at)
+  values (p_market, case when p_role = 'editor' then 'editor' else 'admin' end, greatest(1, least(p_uses, 100)),
+          now() + make_interval(days => greatest(1, least(p_days, 365))))
+  returning code into v;
+  perform admin_note('gerar convite', jsonb_build_object('market', p_market, 'code', v, 'role', p_role));
+  return v;
+end $$;
+
+create or replace function public.admin_delete_invite(p_code text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  delete from market_invites where code = p_code;
+  perform admin_note('excluir convite', jsonb_build_object('code', p_code));
+end $$;
+
+create or replace function public.admin_set_member(p_user uuid, p_market smallint, p_role text, p_suspended boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  update market_members set role = coalesce(nullif(p_role, ''), role), suspended = coalesce(p_suspended, suspended)
+  where user_id = p_user and supermarket_id = p_market;
+  perform admin_note('alterar acesso', jsonb_build_object('user', p_user, 'market', p_market, 'role', p_role, 'suspended', p_suspended));
+end $$;
+
+create or replace function public.admin_remove_member(p_user uuid, p_market smallint)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  delete from market_members where user_id = p_user and supermarket_id = p_market;
+  perform admin_note('remover acesso', jsonb_build_object('user', p_user, 'market', p_market));
+end $$;
+
+create or replace function public.admin_add_member(p_email text, p_market smallint, p_role text default 'admin')
+returns void language plpgsql security definer set search_path = public, auth as $$
+declare v uuid;
+begin
+  perform admin_guard();
+  select id into v from auth.users where lower(email) = lower(trim(p_email));
+  if v is null then raise exception 'Nenhuma conta com o e-mail %. Gere um código de convite e envie para a pessoa.', p_email; end if;
+  insert into market_members (user_id, supermarket_id, role) values (v, p_market, case when p_role = 'editor' then 'editor' else 'admin' end)
+  on conflict (user_id, supermarket_id) do update set role = excluded.role, suspended = false;
+  perform admin_note('adicionar acesso', jsonb_build_object('email', p_email, 'market', p_market));
+end $$;
+
+-- ---------- Usuários ------------------------------------------------------
+create or replace function public.admin_users(p_q text default null, p_filter text default 'all', p_limit int default 50, p_offset int default 0)
+returns jsonb language plpgsql stable security definer set search_path = public, auth as $$
+declare q text := nullif(lower(trim(p_q)), '');
+begin
+  perform admin_guard();
+  return jsonb_build_object(
+    'total', (select count(*) from profiles p join auth.users u on u.id = p.id
+               where (q is null or lower(u.email) like '%' || q || '%' or lower(coalesce(p.full_name, '')) like '%' || q || '%' or lower(coalesce(p.neighborhood, '')) like '%' || q || '%')
+                 and (p_filter = 'all' or (p_filter = 'blocked' and p.blocked) or (p_filter = 'complete' and p.completed_at is not null)
+                      or (p_filter = 'quick' and p.completed_at is null) or (p_filter = 'markets' and exists (select 1 from market_members m where m.user_id = p.id)))),
+    'rows', coalesce((select jsonb_agg(x) from (
+      select p.id, u.email, p.full_name, p.phone, p.neighborhood, zone_of(p.neighborhood) zone, p.gender, p.birth_date,
+             p.completed_at, p.blocked, p.comparisons_used, u.created_at, u.last_sign_in_at,
+             (select count(*) from price_reports r where r.user_id = p.id) reports,
+             (select coalesce(sum(points), 0) from price_reports r where r.user_id = p.id) points,
+             (select count(*) from shopping_lists l where l.user_id = p.id) lists,
+             (select coalesce(sum(savings), 0) from shopping_lists l where l.user_id = p.id) savings,
+             (select string_agg(s.name, ', ') from market_members m join supermarkets s on s.id = m.supermarket_id where m.user_id = p.id) markets,
+             exists (select 1 from platform_admins a where lower(a.email) = lower(u.email)) is_admin
+      from profiles p join auth.users u on u.id = p.id
+      where (q is null or lower(u.email) like '%' || q || '%' or lower(coalesce(p.full_name, '')) like '%' || q || '%' or lower(coalesce(p.neighborhood, '')) like '%' || q || '%')
+        and (p_filter = 'all' or (p_filter = 'blocked' and p.blocked) or (p_filter = 'complete' and p.completed_at is not null)
+             or (p_filter = 'quick' and p.completed_at is null) or (p_filter = 'markets' and exists (select 1 from market_members m where m.user_id = p.id)))
+      order by u.created_at desc limit greatest(1, least(p_limit, 500)) offset greatest(0, p_offset)) x), '[]'));
+end $$;
+
+create or replace function public.admin_set_user(p_user uuid, p_blocked boolean default null, p_reset_comparisons boolean default false)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  perform set_config('app.trusted', 'on', true);
+  update profiles set blocked = coalesce(p_blocked, blocked),
+         comparisons_used = case when p_reset_comparisons then 0 else comparisons_used end
+  where id = p_user;
+  perform admin_note('alterar usuário', jsonb_build_object('user', p_user, 'blocked', p_blocked, 'reset', p_reset_comparisons));
+end $$;
+
+-- ---------- Preços enviados pela comunidade (moderação) -------------------
+create or replace function public.admin_reports(p_status text default 'pendente', p_limit int default 100)
+returns jsonb language plpgsql stable security definer set search_path = public, auth as $$
+begin
+  perform admin_guard();
+  return coalesce((select jsonb_agg(x) from (
+    select r.id, r.created_at, r.price, r.status, r.at_store, r.points, r.note, u.email, p.name product, p.brand, p.unit, p.emoji,
+           s.name market, r.supermarket_id, r.product_id,
+           (select price from prices pr where pr.product_id = r.product_id and pr.supermarket_id = r.supermarket_id order by collected_at desc limit 1) current_price
+    from price_reports r join products p on p.id = r.product_id join supermarkets s on s.id = r.supermarket_id
+    left join auth.users u on u.id = r.user_id
+    where p_status = 'all' or r.status = p_status
+    order by r.created_at desc limit greatest(1, least(p_limit, 500))) x), '[]');
+end $$;
+
+create or replace function public.admin_review_report(p_id bigint, p_approve boolean)
+returns void language plpgsql security definer set search_path = public as $$
+declare r price_reports;
+begin
+  perform admin_guard();
+  select * into r from price_reports where id = p_id;
+  if not found then raise exception 'Envio não encontrado.'; end if;
+  if p_approve then
+    if r.status <> 'aprovado' then
+      insert into prices (product_id, supermarket_id, price, source) values (r.product_id, r.supermarket_id, r.price, 'comunidade');
+    end if;
+    update price_reports set status = 'aprovado' where id = p_id;
+  else
+    update price_reports set status = 'rejeitado' where id = p_id;
+  end if;
+  perform admin_note(case when p_approve then 'aprovar preço' else 'rejeitar preço' end, jsonb_build_object('report', p_id));
+end $$;
+
+-- ---------- Produtos e promoções ------------------------------------------
+create or replace function public.admin_products(p_q text default null)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare q text := nullif(lower(trim(p_q)), '');
+begin
+  perform admin_guard();
+  return coalesce((select jsonb_agg(x order by x.name) from (
+    select p.id, p.name, p.brand, p.unit, p.emoji, p.ean, p.active, p.image_url, c.name category, s.name created_by,
+           (select count(distinct supermarket_id) from prices pr where pr.product_id = p.id) markets,
+           (select max(collected_at) from prices pr where pr.product_id = p.id) last_price
+    from products p left join categories c on c.id = p.category_id left join supermarkets s on s.id = p.created_by_market
+    where q is null or lower(p.name || ' ' || coalesce(p.brand, '') || ' ' || coalesce(p.ean, '')) like '%' || q || '%'
+    limit 500) x), '[]');
+end $$;
+
+create or replace function public.admin_set_product(p_id int, p_active boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  update products set active = p_active where id = p_id;
+  perform admin_note('produto ativo', jsonb_build_object('product', p_id, 'on', p_active));
+end $$;
+
+create or replace function public.admin_promotions()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  return coalesce((select jsonb_agg(x order by x.created_at desc) from (
+    select pm.*, p.name product, p.emoji, s.name market
+    from promotions pm join products p on p.id = pm.product_id join supermarkets s on s.id = pm.supermarket_id
+    order by pm.created_at desc limit 300) x), '[]');
+end $$;
+
+create or replace function public.admin_set_promotion(p_id bigint, p_active boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  update promotions set active = p_active where id = p_id;
+  perform admin_note('promoção ativa', jsonb_build_object('promo', p_id, 'on', p_active));
+end $$;
+
+-- ---------- Configurações e administradores --------------------------------
+create or replace function public.admin_set_setting(p_key text, p_value jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  update app_settings set value = p_value, updated_at = now(), updated_by = auth.uid() where key = p_key;
+  if not found then raise exception 'Configuração % não existe.', p_key; end if;
+  perform admin_note('configuração', jsonb_build_object('key', p_key, 'value', p_value));
+end $$;
+
+create or replace function public.admin_admins()
+returns jsonb language plpgsql stable security definer set search_path = public, auth as $$
+begin
+  perform admin_guard();
+  return coalesce((select jsonb_agg(x order by x.created_at) from (
+    select a.email, a.added_by, a.created_at, u.last_sign_in_at, (u.id is not null) has_account
+    from platform_admins a left join auth.users u on lower(u.email) = lower(a.email)) x), '[]');
+end $$;
+
+create or replace function public.admin_add_admin(p_email text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me text := admin_guard();
+begin
+  if trim(coalesce(p_email, '')) !~ '^\S+@\S+\.\S+$' then raise exception 'E-mail inválido.'; end if;
+  insert into platform_admins (email, added_by) values (lower(trim(p_email)), me) on conflict do nothing;
+  perform admin_note('adicionar admin', jsonb_build_object('email', p_email));
+end $$;
+
+create or replace function public.admin_remove_admin(p_email text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me text := admin_guard();
+begin
+  if lower(p_email) = lower(me) then raise exception 'Você não pode remover a si mesmo.'; end if;
+  if (select count(*) from platform_admins) <= 1 then raise exception 'Precisa haver pelo menos um administrador.'; end if;
+  delete from platform_admins where lower(email) = lower(p_email);
+  perform admin_note('remover admin', jsonb_build_object('email', p_email));
+end $$;
+
+create or replace function public.admin_log_list(p_limit int default 100)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  return coalesce((select jsonb_agg(x) from (select * from admin_log order by id desc limit greatest(1, least(p_limit, 500))) x), '[]');
+end $$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array[
+    'admin_guard()', 'admin_note(text,jsonb)', 'am_i_master()', 'admin_overview(int)', 'admin_markets()', 'admin_save_market(jsonb)',
+    'admin_set_market_flag(smallint,text,boolean)', 'admin_delete_market(smallint,text)', 'admin_save_store(jsonb)', 'admin_delete_store(int)',
+    'admin_market_access(smallint)', 'admin_create_invite(smallint,text,int,int)', 'admin_delete_invite(text)',
+    'admin_set_member(uuid,smallint,text,boolean)', 'admin_remove_member(uuid,smallint)', 'admin_add_member(text,smallint,text)',
+    'admin_users(text,text,int,int)', 'admin_set_user(uuid,boolean,boolean)', 'admin_reports(text,int)', 'admin_review_report(bigint,boolean)',
+    'admin_products(text)', 'admin_set_product(int,boolean)', 'admin_promotions()', 'admin_set_promotion(bigint,boolean)',
+    'admin_set_setting(text,jsonb)', 'admin_admins()', 'admin_add_admin(text)', 'admin_remove_admin(text)', 'admin_log_list(int)', 'is_master()']
+  loop
+    execute format('revoke all on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;
+revoke all on function public.admin_note(text,jsonb) from authenticated;

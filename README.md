@@ -40,6 +40,14 @@ Stack: HTML, CSS e JavaScript puros (ES modules, sem build) + Supabase (Postgres
 
 Enquanto o schema não estiver aplicado, o site funciona em **modo demonstração** (faixa amarela no topo) com os mesmos dados do seed.
 
+### 1a. Administração master (`admin.html`)
+O e-mail `haydenfernandes.ti@gmail.com` já vem cadastrado como administrador master (tabela `platform_admins`). Entre em `admin.html` com a conta do site desse e-mail (se ainda não existir, crie pelo site em "Você › Criar conta"). Na administração você:
+- vê métricas de toda a plataforma (usuários, visitantes, buscas, ranchos, economia gerada, regiões, bairros, sexo, idade, horários de pico, produtos e desempenho de cada supermercado);
+- cria, edita, ativa, desativa e exclui supermercados e lojas; gera, copia e exclui códigos de convite; suspende, reativa, muda o papel ou exclui o acesso de cada pessoa ao portal;
+- bloqueia ou libera usuários, zera comparações, modera preços enviados, desliga produtos e promoções;
+- liga e desliga funções do site (envio de preços, promoções, portal dos mercados, coleta de métricas), muda os limites de comparação e publica um aviso no topo do site;
+- baixa relatórios em CSV e adiciona ou remove outros administradores. Tudo fica no registro de atividades (`admin_log`).
+
 ### 1b. Dar acesso a um supermercado
 1. No SQL Editor, gere um código de convite para o mercado (o `id` está na tabela `supermarkets`):
    ```sql
@@ -94,6 +102,10 @@ js/fiscal.js          colaboração: conferir preços, pontos, níveis, ranking
 js/account.js         página Você (economia, mercado preferido, histórico, conquistas)
 js/track.js           eventos de uso anônimos para as métricas
 parceiros.html        área do supermercado
+admin.html            administração master
+js/admin.js           administração: métricas, acessos, usuários, moderação, configurações
+js/admin-api.js       dados da administração (Supabase ou demonstração)
+js/viz.js             barras, indicadores, mapa de calor e exportação CSV
 js/portal.js          portal: painel, produtos, promoções, importação
 js/portal-api.js      dados do portal (Supabase ou demonstração)
 css/portal.css        estilos do portal

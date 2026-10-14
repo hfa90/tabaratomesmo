@@ -325,7 +325,7 @@ main { max-width: var(--page); margin: 0 auto; padding: 20px 16px 32px; }
 .mk-row:last-child { border-bottom: 0; }
 .mk-row span { flex: 1; display: grid; line-height: 1.25; }
 .mk-row small { color: var(--muted); font-size: .8rem; }
-.switch { position: relative; width: 44px; height: 26px; flex: none; }
+.switch { position: relative; display: inline-block; vertical-align: middle; width: 44px; height: 26px; flex: none; }
 .switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
 .switch i { position: absolute; inset: 0; border-radius: 999px; background: var(--line-2); transition: background .2s; pointer-events: none; }
 .switch i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
@@ -758,3 +758,8 @@ body:has(#view-lista:not([hidden]) .rbar:not([hidden])) { padding-bottom: calc(v
 .demo-note { display: none; }
 @media (max-width: 599px) { body.is-demo .demo-note { display: block; margin-bottom: 14px; font-size: .8rem; } }
 @media (max-width: 599px) { .cl-near { display: none; } .compare-line .logos { display: none; } }
+
+/* aviso do administrador e chave de colaboração */
+.site-banner { background: var(--tag-soft); color: var(--tag-ink); border-bottom: 1px solid var(--line); }
+.site-banner p { max-width: var(--page); margin: 0 auto; padding: 8px 16px; font-size: .875rem; font-weight: 600; text-align: center; }
+body.no-collab [data-report], body.no-collab .ask-row, body.no-collab [data-fiscal-market], body.no-collab .rep__box:has([data-fiscal-market]) { display: none !important; }

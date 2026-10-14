@@ -1,5 +1,5 @@
 // Service worker simples: cache do "casco" do app para abrir rápido e offline.
-const CACHE = 'tb-v4';
+const CACHE = 'tb-v5';
 const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/api.js', 'js/config.js', 'js/chart.js', 'js/core.js', 'js/rancho.js', 'js/fiscal.js', 'js/account.js', 'js/track.js', 'assets/icon.svg', 'manifest.webmanifest'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
