@@ -34,7 +34,8 @@ export function checkAtStore() {
   const m = S.markets.get(hit.store.supermarket_id);
   el.hidden = false;
   el.innerHTML = `<div class="sb">${logo(m, 'md')}
-    <p><b>Você está no ${esc(hit.store.name)}?</b><span>Confira 6 preços em 1 minuto. Quem está na loja ganha pontos extras.</span></p>
+    <p><b>Você está no ${esc(hit.store.name)}?</b><span>Anote o carrinho falando os itens, ou confira 6 preços e ganhe pontos.</span></p>
+    <a class="btn btn--sm btn--ghost" href="#carrinho">Carrinho</a>
     <button class="btn btn--sm btn--ink" data-fiscal-market="${m.id}">Conferir</button>
     <button class="icon-btn icon-btn--sm" data-banner-off="${key}" aria-label="Agora não">✕</button></div>`;
 }

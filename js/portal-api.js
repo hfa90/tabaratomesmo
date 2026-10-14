@@ -297,3 +297,74 @@ async function demoDashboard(mid, days) {
     top_searches, no_results, top_products, top_brands, top_categories, ranking, zones, neighborhoods, gender, age, hours, daily, opportunities, promos: pr,
   };
 }
+
+// ---------------------------------------------------------------- publicidade
+export const DEMO_PLANS = [
+  { id: 1, name: 'Relâmpago', hours: 6, price: 39, blurb: '6 horas seguidas, ideal para a oferta do dia', active: true, sort: 1 },
+  { id: 2, name: 'Diário', hours: 24, price: 89, blurb: '24 horas no ar', active: true, sort: 2 },
+  { id: 3, name: 'Fim de semana', hours: 72, price: 199, blurb: '3 dias, de sexta a domingo', active: true, sort: 3 },
+  { id: 4, name: 'Semanal', hours: 168, price: 389, blurb: '7 dias no ar', active: true, sort: 4 },
+  { id: 5, name: 'Mensal', hours: 720, price: 1190, blurb: '30 dias no ar, o melhor custo por dia', active: true, sort: 5 },
+];
+export const DEMO_SLOTS = [
+  { key: 'home', name: 'Destaque da página inicial', description: 'Logo abaixo da busca, a primeira coisa que as pessoas veem.', multiplier: 1.5, max_concurrent: 1, active: true, sort: 1 },
+  { key: 'grid', name: 'Entre os produtos', description: 'Um card de curiosidade no meio da lista de ofertas.', multiplier: 1, max_concurrent: 2, active: true, sort: 2 },
+  { key: 'rancho', name: 'Rancho do mês', description: 'No resumo de quem está montando a lista do mês.', multiplier: 1.2, max_concurrent: 1, active: true, sort: 3 },
+  { key: 'carrinho', name: 'Carrinho', description: 'Na tela de quem está comprando agora, dentro da loja.', multiplier: 1.3, max_concurrent: 1, active: true, sort: 4 },
+  { key: 'fila', name: 'Fila do caixa', description: 'No modo fila, enquanto a pessoa espera para pagar.', multiplier: 0.8, max_concurrent: 2, active: true, sort: 5 },
+];
+const demoAdState = () => ls.get('tb.adminDemo', null)?.adPlans ? ls.get('tb.adminDemo') : null;
+
+export async function adCatalog() {
+  if (MODE === 'demo') { const d = demoAdState(); return { plans: d?.adPlans || DEMO_PLANS, slots: d?.adSlots || DEMO_SLOTS }; }
+  const c = await api.sbClient();
+  const [p, s] = await Promise.all([c.from('ad_plans').select('*').eq('active', true).order('sort'), c.from('ad_slots').select('*').eq('active', true).order('sort')]);
+  if (p.error || s.error) throw new Error((p.error || s.error).message);
+  return { plans: p.data.map((x) => ({ ...x, price: Number(x.price) })), slots: s.data.map((x) => ({ ...x, multiplier: Number(x.multiplier) })) };
+}
+
+export async function adAvailability(slot, start, end) {
+  if (MODE === 'demo') {
+    const taken = (demoState().ads || []).filter((a) => a.slot === slot && ['aprovada', 'pendente'].includes(a.status) && new Date(a.starts_at) < end && new Date(a.ends_at) > start).length;
+    return { max: (DEMO_SLOTS.find((s) => s.key === slot) || {}).max_concurrent || 1, taken };
+  }
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc('ad_availability', { p_slot: slot, p_start: start.toISOString(), p_end: end.toISOString() });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function marketAds(mid) {
+  if (MODE === 'demo') {
+    return (demoState().ads || []).filter((a) => a.supermarket_id === mid).map((a) => ({ ...a, plan_name: DEMO_PLANS.find((p) => p.id === a.plan_id)?.name, slot_name: DEMO_SLOTS.find((s) => s.key === a.slot)?.name,
+      views: a.status === 'aprovada' ? 420 : 0, reveals: a.status === 'aprovada' ? 96 : 0, clicks: a.status === 'aprovada' ? 31 : 0 }));
+  }
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc('market_ads', { p_market: mid });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function requestAd(p) {
+  if (MODE === 'demo') {
+    const d = demoState(); d.ads ||= [];
+    const { plans, slots } = await adCatalog();
+    const plan = plans.find((x) => x.id === p.plan_id); const slot = slots.find((x) => x.key === p.slot);
+    const start = new Date(p.starts_at); const end = new Date(start.getTime() + plan.hours * 36e5);
+    const av = await adAvailability(p.slot, start, end);
+    if (av.taken >= av.max) throw new Error(`O espaço “${slot.name}” já está reservado nesse período. Escolha outro horário ou outro espaço.`);
+    d.ads.unshift({ ...p, id: (d.nextAd = (d.nextAd || 100) + 1), starts_at: start.toISOString(), ends_at: end.toISOString(), price: Math.round(plan.price * slot.multiplier),
+      status: 'pendente', paid: false, created_at: new Date().toISOString() });
+    saveDemo(d); return;
+  }
+  const c = await api.sbClient();
+  const { error } = await c.rpc('market_ad_request', { p });
+  if (error) throw new Error(error.message);
+}
+
+export async function cancelAd(id) {
+  if (MODE === 'demo') { const d = demoState(); const a = (d.ads || []).find((x) => x.id === id); if (a) a.status = 'cancelada'; saveDemo(d); return; }
+  const c = await api.sbClient();
+  const { error } = await c.rpc('market_ad_cancel', { p_id: id });
+  if (error) throw new Error(error.message);
+}

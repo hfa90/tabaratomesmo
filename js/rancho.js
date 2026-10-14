@@ -1,6 +1,8 @@
 // Rancho do mês: lista mensal, relatório "onde comprar", distância de casa e dias das proteínas.
 import * as api from './api.js';
 import { track } from './track.js';
+import * as ads from './ads.js';
+let adRanchoHTML = '';
 import { BAIRROS } from './config.js';
 import {
   S, $, $$, esc, brl, km, haversine, isOn, logo, logoFull, priceTag, stepper, hooks, DOW, DOW_SHORT, reduceMotion, media,
@@ -353,7 +355,10 @@ export function render() {
       <div class="rx-tools">
         <button class="btn btn--text btn--sm" data-rancho="share">Compartilhar lista</button>
         <button class="btn btn--text btn--sm" data-rancho="clear">Limpar lista</button>
-      </div>`;
+      </div>
+      <div id="adRancho"></div>`;
+    if (!adRanchoHTML) adRanchoHTML = ads.htmlFor('rancho');
+    $('#adRancho').innerHTML = adRanchoHTML; ads.observeAll($('#adRancho'));
   }
 
   $('#ranchoBar').hidden = false;

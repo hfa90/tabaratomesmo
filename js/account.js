@@ -36,6 +36,11 @@ function stats() {
     r.n++; r.spent += e.spent || (e.bought ? e.totals?.[e.bought] : e.bestTotal) || 0; if (e.bought) r.confirmed++;
     byMarket.set(mid, r);
   }
+  // compras registradas no Carrinho (dentro da loja) também contam
+  for (const pu of api.store.get('tb.purchases', [])) {
+    const r = byMarket.get(pu.market) || { n: 0, spent: 0, confirmed: 0 };
+    r.n++; r.spent += pu.total || 0; r.confirmed++; byMarket.set(pu.market, r);
+  }
   const markets = [...byMarket].map(([id, r]) => ({ m: S.markets.get(id), ...r })).filter((x) => x.m).sort((a, b) => b.n - a.n || b.spent - a.spent);
   // últimos 6 meses (inclusive os sem rancho)
   const months = [];
@@ -92,9 +97,9 @@ function favMarket(st) {
   const top = st.markets[0];
   return `<section class="panel">
     <div class="panel__head"><h2>Seu supermercado</h2><span class="muted small">${top.confirmed ? 'pelas compras que você registrou' : 'pelos ranchos concluídos'}</span></div>
-    <div style="display:flex;align-items:center;gap:12px">${logo(top.m, 'lg')}<p>Você mais compra no <b>${esc(top.m.name)}</b>: ${top.n} de ${st.es.length} ${st.es.length > 1 ? 'ranchos' : 'rancho'}.</p></div>
+    <div style="display:flex;align-items:center;gap:12px">${logo(top.m, 'lg')}<p>Você mais compra no <b>${esc(top.m.name)}</b>: ${top.n} de ${st.markets.reduce((s, x) => s + x.n, 0)} compras.</p></div>
     <div class="fav-market">${donut(st.markets)}
-      <ul class="legend">${st.markets.map((x) => `<li><span class="logo logo--xs" style="--c:${esc(x.m.color)}"></span><span>${esc(x.m.name)}<br/><small>${x.n} ${x.n > 1 ? 'vezes' : 'vez'}${x.spent ? `, ${brl(x.spent)}` : ''}</small></span><b>${Math.round((x.n / st.es.length) * 100)}%</b></li>`).join('')}</ul>
+      <ul class="legend">${st.markets.map((x) => `<li><span class="logo logo--xs" style="--c:${esc(x.m.color)}"></span><span>${esc(x.m.name)}<br/><small>${x.n} ${x.n > 1 ? 'vezes' : 'vez'}${x.spent ? `, ${brl(x.spent)}` : ''}</small></span><b>${Math.round((x.n / st.markets.reduce((s, y) => s + y.n, 0)) * 100)}%</b></li>`).join('')}</ul>
     </div>
   </section>`;
 }

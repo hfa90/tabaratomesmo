@@ -166,3 +166,37 @@ body.portal { padding-bottom: 0; }
   body { background: #fff; }
 }
 .portal .sheet:not(.sheet--narrow) .sheet__panel { max-width: 860px; }
+
+/* ---------- publicidade (portal e admin) ---------- */
+.ad-builder { display: grid; gap: 16px; align-items: start; }
+.ad-side { display: grid; gap: 8px; position: sticky; top: calc(var(--top-h) + 16px); }
+.opt-grid { display: grid; gap: 8px; }
+.opt { display: flex !important; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--line-2); border-radius: 12px; cursor: pointer; font-weight: 500 !important; }
+.opt:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--brand); }
+.opt input { margin-top: 3px; accent-color: var(--brand); }
+.opt span { display: grid; gap: 2px; flex: 1; }
+.opt b { color: var(--ink); }
+.opt small { color: var(--muted); font-weight: 400; }
+.opt em { font-style: normal; font-weight: 700; color: var(--brand); font-size: .85rem; }
+.checks { list-style: none; margin: 0; padding: 12px; border-radius: 12px; background: var(--surface-2); display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+.checks li.ok { color: var(--down); font-weight: 600; }
+.ad-total { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ad-total span { color: var(--muted); font-size: .85rem; }
+.ad-total b { font: 700 1.8rem var(--display); }
+.ad-total small { color: var(--muted); }
+.ad-admin-list { display: grid; gap: 12px; margin: 12px 0 16px; }
+.ad-admin { display: grid !important; gap: 14px; }
+.ad-admin__info { display: grid; gap: 6px; align-content: start; }
+.num-in { width: 84px; text-align: right; }
+.photo-grid { display: grid; gap: 12px; }
+.photo-card { gap: 10px; }
+.photo-card__img { display: block; border-radius: 12px; overflow: hidden; background: var(--surface-2); aspect-ratio: 4 / 3; }
+.photo-card__img img { width: 100%; height: 100%; object-fit: cover; }
+.photo-card small { display: block; }
+@media (min-width: 700px) {
+  .opt-grid { grid-template-columns: 1fr 1fr; }
+  .opt-grid--plans { grid-template-columns: repeat(3, 1fr); }
+  .photo-grid { grid-template-columns: repeat(3, 1fr); }
+  .ad-admin { grid-template-columns: minmax(0, 420px) 1fr; }
+}
+@media (min-width: 1100px) { .ad-builder { grid-template-columns: minmax(0, 1fr) 380px; } }

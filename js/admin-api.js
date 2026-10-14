@@ -58,7 +58,7 @@ async function demo() {
     members: [{ user_id: 'u3', supermarket_id: 5, email: users[4].email, full_name: users[4].full_name, role: 'admin', suspended: false, created_at: new Date(Date.now() - 9 * 864e5).toISOString(), last_sign_in_at: new Date().toISOString() },
       { user_id: 'u7', supermarket_id: 1, email: users[8].email, full_name: users[8].full_name, role: 'admin', suspended: false, created_at: new Date(Date.now() - 4 * 864e5).toISOString(), last_sign_in_at: null }],
     invites: [{ code: 'A1B2C3D4', supermarket_id: 2, role: 'admin', uses_left: 5, expires_at: new Date(Date.now() + 20 * 864e5).toISOString(), created_at: new Date().toISOString() }],
-    users, settings: { anon_comparisons: 3, quick_comparisons: 15, collab_enabled: true, promos_enabled: true, portal_enabled: true, tracking_enabled: true, banner: '' },
+    users, settings: { anon_comparisons: 3, quick_comparisons: 15, collab_enabled: true, promos_enabled: true, portal_enabled: true, tracking_enabled: true, ads_enabled: true, banner: '' },
     admins: [{ email: 'haydenfernandes.ti@gmail.com', added_by: 'instalação', created_at: new Date().toISOString(), has_account: true }],
     log: [], productsOff: [], promoOff: [],
     reports: Array.from({ length: 14 }, (_, i) => {
@@ -244,7 +244,7 @@ export async function settings() {
   }
   const d = await demo();
   const labels = { anon_comparisons: 'Comparações sem cadastro', quick_comparisons: 'Comparações com cadastro rápido', collab_enabled: 'Usuários podem informar preços',
-    promos_enabled: 'Promoções dos mercados aparecem no site', portal_enabled: 'Área do supermercado liberada', tracking_enabled: 'Coleta de métricas de uso', banner: 'Aviso no topo do site (vazio = sem aviso)' };
+    promos_enabled: 'Promoções dos mercados aparecem no site', portal_enabled: 'Área do supermercado liberada', tracking_enabled: 'Coleta de métricas de uso', ads_enabled: 'Publicidade aparece no site', banner: 'Aviso no topo do site (vazio = sem aviso)' };
   return Object.entries(d.settings).map(([key, value]) => ({ key, value, label: labels[key] }));
 }
 export async function setSetting(key, value) {
@@ -270,3 +270,51 @@ export async function log() {
   return (await demo()).log;
 }
 export function resetDemo() { ls.set('tb.adminDemo', null); D = null; }
+
+// ---------------------------------------------------------------- publicidade
+import { DEMO_PLANS, DEMO_SLOTS } from './portal-api.js';
+export async function adsAdmin(status) {
+  if (MODE !== 'demo') return rpc('admin_ads', { p_status: status });
+  const d = await demo(); d.adPlans ||= DEMO_PLANS.map((x) => ({ ...x })); d.adSlots ||= DEMO_SLOTS.map((x) => ({ ...x }));
+  const pd = ls.get('tb.portalDemo', {}); const { DEMO } = await import('./demo-data.js');
+  const all = (pd.ads || []).map((a) => ({ ...a, market: DEMO.supermarkets.find((m) => m.id === a.supermarket_id)?.name, color: DEMO.supermarkets.find((m) => m.id === a.supermarket_id)?.color,
+    plan_name: d.adPlans.find((p) => p.id === a.plan_id)?.name, slot_name: d.adSlots.find((s) => s.key === a.slot)?.name, views: a.status === 'aprovada' ? 420 : 0, reveals: a.status === 'aprovada' ? 96 : 0, clicks: a.status === 'aprovada' ? 31 : 0 }));
+  const now = Date.now(); const live = (a) => a.status === 'aprovada' && new Date(a.starts_at) <= now && new Date(a.ends_at) > now;
+  return { campaigns: all.filter((a) => status === 'all' || a.status === status || (status === 'live' && live(a))),
+    revenue: { paid_month: all.filter((a) => a.paid).reduce((s, a) => s + a.price, 0), paid_total: all.filter((a) => a.paid).reduce((s, a) => s + a.price, 0),
+      to_receive: all.filter((a) => a.status === 'aprovada' && !a.paid).reduce((s, a) => s + a.price, 0), pending: all.filter((a) => a.status === 'pendente').length, live: all.filter((a) => live(a) && a.paid).length },
+    plans: d.adPlans, slots: d.adSlots };
+}
+export async function adSet(id, action, reason) {
+  if (MODE !== 'demo') return rpc('admin_ad_set', { p_id: id, p_action: action, p_reason: reason || null });
+  const pd = ls.get('tb.portalDemo', {}); const a = (pd.ads || []).find((x) => x.id === id); if (!a) return;
+  if (action === 'aprovar') { a.status = 'aprovada'; a.reject_reason = null; } else if (action === 'recusar') { a.status = 'recusada'; a.reject_reason = reason; }
+  else if (action === 'pausar') a.status = 'pausada'; else if (action === 'retomar') a.status = 'aprovada'; else if (action === 'pago') a.paid = true; else if (action === 'nao_pago') a.paid = false;
+  else if (action === 'excluir') pd.ads = pd.ads.filter((x) => x.id !== id);
+  ls.set('tb.portalDemo', pd);
+}
+export async function savePlan(p) {
+  if (MODE !== 'demo') return rpc('admin_save_ad_plan', { p });
+  const d = await demo(); d.adPlans ||= DEMO_PLANS.map((x) => ({ ...x }));
+  if (p.id) Object.assign(d.adPlans.find((x) => x.id === Number(p.id)), { ...p, id: Number(p.id), hours: Number(p.hours ?? d.adPlans.find((x) => x.id === Number(p.id)).hours), price: Number(p.price ?? d.adPlans.find((x) => x.id === Number(p.id)).price) });
+  else d.adPlans.push({ ...p, id: Math.max(...d.adPlans.map((x) => x.id)) + 1, hours: Number(p.hours), price: Number(p.price), active: true, sort: 99 });
+  saveDemo();
+}
+export async function saveSlot(p) {
+  if (MODE !== 'demo') return rpc('admin_save_ad_slot', { p });
+  const d = await demo(); d.adSlots ||= DEMO_SLOTS.map((x) => ({ ...x }));
+  Object.assign(d.adSlots.find((x) => x.key === p.key), p); saveDemo();
+}
+
+// ---------------------------------------------------------------- fotos de etiqueta (carrinho)
+export async function shelfPhotos(status) {
+  if (MODE !== 'demo') return rpc('admin_shelf_photos', { p_status: status });
+  const { DEMO } = await import('./demo-data.js');
+  return ls.get('tb.demoPhotos', []).map((f, i) => ({ id: i + 1, created_at: f.at, status: f.status || 'pendente', spoken: f.spoken, name: f.name, price: f.price, site_price: f.site_price,
+    photo_url: 'assets/icon.svg', market: DEMO.supermarkets.find((m) => m.id === f.supermarket_id)?.name, product: DEMO.products.find((p) => p.id === f.product_id)?.name, email: 'voce@demonstracao' }))
+    .filter((f) => status === 'all' || f.status === status);
+}
+export async function reviewPhoto(id, approve) {
+  if (MODE !== 'demo') return rpc('admin_review_photo', { p_id: id, p_approve: approve });
+  const l = ls.get('tb.demoPhotos', []); if (l[id - 1]) l[id - 1].status = approve ? 'aprovada' : 'recusada'; ls.set('tb.demoPhotos', l);
+}

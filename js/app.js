@@ -9,6 +9,9 @@ import * as rancho from './rancho.js';
 import * as fiscal from './fiscal.js';
 import * as account from './account.js';
 import { track } from './track.js';
+import * as carrinho from './carrinho.js';
+import * as fila from './fila.js';
+import * as ads from './ads.js';
 
 
 function card(p, i) {
@@ -62,10 +65,15 @@ function filtered() {
   return arr;
 }
 
+let gridAd = '';
 function renderGrid() {
   const arr = filtered();
   const grid = $('#productGrid');
-  grid.innerHTML = arr.map(card).join('');
+  const cards = arr.map(card);
+  // um card de curiosidade patrocinado depois do 8º produto (só na lista completa)
+  if (gridAd && cards.length > 10) cards.splice(8, 0, gridAd);
+  grid.innerHTML = cards.join('');
+  ads.observeAll(grid);
   grid.classList.toggle('is-anim', !reduceMotion);
   $('#emptyState').hidden = arr.length > 0;
   if (!arr.length) {
@@ -594,12 +602,15 @@ function renderAccount() { account.render(); }
 // ======================================================================
 function route() {
   const v = (location.hash || '#ofertas').slice(1).split('?')[0];
-  const view = ['ofertas', 'mapa', 'lista', 'conta'].includes(v) ? v : 'ofertas';
+  const view = ['ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila'].includes(v) ? v : 'ofertas';
   $$('.view').forEach((s) => (s.hidden = s.dataset.view !== view));
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === view));
   if (view === 'mapa') drawMap();
   if (view === 'lista') renderList();
   if (view === 'conta') renderAccount();
+  if (view === 'carrinho') carrinho.render();
+  if (view === 'fila') fila.render();
+  $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === (view === 'fila' ? 'carrinho' : view)));
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
 }
 
@@ -729,18 +740,21 @@ async function refreshCatalog() {
   if (location.hash === '#lista') renderList();
 }
 Object.assign(hooks, {
-  setQty, toast, openSheet, closeSheet, openAuth, refreshCatalog, card,
+  setQty, toast, openSheet, closeSheet, openAuth, refreshCatalog, card, openProduct,
   afterListLoad: () => { updateListBadge(); renderGrid(); if (location.hash === '#lista') renderList(); },
   openHome: (cb) => openLoc('home', cb),
   afterContribution: () => { fiscal.renderHome(); if (S.user) api.getProfile().then((p) => { S.profile = p; renderProfileBanner(); }).catch(() => {}); },
 });
 
 async function boot() {
-  skeleton(); renderBairros(); updateListBadge();
+  skeleton(); renderBairros(); updateListBadge(); carrinho.badge();
   const data = await api.loadCatalog();
   data.supermarkets.forEach((m) => S.markets.set(m.id, m));
   S.settings = await api.loadSettings();
   applySettings();
+  await ads.load();
+  gridAd = ads.htmlFor('grid');
+  ads.render('home', $('#adHome'));
   S.stores = data.stores; S.categories = data.categories; S.products = data.products;
   // remove mercados ligados que não existem mais
   S.enabled = new Set([...S.enabled].filter((id) => S.markets.has(id)));

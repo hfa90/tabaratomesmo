@@ -4,6 +4,7 @@ import * as P from './portal-api.js';
 import { lineChart } from './chart.js';
 import { $, $$, esc, brl, logo, reduceMotion } from './core.js';
 import { hbars, kpi, heatmap, fmtN, pctTxt, DOW } from './viz.js';
+import * as ads from './ads.js';
 
 const st = {
   user: null, markets: [], mid: null, categories: [],
@@ -135,9 +136,9 @@ function renderPicker() {
 function route() {
   if (!st.mid) return;
   const v = (location.hash || '#painel').slice(1);
-  const view = ['painel', 'produtos', 'promocoes', 'importar'].includes(v) ? v : 'painel';
+  const view = ['painel', 'produtos', 'promocoes', 'importar', 'publicidade'].includes(v) ? v : 'painel';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
-  ({ painel: renderDashboard, produtos: renderProducts, promocoes: renderPromos, importar: renderImport })[view]();
+  ({ painel: renderDashboard, produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds })[view]();
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
@@ -561,6 +562,170 @@ async function exportCatalog() {
   const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, 'Produtos');
   X.writeFile(wb, `produtos-${market().slug || st.mid}-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
+
+// ================================================================ PUBLICIDADE
+const CTAS = ['Ver oferta', 'Conhecer', 'Aproveitar', 'Ver no mapa', 'Quero saber'];
+const ad = { slot: 'home', plan: 2, date: '', hour: 8, title: '', teaser: '', body: '', cta: 'Ver oferta', target: 'none', targetValue: '', image: null, imageFile: null, cat: null };
+const AD_STATUS = { pendente: ['pill--soft', 'Aguardando aprovação'], aprovada: ['pill--ok', 'Aprovada'], recusada: ['pill--warn', 'Recusada'], pausada: ['pill--soft', 'Pausada'], cancelada: ['pill--soft', 'Cancelada'] };
+
+/** regras para o anúncio não poluir: curto, sem gritar, sem link no texto, poucos emojis */
+function adChecks() {
+  const all = `${ad.title} ${ad.teaser} ${ad.body}`;
+  const letters = all.replace(/[^A-Za-zÀ-ú]/g, '');
+  const caps = letters ? letters.replace(/[^A-ZÀ-Ý]/g, '').length / letters.length : 0;
+  const emojis = (all.match(/\p{Extended_Pictographic}/gu) || []).length;
+  return [
+    [ad.title.trim().length >= 6 && ad.title.trim().length <= 40, 'Chamada entre 6 e 40 letras'],
+    [/\?$/.test(ad.title.trim()) || /^(qual|quem|onde|quando|como|por que|sabia|já|adivinha|esqueceu|o que)/i.test(ad.title.trim()), 'Chamada que desperta curiosidade (pergunta ou mistério)'],
+    [ad.body.trim().length >= 10, 'Revelação dizendo qual é a oferta'],
+    [caps <= 0.4, 'Sem texto em CAIXA ALTA'],
+    [(all.match(/!/g) || []).length <= 1, 'No máximo um ponto de exclamação'],
+    [!/(https?:|www\.|\.com)/i.test(all), 'Sem links no texto'],
+    [emojis <= 1, 'No máximo um emoji'],
+    [!!ad.image, 'Imagem quadrada, de pelo menos 600 × 600'],
+  ];
+}
+
+function adPreview() {
+  const m = market();
+  return ads.html({ id: 0, title: ad.title || 'Sua pergunta aparece aqui?', teaser: ad.teaser || 'Toque para descobrir.', body: ad.body || 'Aqui aparece a oferta quando a pessoa toca.',
+    image_url: ad.image || m.logo_url || 'assets/icon.svg', cta: ad.cta, market: m.name }, { preview: true });
+}
+
+async function renderAds() {
+  const main = $('#ptMain');
+  main.innerHTML = `${banner()}<header class="pt-head"><div><h1>Publicidade</h1><p class="muted">Anúncios em formato de curiosidade: a pessoa vê uma pergunta e a imagem desfocada, e toca para descobrir a oferta. Nada de pop-up ou banner piscando.</p></div></header>
+    <div id="adWrap"><div class="skeleton" style="height:320px"></div></div>`;
+  try { ad.cat ||= await P.adCatalog(); await loadCatalog().catch(() => {}); } catch (e) { $('#adWrap').innerHTML = `<p class="note">${esc(e.message)}${P.MODE === 'live' ? ' Rode o schema.sql atualizado para ativar a publicidade.' : ''}</p>`; return; }
+  const { plans, slots } = ad.cat;
+  if (!ad.date) { const d = new Date(Date.now() + 864e5); ad.date = d.toISOString().slice(0, 10); }
+  const slot = slots.find((x) => x.key === ad.slot) || slots[0]; const plan = plans.find((x) => x.id === ad.plan) || plans[0];
+  const price = Math.round(plan.price * slot.multiplier);
+  const checks = adChecks();
+  $('#adWrap').innerHTML = `
+    <div class="ad-builder">
+      <form class="form panel" id="adForm" style="margin:0">
+        <fieldset class="pick"><legend>1. Onde aparece</legend>
+          <div class="opt-grid">${slots.map((x) => `<label class="opt"><input type="radio" name="slot" value="${x.key}" ${x.key === slot.key ? 'checked' : ''} /><span><b>${esc(x.name)}</b><small>${esc(x.description || '')}</small><em>a partir de ${brl(Math.round(plans[0].price * x.multiplier))}</em></span></label>`).join('')}</div></fieldset>
+        <fieldset class="pick"><legend>2. Por quanto tempo</legend>
+          <div class="opt-grid opt-grid--plans">${plans.map((p) => `<label class="opt"><input type="radio" name="plan" value="${p.id}" ${p.id === plan.id ? 'checked' : ''} /><span><b>${esc(p.name)}</b><small>${esc(p.blurb || `${p.hours} horas`)}</small><em>${brl(Math.round(p.price * slot.multiplier))}</em></span></label>`).join('')}</div></fieldset>
+        <fieldset class="pick"><legend>3. Quando começa</legend>
+          <div class="form__row"><label>Dia<input type="date" name="date" min="${new Date().toISOString().slice(0, 10)}" value="${ad.date}" required /></label>
+          <label>Hora<select name="hour">${[...Array(24).keys()].map((h) => `<option value="${h}" ${h === ad.hour ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('')}</select></label></div>
+          <p class="small" id="adAvail"></p></fieldset>
+        <fieldset class="pick"><legend>4. O anúncio</legend>
+          <label>Chamada (uma pergunta ou mistério)<input name="title" maxlength="40" value="${esc(ad.title)}" placeholder="Ex.: Qual carne baixou 18% hoje?" /></label>
+          <label>Dica curta (opcional)<input name="teaser" maxlength="70" value="${esc(ad.teaser)}" placeholder="Ex.: Só quem abrir descobre." /></label>
+          <label>A revelação: qual é a oferta<textarea name="body" maxlength="120" placeholder="Ex.: Picanha com 18% de desconto até domingo.">${esc(ad.body)}</textarea></label>
+          <div class="form__row"><label>Botão<select name="cta">${CTAS.map((c) => `<option ${c === ad.cta ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+          <label>Ao tocar no botão<select name="target"><option value="none" ${ad.target === 'none' ? 'selected' : ''}>Só mostrar a oferta</option><option value="product" ${ad.target === 'product' ? 'selected' : ''}>Abrir um produto meu</option><option value="store" ${ad.target === 'store' ? 'selected' : ''}>Rota até minha loja mais perto</option><option value="url" ${ad.target === 'url' ? 'selected' : ''}>Abrir um link (https)</option></select></label></div>
+          ${ad.target === 'product' ? `<label>Produto<select name="targetValue">${(st.catalog || []).filter((r) => r.active).map((r) => `<option value="${r.product_id}" ${String(r.product_id) === ad.targetValue ? 'selected' : ''}>${esc(r.name)} ${esc(r.brand || '')} ${esc(r.unit || '')}</option>`).join('')}</select></label>` : ''}
+          ${ad.target === 'url' ? `<label>Link<input name="targetValue" type="url" placeholder="https://" value="${esc(ad.targetValue)}" /></label>` : ''}
+          <div class="photo-pick"><button type="button" class="thumb thumb--lg" data-adimg>${ad.image ? `<img src="${esc(ad.image)}" alt="" />` : '<span>🖼️</span><i>Escolher imagem</i>'}</button>
+            <p class="muted small">Foto real do produto ou da loja, quadrada, de pelo menos 600 × 600. Evite imagens com muito texto: a pergunta já está no anúncio.</p>
+            <input type="file" id="adImgInput" accept="image/*" hidden /></div>
+        </fieldset>
+        <ul class="checks">${checks.map(([ok, t]) => `<li class="${ok ? 'ok' : ''}">${ok ? '✓' : '○'} ${t}</li>`).join('')}</ul>
+        <div class="ad-total"><span>Total</span><b>${brl(price)}</b><small>${esc(plan.name)} · ${esc(slot.name)}</small></div>
+        <p class="form__err" role="alert"></p>
+        <button class="btn btn--primary btn--block" ${checks.every((c) => c[0]) ? '' : 'disabled'}>Enviar para aprovação</button>
+        <p class="muted small">A equipe do Tá Barato Mesmo? confere o anúncio e combina o pagamento (PIX). Depois de pago, ele entra no ar sozinho no horário escolhido.</p>
+      </form>
+      <div class="ad-side"><p class="pd__h">Como as pessoas veem</p><div id="adPrev">${adPreview()}</div>
+        <p class="muted small">Toque em “Descobrir” na prévia para ver a oferta revelada.</p></div>
+    </div>
+    <section class="panel" style="margin-top:16px"><div class="panel__head"><h2>Suas campanhas</h2></div><div id="adList"><div class="skeleton" style="height:120px"></div></div></section>`;
+  checkAvail();
+  try {
+    const list = await P.marketAds(st.mid);
+    $('#adList').innerHTML = list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>Anúncio</th><th>Espaço</th><th>Período</th><th class="r">Valor</th><th>Situação</th><th class="r">Vistos</th><th class="r">Abertos</th><th class="r">Cliques</th><th></th></tr></thead><tbody>
+      ${list.map((a) => { const [cls, lbl] = AD_STATUS[a.status] || ['pill--soft', a.status]; const live = a.status === 'aprovada' && a.paid && new Date(a.starts_at) <= Date.now() && new Date(a.ends_at) > Date.now();
+        return `<tr><td><img class="mini-photo" src="${esc(a.image_url)}" alt="" /></td><td><b>${esc(a.title)}</b>${a.reject_reason ? `<small class="up">${esc(a.reject_reason)}</small>` : ''}</td><td>${esc(a.slot_name || a.slot)}<small class="muted">${esc(a.plan_name || '')}</small></td>
+        <td class="nowrap">${new Date(a.starts_at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}<small class="muted">até ${new Date(a.ends_at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></td>
+        <td class="r">${brl(Number(a.price))}<small class="muted">${a.paid ? 'pago' : 'a pagar'}</small></td>
+        <td>${live ? '<span class="pill pill--ok">No ar</span>' : `<span class="pill ${cls}">${lbl}</span>`}</td>
+        <td class="r">${fmtN(a.views)}</td><td class="r">${fmtN(a.reveals)}</td><td class="r">${fmtN(a.clicks)}${a.views ? `<small class="muted">${((a.clicks / a.views) * 100).toFixed(1).replace('.', ',')}%</small>` : ''}</td>
+        <td class="r">${['pendente', 'aprovada'].includes(a.status) && new Date(a.starts_at) > Date.now() ? `<button class="btn btn--text btn--sm" data-adcancel="${a.id}">Cancelar</button>` : ''}</td></tr>`; }).join('')}
+      </tbody></table></div>` : '<p class="muted small">Nenhuma campanha ainda.</p>';
+  } catch (e) { $('#adList').innerHTML = `<p class="note">${esc(e.message)}</p>`; }
+}
+
+let availT;
+function checkAvail() {
+  clearTimeout(availT);
+  availT = setTimeout(async () => {
+    const el = $('#adAvail'); if (!el || !ad.cat) return;
+    const plan = ad.cat.plans.find((x) => x.id === ad.plan); if (!plan || !ad.date) return;
+    const start = new Date(`${ad.date}T${String(ad.hour).padStart(2, '0')}:00:00`); const end = new Date(start.getTime() + plan.hours * 36e5);
+    try {
+      const a = await P.adAvailability(ad.slot, start, end);
+      el.innerHTML = a.taken >= a.max ? '<span class="up">✗ Espaço já reservado nesse período. Escolha outro dia, horário ou espaço.</span>'
+        : `<span class="down">✓ Disponível</span> <span class="muted">de ${start.toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} até ${end.toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>`;
+    } catch { el.textContent = ''; }
+  }, 250);
+}
+
+function adImageCheck(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => { const r = img.width / img.height; URL.revokeObjectURL(url);
+      if (img.width < 600 || img.height < 600) return rej(new Error(`A imagem tem ${img.width} × ${img.height}. Use uma de pelo menos 600 × 600.`));
+      if (r < 0.8 || r > 1.25) return rej(new Error('Use uma imagem quadrada (ou quase): a largura e a altura precisam ser parecidas.'));
+      res(); };
+    img.onerror = () => rej(new Error('Arquivo de imagem inválido.'));
+    img.src = url;
+  });
+}
+
+document.addEventListener('input', (e) => {
+  const f = e.target.closest('#adForm'); if (!f) return;
+  const n = e.target.name; if (!['title', 'teaser', 'body'].includes(n)) return;
+  ad[n] = e.target.value;
+  $('#adPrev').innerHTML = adPreview();
+  const checks = adChecks();
+  $('#adForm .checks').innerHTML = checks.map(([ok, t]) => `<li class="${ok ? 'ok' : ''}">${ok ? '✓' : '○'} ${t}</li>`).join('');
+  $('#adForm button.btn--primary').disabled = !checks.every((c) => c[0]);
+});
+document.addEventListener('change', async (e) => {
+  const f = e.target.closest('#adForm');
+  if (e.target.id === 'adImgInput' && e.target.files[0]) {
+    const file = e.target.files[0]; e.target.value = '';
+    try { await adImageCheck(file); ad.imageFile = file; ad.image = URL.createObjectURL(file); renderAds(); }
+    catch (err) { toast(err.message, 'warn'); }
+    return;
+  }
+  if (!f) return;
+  const n = e.target.name;
+  if (n === 'slot') ad.slot = e.target.value; else if (n === 'plan') ad.plan = Number(e.target.value);
+  else if (n === 'date') ad.date = e.target.value; else if (n === 'hour') ad.hour = Number(e.target.value);
+  else if (n === 'cta') { ad.cta = e.target.value; $('#adPrev').innerHTML = adPreview(); return; }
+  else if (n === 'target') { ad.target = e.target.value; ad.targetValue = ''; }
+  else if (n === 'targetValue') { ad.targetValue = e.target.value; return; }
+  else return;
+  renderAds();
+});
+document.addEventListener('click', async (e) => {
+  if (e.target.closest('[data-adimg]')) return $('#adImgInput').click();
+  const c = e.target.closest('[data-adcancel]');
+  if (c) { if (!confirm('Cancelar esta campanha?')) return; try { await P.cancelAd(Number(c.dataset.adcancel)); toast('Campanha cancelada.'); renderAds(); } catch (err) { toast(err.message, 'warn'); } }
+});
+document.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'adForm') return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const f = e.target; const err = (m) => { $('.form__err', f).textContent = m; };
+  if (ad.target === 'product' && !ad.targetValue) ad.targetValue = f.targetValue?.value || '';
+  if (ad.target === 'url' && !/^https:\/\//.test(f.targetValue?.value || '')) return err('Informe um link que comece com https://');
+  if (ad.target === 'url') ad.targetValue = f.targetValue.value;
+  const btn = $('button.btn--primary', f); btn.disabled = true;
+  try {
+    const url = ad.imageFile ? await P.uploadPhoto(st.mid, ad.imageFile, 'anuncio') : ad.image;
+    await P.requestAd({ supermarket_id: st.mid, slot: ad.slot, plan_id: ad.plan, title: ad.title.trim(), teaser: ad.teaser.trim(), body: ad.body.trim(), cta: ad.cta,
+      image_url: url, target_type: ad.target, target_value: ad.target === 'store' ? String(st.mid) : ad.targetValue || null,
+      starts_at: new Date(`${ad.date}T${String(ad.hour).padStart(2, '0')}:00:00`).toISOString() });
+    Object.assign(ad, { title: '', teaser: '', body: '', image: null, imageFile: null });
+    toast('Anúncio enviado para aprovação.'); renderAds();
+  } catch (ex) { err(ex.message); btn.disabled = false; }
+}, true);
 
 // ================================================================ eventos
 let photoTarget = null;

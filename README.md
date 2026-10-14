@@ -19,6 +19,9 @@ Comparador de preços de supermercados de Manaus: Nova Era, Supermercados DB, Ve
   - cada preço informado libera +2 comparações para quem está no cadastro rápido;
   - um preço entra no site quando **duas pessoas confirmam o mesmo valor (±3%) em 48 h**, ou quando alguém confiável (3+ envios aprovados) informa estando na loja. Valores muito fora do último preço são recusados e há limite de 60 envios por dia.
 - **Mapa** das lojas (Leaflet + OpenStreetMap).
+- **Carrinho por voz** (aba do meio, com microfone): a pessoa fala o item como falaria no mercado ("Nescau 370 gramas 9 e 49", "duas caixas de leite a 5,49", "meio quilo de carne moída 19,90") e o site anota, soma e compara com o orçamento. O leitor da frase (`js/voice.js`) não usa IA: entende números por extenso, preço ("12 e 50", "R$ 12,50", "12 reais e 50 centavos"), tamanho ("500 gramas", "1 quilo e meio") e quantidade, e acha o produto mesmo com erros do reconhecedor ("nescal") ou só pela marca ("toddy" → achocolatado). Se o preço difere do site, se o tamanho é outro ou se o produto não existe, abre a câmera para a pessoa fotografar a etiqueta; a foto vai para a moderação no admin.
+- **Na fila do caixa** (`#fila`): cronômetro, total do carrinho para conferir antes de pagar, o jogo "Tá barato ou tá caro?" com preços reais, uma curiosidade do dia e "confira 3 preços desta loja".
+- **Publicidade em formato de curiosidade**: o anúncio mostra uma pergunta e a imagem desfocada; a oferta só aparece quando a pessoa toca em "Descobrir". Um anúncio por espaço, sem pop-up, com "Ocultar" por 7 dias. Espaços: destaque da página inicial, entre os produtos, Rancho do mês, Carrinho e Fila do caixa. Planos (editáveis no admin): Relâmpago 6 h R$ 39, Diário R$ 89, Fim de semana R$ 199, Semanal R$ 389, Mensal R$ 1.190, multiplicados pelo espaço (página inicial ×1,5, carrinho ×1,3, rancho ×1,2, entre os produtos ×1, fila ×0,8). O supermercado pede e agenda no portal; o administrador aprova, marca como pago e a campanha entra no ar sozinha.
 - **Página Você**: quanto a pessoa já economizou (total, por mês e projeção), o supermercado onde mais compra, histórico dos ranchos, conquistas, fiscal do preço e dados da conta. Funciona até sem conta (guarda no aparelho).
 - **Área do supermercado** (`parceiros.html`): cada mercado cadastra, edita e remove produtos, envia fotos reais, cria promoções **exclusivas do site** (com código para o caixa) ou **gerais da loja**, importa produtos em massa pela planilha [`assets/modelo-importacao-tabaratomesmo.xlsx`](assets/modelo-importacao-tabaratomesmo.xlsx) e acompanha métricas: buscas, buscas sem resultado, produtos e marcas mais vistos, ranking de preferência de compra (dia/semana/mês), regiões e bairros, sexo e faixa etária de quem faz o rancho, horários de pico, produtos em que está perdendo clientes e desempenho das promoções.
 - **Cadastro em duas etapas**: o cadastro rápido (nome, e-mail, senha) libera 15 comparações; o cadastro completo (celular, nascimento, bairro, mercados preferidos) libera uso sem limite. Sem cadastro: 3 comparações.
@@ -106,6 +109,10 @@ admin.html            administração master
 js/admin.js           administração: métricas, acessos, usuários, moderação, configurações
 js/admin-api.js       dados da administração (Supabase ou demonstração)
 js/viz.js             barras, indicadores, mapa de calor e exportação CSV
+js/voice.js           leitor de frases faladas (preço, tamanho, quantidade) e busca no catálogo
+js/carrinho.js        carrinho por voz, orçamento e foto da etiqueta
+js/fila.js            modo fila do caixa e o jogo "Tá barato ou tá caro?"
+js/ads.js             anúncios de curiosidade nos espaços do site
 js/portal.js          portal: painel, produtos, promoções, importação
 js/portal-api.js      dados do portal (Supabase ou demonstração)
 css/portal.css        estilos do portal

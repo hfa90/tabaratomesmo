@@ -448,3 +448,37 @@ export async function amIMaster() {
   const { data, error } = await c.rpc('am_i_master');
   return !error && !!data;
 }
+
+// ---------------------------------------------------------------- publicidade
+export async function adsLive() {
+  if (MODE === 'demo') {
+    // anúncios de exemplo só na demonstração, para ver como aparecem
+    const now = Date.now();
+    return [
+      { id: -1, slot: 'home', title: 'Qual carne baixou 18% hoje?', teaser: 'Só quem abrir descobre.', body: 'Picanha bovina com preço de atacado até domingo no Baratão da Carne.', image_url: 'assets/logos/baratao-da-carne.png', cta: 'Ver oferta', target_type: 'product', target_value: '15', supermarket_id: 4, market: 'Baratão da Carne', ends_at: new Date(now + 864e5).toISOString() },
+      { id: -2, slot: 'grid', title: 'O café da manhã ficou mais barato', teaser: 'Adivinha onde?', body: 'Café, leite e pão com 10% de desconto pelo Tá Barato Mesmo? no Coema.', image_url: 'assets/logos/coema.png', cta: 'Conhecer', target_type: 'store', target_value: '5', supermarket_id: 5, market: 'Coema', ends_at: new Date(now + 864e5).toISOString() },
+      { id: -3, slot: 'fila', title: 'Já pensou no jantar de hoje?', teaser: 'Tem surpresa no Nova Era.', body: 'Tambaqui fresco a R$ 19,90 o quilo até as 22h.', image_url: 'assets/logos/nova-era.png', cta: 'Ver oferta', target_type: 'product', target_value: '21', supermarket_id: 1, market: 'Nova Era', ends_at: new Date(now + 864e5).toISOString() },
+      { id: -4, slot: 'carrinho', title: 'Esqueceu alguma coisa?', teaser: 'A gente lembra pra você.', body: 'Leve 3 detergentes Ypê e pague 2 no Veneza.', image_url: 'assets/logos/veneza.png', cta: 'Ver oferta', target_type: 'product', target_value: '40', supermarket_id: 3, market: 'Veneza', ends_at: new Date(now + 864e5).toISOString() },
+      { id: -5, slot: 'rancho', title: 'Seu rancho pode sair mais leve', teaser: 'Quer saber como?', body: 'Frete grátis para ranchos acima de R$ 300 no Supermercados DB.', image_url: 'assets/logos/db.png', cta: 'Conhecer', target_type: 'store', target_value: '2', supermarket_id: 2, market: 'Supermercados DB', ends_at: new Date(now + 864e5).toISOString() },
+    ];
+  }
+  try {
+    const c = await client();
+    const { data, error } = await c.rpc('ads_live');
+    return error ? [] : data;
+  } catch { return []; }
+}
+
+// ---------------------------------------------------------------- carrinho: foto da etiqueta
+export async function sendShelfPhoto(blob, row) {
+  if (MODE === 'demo') { const l = ls.get('tb.demoPhotos', []); l.push({ ...row, at: new Date().toISOString() }); ls.set('tb.demoPhotos', l); return; }
+  const c = await client();
+  const { data: u } = await c.auth.getUser();
+  if (!u.user) throw new Error('Entre na sua conta para enviar a foto.');
+  const path = `${u.user.id}/${Date.now().toString(36)}.webp`;
+  const up = await c.storage.from('etiquetas').upload(path, blob, { contentType: 'image/webp', cacheControl: '31536000' });
+  if (up.error) throw new Error(up.error.message);
+  const photo_url = c.storage.from('etiquetas').getPublicUrl(path).data.publicUrl;
+  const { error } = await c.from('shelf_photos').insert({ ...row, photo_url });
+  if (error) throw new Error(error.message);
+}

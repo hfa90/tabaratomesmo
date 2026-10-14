@@ -1224,7 +1224,7 @@ alter table public.shopping_lists
 create table if not exists public.events (
   id             bigserial primary key,
   created_at     timestamptz not null default now(),
-  kind           text not null check (kind in ('search','view','add','route','rancho_done','bought','promo_view')),
+  kind           text not null,
   session_id     text,
   user_id        uuid,
   product_id     int references public.products(id) on delete set null,
@@ -1237,6 +1237,11 @@ create table if not exists public.events (
   age_band       text,
   value          numeric(10,2)
 );
+alter table public.events add column if not exists ad_id bigint;
+alter table public.events drop constraint if exists events_kind_check;
+alter table public.events add constraint events_kind_check check (kind in
+  ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open'));
+create index if not exists events_ad on public.events (ad_id, kind) where ad_id is not null;
 create index if not exists events_kind_time on public.events (kind, created_at desc);
 create index if not exists events_market on public.events (supermarket_id, created_at desc);
 create index if not exists events_product on public.events (product_id, created_at desc);
@@ -1258,16 +1263,16 @@ begin
                 when age(pf.birth_date) < interval '60 years' then '45-59'
                 else '60+' end;
   for e in select * from jsonb_array_elements(p_events) loop
-    continue when coalesce(e->>'kind', '') not in ('search','view','add','route','rancho_done','bought','promo_view');
+    continue when coalesce(e->>'kind', '') not in ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open');
     v_nb := coalesce(nullif(pf.neighborhood, ''), nullif(left(e->>'neighborhood', 60), ''));
     insert into events (kind, session_id, user_id, product_id, supermarket_id, query, results,
-                        neighborhood, zone, gender, age_band, value)
+                        neighborhood, zone, gender, age_band, value, ad_id)
     values (e->>'kind', left(e->>'session', 40), auth.uid(),
             (select id from products where id = nullif(e->>'product_id', '')::int),
             (select id from supermarkets where id = nullif(e->>'market_id', '')::smallint),
             nullif(lower(left(trim(e->>'query'), 60)), ''), nullif(e->>'results', '')::int,
             v_nb, zone_of(v_nb), nullif(pf.gender, 'nao_informar'), v_age,
-            nullif(e->>'value', '')::numeric);
+            nullif(e->>'value', '')::numeric, nullif(e->>'ad_id', '')::bigint);
     n := n + 1;
   end loop;
   return n;
@@ -1870,3 +1875,322 @@ begin
   end loop;
 end $$;
 revoke all on function public.admin_note(text,jsonb) from authenticated;
+
+-- =====================================================================
+--  PUBLICIDADE: planos, espaços e campanhas dos supermercados
+--  O mercado pede no portal, o administrador aprova, marca como pago e a
+--  campanha entra no ar sozinha no horário agendado.
+-- =====================================================================
+create table if not exists public.ad_plans (
+  id         serial primary key,
+  name       text not null,
+  hours      int  not null check (hours between 1 and 2160),
+  price      numeric(10,2) not null check (price >= 0),
+  blurb      text,
+  active     boolean not null default true,
+  sort       int not null default 0
+);
+create table if not exists public.ad_slots (
+  key            text primary key,
+  name           text not null,
+  description    text,
+  multiplier     numeric(4,2) not null default 1,
+  max_concurrent int not null default 1 check (max_concurrent between 1 and 10),
+  active         boolean not null default true,
+  sort           int not null default 0
+);
+insert into public.ad_plans (name, hours, price, blurb, sort)
+select * from (values
+  ('Relâmpago', 6, 39.00, '6 horas seguidas, ideal para a oferta do dia', 1),
+  ('Diário', 24, 89.00, '24 horas no ar', 2),
+  ('Fim de semana', 72, 199.00, '3 dias, de sexta a domingo', 3),
+  ('Semanal', 168, 389.00, '7 dias no ar', 4),
+  ('Mensal', 720, 1190.00, '30 dias no ar, o melhor custo por dia', 5)) v(name, hours, price, blurb, sort)
+where not exists (select 1 from public.ad_plans);
+insert into public.ad_slots (key, name, description, multiplier, max_concurrent, sort) values
+  ('home',    'Destaque da página inicial', 'Logo abaixo da busca, a primeira coisa que as pessoas veem.', 1.50, 1, 1),
+  ('grid',    'Entre os produtos',          'Um card de curiosidade no meio da lista de ofertas.', 1.00, 2, 2),
+  ('rancho',  'Rancho do mês',              'No resumo de quem está montando a lista do mês.', 1.20, 1, 3),
+  ('carrinho','Carrinho',                   'Na tela de quem está comprando agora, dentro da loja.', 1.30, 1, 4),
+  ('fila',    'Fila do caixa',              'No modo fila, enquanto a pessoa espera para pagar.', 0.80, 2, 5)
+on conflict (key) do nothing;
+
+create table if not exists public.ad_campaigns (
+  id             bigserial primary key,
+  supermarket_id smallint not null references public.supermarkets(id) on delete cascade,
+  slot           text not null references public.ad_slots(key),
+  plan_id        int references public.ad_plans(id),
+  title          text not null check (char_length(title) between 6 and 40),
+  teaser         text check (char_length(teaser) <= 70),
+  body           text check (char_length(body) <= 120),
+  image_url      text not null,
+  cta            text not null default 'Ver oferta' check (char_length(cta) <= 20),
+  target_type    text not null default 'none' check (target_type in ('none','product','store','url')),
+  target_value   text,
+  starts_at      timestamptz not null,
+  ends_at        timestamptz not null,
+  price          numeric(10,2) not null default 0,
+  status         text not null default 'pendente' check (status in ('pendente','aprovada','recusada','pausada','cancelada')),
+  paid           boolean not null default false,
+  reject_reason  text,
+  created_by     uuid default auth.uid(),
+  created_at     timestamptz not null default now(),
+  reviewed_at    timestamptz,
+  check (ends_at > starts_at)
+);
+create index if not exists ad_campaigns_live on public.ad_campaigns (slot, starts_at, ends_at) where status = 'aprovada';
+alter table public.ad_plans enable row level security;
+alter table public.ad_slots enable row level security;
+alter table public.ad_campaigns enable row level security;  -- leitura só pelas funções
+do $$ begin
+  drop policy if exists "public read" on public.ad_plans;
+  create policy "public read" on public.ad_plans for select using (true);
+  drop policy if exists "public read" on public.ad_slots;
+  create policy "public read" on public.ad_slots for select using (true);
+end $$;
+grant select on public.ad_plans, public.ad_slots to anon, authenticated;
+insert into public.app_settings (key, value, label) values ('ads_enabled', 'true', 'Publicidade aparece no site')
+on conflict (key) do nothing;
+
+-- imagens das campanhas: produtos/<supermarket_id>/ads-... (mesmo bucket e regras das fotos)
+
+-- Anúncios no ar agora (só o necessário para exibir)
+create or replace function public.ads_live()
+returns table (id bigint, slot text, title text, teaser text, body text, image_url text, cta text,
+               target_type text, target_value text, supermarket_id smallint, market text, ends_at timestamptz)
+language sql stable security definer set search_path = public as $$
+  select c.id, c.slot, c.title, c.teaser, c.body, c.image_url, c.cta, c.target_type, c.target_value,
+         c.supermarket_id, s.name, c.ends_at
+  from ad_campaigns c join supermarkets s on s.id = c.supermarket_id join ad_slots sl on sl.key = c.slot
+  where setting_on('ads_enabled') and c.status = 'aprovada' and c.paid and s.active and sl.active
+    and now() between c.starts_at and c.ends_at
+$$;
+grant execute on function public.ads_live() to anon, authenticated;
+
+-- Quantas vagas o espaço tem no período (para o mercado escolher o horário)
+create or replace function public.ad_availability(p_slot text, p_start timestamptz, p_end timestamptz)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'max', (select max_concurrent from ad_slots where key = p_slot),
+    'taken', (select count(*) from ad_campaigns where slot = p_slot and status in ('aprovada','pendente')
+               and starts_at < p_end and ends_at > p_start))
+$$;
+grant execute on function public.ad_availability(text, timestamptz, timestamptz) to authenticated;
+
+create or replace function public.ad_quote(p_slot text, p_plan int)
+returns numeric language sql stable security definer set search_path = public as $$
+  select round(p.price * s.multiplier) from ad_plans p, ad_slots s where p.id = p_plan and s.key = p_slot
+$$;
+grant execute on function public.ad_quote(text, int) to anon, authenticated;
+
+-- Pedido do supermercado
+create or replace function public.market_ad_request(p jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_m smallint := (p->>'supermarket_id')::smallint;
+  v_plan ad_plans; v_slot ad_slots; v_start timestamptz := (p->>'starts_at')::timestamptz; v_end timestamptz;
+  v_taken int; r ad_campaigns;
+begin
+  if not is_market_member(v_m) then raise exception 'Sem permissão para este supermercado.'; end if;
+  select * into v_plan from ad_plans where id = (p->>'plan_id')::int and active;
+  if not found then raise exception 'Escolha um plano.'; end if;
+  select * into v_slot from ad_slots where key = p->>'slot' and active;
+  if not found then raise exception 'Escolha um espaço.'; end if;
+  if v_start < now() - interval '10 minutes' then raise exception 'Escolha um início no futuro.'; end if;
+  v_end := v_start + make_interval(hours => v_plan.hours);
+  select count(*) into v_taken from ad_campaigns where slot = v_slot.key and status in ('aprovada','pendente')
+     and starts_at < v_end and ends_at > v_start;
+  if v_taken >= v_slot.max_concurrent then
+    raise exception 'O espaço “%” já está reservado nesse período. Escolha outro horário ou outro espaço.', v_slot.name;
+  end if;
+  if coalesce(p->>'image_url', '') = '' then raise exception 'Envie a imagem do anúncio.'; end if;
+  insert into ad_campaigns (supermarket_id, slot, plan_id, title, teaser, body, image_url, cta, target_type, target_value, starts_at, ends_at, price)
+  values (v_m, v_slot.key, v_plan.id, trim(p->>'title'), nullif(trim(p->>'teaser'), ''), nullif(trim(p->>'body'), ''), p->>'image_url',
+          coalesce(nullif(trim(p->>'cta'), ''), 'Ver oferta'), coalesce(nullif(p->>'target_type', ''), 'none'), nullif(p->>'target_value', ''),
+          v_start, v_end, round(v_plan.price * v_slot.multiplier))
+  returning * into r;
+  return to_jsonb(r);
+end $$;
+
+create or replace function public.market_ads(p_market smallint)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_market_member(p_market) then raise exception 'Sem permissão para este supermercado.'; end if;
+  return coalesce((select jsonb_agg(x order by x.starts_at desc) from (
+    select c.*, pl.name plan_name, sl.name slot_name,
+      (select count(*) from events e where e.ad_id = c.id and e.kind = 'ad_view') views,
+      (select count(*) from events e where e.ad_id = c.id and e.kind = 'ad_reveal') reveals,
+      (select count(*) from events e where e.ad_id = c.id and e.kind = 'ad_click') clicks
+    from ad_campaigns c left join ad_plans pl on pl.id = c.plan_id left join ad_slots sl on sl.key = c.slot
+    where c.supermarket_id = p_market) x), '[]');
+end $$;
+
+create or replace function public.market_ad_cancel(p_id bigint)
+returns void language plpgsql security definer set search_path = public as $$
+declare v ad_campaigns;
+begin
+  select * into v from ad_campaigns where id = p_id;
+  if not found or not is_market_member(v.supermarket_id) then raise exception 'Sem permissão.'; end if;
+  if v.status = 'aprovada' and v.starts_at <= now() then raise exception 'A campanha já começou. Fale com a equipe para pausar.'; end if;
+  update ad_campaigns set status = 'cancelada' where id = p_id;
+end $$;
+
+revoke all on function public.market_ad_request(jsonb) from public, anon;
+revoke all on function public.market_ads(smallint) from public, anon;
+revoke all on function public.market_ad_cancel(bigint) from public, anon;
+grant execute on function public.market_ad_request(jsonb) to authenticated;
+grant execute on function public.market_ads(smallint) to authenticated;
+grant execute on function public.market_ad_cancel(bigint) to authenticated;
+
+-- Administração da publicidade
+create or replace function public.admin_ads(p_status text default 'all')
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  return jsonb_build_object(
+    'campaigns', coalesce((select jsonb_agg(x order by x.created_at desc) from (
+      select c.*, s.name market, s.color, s.logo_url, pl.name plan_name, sl.name slot_name,
+        (select count(*) from events e where e.ad_id = c.id and e.kind = 'ad_view') views,
+        (select count(*) from events e where e.ad_id = c.id and e.kind = 'ad_reveal') reveals,
+        (select count(*) from events e where e.ad_id = c.id and e.kind = 'ad_click') clicks
+      from ad_campaigns c join supermarkets s on s.id = c.supermarket_id
+      left join ad_plans pl on pl.id = c.plan_id left join ad_slots sl on sl.key = c.slot
+      where p_status = 'all' or c.status = p_status or (p_status = 'live' and c.status = 'aprovada' and now() between c.starts_at and c.ends_at)
+      limit 300) x), '[]'),
+    'revenue', jsonb_build_object(
+      'paid_month', (select coalesce(sum(price), 0) from ad_campaigns where paid and created_at >= date_trunc('month', now())),
+      'paid_total', (select coalesce(sum(price), 0) from ad_campaigns where paid),
+      'to_receive', (select coalesce(sum(price), 0) from ad_campaigns where status = 'aprovada' and not paid),
+      'pending',    (select count(*) from ad_campaigns where status = 'pendente'),
+      'live',       (select count(*) from ad_campaigns where status = 'aprovada' and paid and now() between starts_at and ends_at)),
+    'plans', coalesce((select jsonb_agg(x order by x.sort) from (select * from ad_plans) x), '[]'),
+    'slots', coalesce((select jsonb_agg(x order by x.sort) from (select * from ad_slots) x), '[]'));
+end $$;
+
+create or replace function public.admin_ad_set(p_id bigint, p_action text, p_reason text default null)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  if p_action = 'aprovar' then update ad_campaigns set status = 'aprovada', reject_reason = null, reviewed_at = now() where id = p_id;
+  elsif p_action = 'recusar' then update ad_campaigns set status = 'recusada', reject_reason = p_reason, reviewed_at = now() where id = p_id;
+  elsif p_action = 'pausar' then update ad_campaigns set status = 'pausada' where id = p_id;
+  elsif p_action = 'retomar' then update ad_campaigns set status = 'aprovada' where id = p_id;
+  elsif p_action = 'pago' then update ad_campaigns set paid = true where id = p_id;
+  elsif p_action = 'nao_pago' then update ad_campaigns set paid = false where id = p_id;
+  elsif p_action = 'excluir' then delete from ad_campaigns where id = p_id;
+  else raise exception 'Ação desconhecida.'; end if;
+  perform admin_note('publicidade ' || p_action, jsonb_build_object('campaign', p_id, 'reason', p_reason));
+end $$;
+
+create or replace function public.admin_save_ad_plan(p jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  if nullif(p->>'id', '') is null then
+    insert into ad_plans (name, hours, price, blurb, active, sort)
+    values (p->>'name', (p->>'hours')::int, (p->>'price')::numeric, nullif(p->>'blurb', ''), coalesce((p->>'active')::boolean, true), coalesce((p->>'sort')::int, 99));
+  else
+    update ad_plans set name = coalesce(p->>'name', name), hours = coalesce((p->>'hours')::int, hours), price = coalesce((p->>'price')::numeric, price),
+      blurb = coalesce(p->>'blurb', blurb), active = coalesce((p->>'active')::boolean, active) where id = (p->>'id')::int;
+  end if;
+  perform admin_note('plano de publicidade', p);
+end $$;
+
+create or replace function public.admin_save_ad_slot(p jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform admin_guard();
+  update ad_slots set multiplier = coalesce((p->>'multiplier')::numeric, multiplier), max_concurrent = coalesce((p->>'max_concurrent')::int, max_concurrent),
+    active = coalesce((p->>'active')::boolean, active) where key = p->>'key';
+  perform admin_note('espaço de publicidade', p);
+end $$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['admin_ads(text)', 'admin_ad_set(bigint,text,text)', 'admin_save_ad_plan(jsonb)', 'admin_save_ad_slot(jsonb)'] loop
+    execute format('revoke all on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;
+
+-- =====================================================================
+--  CARRINHO: fotos de etiqueta enviadas quando o preço falado não bate
+--  com o do site ou o produto ainda não existe
+-- =====================================================================
+create table if not exists public.shelf_photos (
+  id             bigserial primary key,
+  created_at     timestamptz not null default now(),
+  user_id        uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  supermarket_id smallint references public.supermarkets(id) on delete set null,
+  product_id     int references public.products(id) on delete set null,
+  spoken         text,
+  name           text,
+  size           text,
+  price          numeric(10,2),
+  site_price     numeric(10,2),
+  photo_url      text not null,
+  lat            double precision,
+  lng            double precision,
+  status         text not null default 'pendente' check (status in ('pendente','aprovada','recusada')),
+  reviewed_at    timestamptz
+);
+alter table public.shelf_photos enable row level security;
+do $$ begin
+  drop policy if exists "own insert" on public.shelf_photos;
+  create policy "own insert" on public.shelf_photos for insert to authenticated with check (user_id = (select auth.uid()));
+  drop policy if exists "own read" on public.shelf_photos;
+  create policy "own read" on public.shelf_photos for select to authenticated using (user_id = (select auth.uid()));
+end $$;
+grant select, insert on public.shelf_photos to authenticated;
+grant usage on sequence public.shelf_photos_id_seq to authenticated;
+
+do $$ begin
+  insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('etiquetas', 'etiquetas', true, 3145728, array['image/jpeg','image/png','image/webp'])
+  on conflict (id) do nothing;
+exception when undefined_table then raise notice 'Storage indisponível: crie o bucket "etiquetas" (público) no painel.';
+end $$;
+do $$ begin
+  drop policy if exists "etiquetas public read" on storage.objects;
+  create policy "etiquetas public read" on storage.objects for select using (bucket_id = 'etiquetas');
+  drop policy if exists "etiquetas own write" on storage.objects;
+  create policy "etiquetas own write" on storage.objects for insert to authenticated
+    with check (bucket_id = 'etiquetas' and (storage.foldername(name))[1] = (select auth.uid())::text);
+exception when undefined_table or undefined_function or invalid_schema_name then
+  raise notice 'Storage indisponível: políticas de etiquetas não criadas.';
+end $$;
+
+create or replace function public.admin_shelf_photos(p_status text default 'pendente')
+returns jsonb language plpgsql stable security definer set search_path = public, auth as $$
+begin
+  perform admin_guard();
+  return coalesce((select jsonb_agg(x order by x.created_at desc) from (
+    select f.*, u.email, s.name market, p.name product, p.brand, p.unit, p.emoji
+    from shelf_photos f left join auth.users u on u.id = f.user_id left join supermarkets s on s.id = f.supermarket_id
+    left join products p on p.id = f.product_id
+    where p_status = 'all' or f.status = p_status limit 200) x), '[]');
+end $$;
+
+create or replace function public.admin_review_photo(p_id bigint, p_approve boolean)
+returns void language plpgsql security definer set search_path = public as $$
+declare f shelf_photos;
+begin
+  perform admin_guard();
+  select * into f from shelf_photos where id = p_id;
+  if not found then raise exception 'Foto não encontrada.'; end if;
+  if p_approve and f.product_id is not null and f.supermarket_id is not null and f.price is not null and f.status <> 'aprovada' then
+    insert into prices (product_id, supermarket_id, price, source) values (f.product_id, f.supermarket_id, f.price, 'comunidade');
+  end if;
+  update shelf_photos set status = case when p_approve then 'aprovada' else 'recusada' end, reviewed_at = now() where id = p_id;
+  perform admin_note(case when p_approve then 'aprovar foto de etiqueta' else 'recusar foto de etiqueta' end, jsonb_build_object('photo', p_id));
+end $$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['admin_shelf_photos(text)', 'admin_review_photo(bigint,boolean)'] loop
+    execute format('revoke all on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;

@@ -4,8 +4,9 @@ import * as A from './admin-api.js';
 import { lineChart } from './chart.js';
 import { $, $$, esc, brl, logo, reduceMotion } from './core.js';
 import { hbars, kpi, heatmap, fmtN, downloadCSV } from './viz.js';
+import * as adsUI from './ads.js';
 
-const st = { user: null, days: 30, usersQ: '', usersFilter: 'all', usersPage: 0, repStatus: 'pendente', prodQ: '', overview: null, markets: null };
+const st = { user: null, days: 30, usersQ: '', usersFilter: 'all', usersPage: 0, repStatus: 'pendente', modTab: 'precos', prodQ: '', overview: null, markets: null, adStatus: 'pendente', ads: null };
 const PAGE = 50;
 const SITE = new URL('./', location.href).href;
 const dateBR = (d, opt = { day: '2-digit', month: 'short' }) => (d ? new Date(d).toLocaleDateString('pt-BR', opt).replace('.', '') : '–');
@@ -81,7 +82,7 @@ async function enter() {
 
 function route() {
   const v = (location.hash || '#geral').slice(1);
-  const views = { geral: renderOverview, mercados: renderMarkets, usuarios: renderUsers, moderacao: renderModeration, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
+  const views = { geral: renderOverview, mercados: renderMarkets, usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
   const view = views[v] ? v : 'geral';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
   views[view]();
@@ -281,8 +282,9 @@ async function loadUsers() {
 
 // ================================================================ MODERAÇÃO
 async function renderModeration() {
-  $('#ptMain').innerHTML = head('Moderação de preços', 'Preços enviados pelos usuários. Os confirmados por duas pessoas entram sozinhos; aqui você aprova ou recusa o resto.')
-    + `<div class="chips" style="margin-bottom:12px">${[['pendente', 'Aguardando'], ['aprovado', 'Aprovados'], ['rejeitado', 'Recusados'], ['all', 'Todos']].map(([k, l]) => `<button class="chip ${st.repStatus === k ? 'is-on' : ''}" data-rstatus="${k}">${l}</button>`).join('')}</div>
+  if (st.modTab === 'fotos') return renderPhotos();
+  $('#ptMain').innerHTML = head('Moderação', 'Preços enviados pelos usuários. Os confirmados por duas pessoas entram sozinhos; aqui você aprova ou recusa o resto.')
+    + modTabs() + `<div class="chips" style="margin-bottom:12px">${[['pendente', 'Aguardando'], ['aprovado', 'Aprovados'], ['rejeitado', 'Recusados'], ['all', 'Todos']].map(([k, l]) => `<button class="chip ${st.repStatus === k ? 'is-on' : ''}" data-rstatus="${k}">${l}</button>`).join('')}</div>
     <div id="rList"><div class="skeleton" style="height:240px"></div></div>`;
   let R;
   try { R = await A.reports(st.repStatus); } catch (e) { $('#rList').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
@@ -294,6 +296,72 @@ async function renderModeration() {
       <td>${{ pendente: '<span class="pill pill--soft">Aguardando</span>', aprovado: '<span class="pill pill--ok">Aprovado</span>', rejeitado: '<span class="pill pill--warn">Recusado</span>' }[r.status]}</td>
       <td class="r nowrap">${r.status !== 'aprovado' ? `<button class="btn btn--primary btn--sm" data-rev="${r.id}" data-ok="1">Aprovar</button>` : ''} ${r.status !== 'rejeitado' ? `<button class="btn btn--ghost btn--sm" data-rev="${r.id}" data-ok="0">Recusar</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="8" class="muted center" style="padding:24px">Nada por aqui.</td></tr>'}
   </tbody></table></div>`;
+}
+
+const modTabs = () => `<div class="tabs" role="tablist" style="margin-bottom:12px"><button role="tab" aria-selected="${st.modTab === 'precos'}" data-modtab="precos">Preços enviados</button><button role="tab" aria-selected="${st.modTab === 'fotos'}" data-modtab="fotos">Fotos de etiqueta</button></div>`;
+
+async function renderPhotos() {
+  $('#ptMain').innerHTML = head('Moderação', 'Fotos tiradas no carrinho quando o preço falado não bate com o do site ou o produto ainda não existe. Aprovar publica o preço quando o produto já está no catálogo.')
+    + modTabs() + `<div class="chips" style="margin-bottom:12px">${[['pendente', 'Aguardando'], ['aprovada', 'Aprovadas'], ['recusada', 'Recusadas'], ['all', 'Todas']].map(([k, l]) => `<button class="chip ${st.repStatus === k ? 'is-on' : ''}" data-pstatus="${k}">${l}</button>`).join('')}</div>
+    <div id="phList"><div class="skeleton" style="height:240px"></div></div>`;
+  let R;
+  const status = ['pendente', 'aprovada', 'recusada', 'all'].includes(st.repStatus) ? st.repStatus : 'pendente';
+  try { R = await A.shelfPhotos(status); } catch (e) { $('#phList').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
+  $('#phList').innerHTML = R.length ? `<div class="photo-grid">${R.map((f) => `<article class="panel photo-card">
+      <a href="${esc(f.photo_url)}" target="_blank" rel="noopener" class="photo-card__img"><img src="${esc(f.photo_url)}" alt="Foto da etiqueta" loading="lazy" /></a>
+      <div><b>${esc(f.product ? `${f.product} ${f.unit || ''}` : f.name || 'Produto')}</b>${f.product ? '' : ' <span class="pill pill--soft">novo</span>'}
+        <small class="muted">“${esc(f.spoken || '')}”</small>
+        <p class="small">${esc(f.market || '')} · falou <b>${f.price != null ? brl(Number(f.price)) : '–'}</b>${f.site_price != null ? ` · site ${brl(Number(f.site_price))}` : ''}</p>
+        <small class="muted">${dateTime(f.created_at)} · ${esc(f.email || '')}</small></div>
+      <div class="row-actions">${f.status === 'pendente' ? `<button class="btn btn--primary btn--sm" data-phrev="${f.id}" data-ok="1">${f.product ? 'Aprovar e publicar preço' : 'Marcar como conferida'}</button><button class="btn btn--ghost btn--sm" data-phrev="${f.id}" data-ok="0">Recusar</button>`
+        : `<span class="pill ${f.status === 'aprovada' ? 'pill--ok' : 'pill--warn'}">${f.status === 'aprovada' ? 'Aprovada' : 'Recusada'}</span>`}</div>
+    </article>`).join('')}</div>` : '<p class="muted small">Nenhuma foto por aqui.</p>';
+}
+
+// ================================================================ PUBLICIDADE
+async function renderAdsAdmin() {
+  $('#ptMain').innerHTML = head('Publicidade', 'Pedidos dos supermercados, campanhas no ar, pagamentos, planos e espaços.') + '<div id="adm-ads"><div class="skeleton" style="height:320px"></div></div>';
+  let D;
+  try { D = await A.adsAdmin(st.adStatus); st.ads = D; } catch (e) { $('#adm-ads').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
+  const R = D.revenue; const now = Date.now();
+  $('#adm-ads').innerHTML = `
+    <section class="kpis">
+      ${kpi('Recebido no mês', Number(R.paid_month), { fmt: brl, accent: true })}${kpi('Recebido no total', Number(R.paid_total), { fmt: brl })}
+      ${kpi('Aprovado, a receber', Number(R.to_receive), { fmt: brl })}${kpi('No ar agora', R.live, { hint: `${fmtN(R.pending)} aguardando aprovação` })}
+    </section>
+    <div class="chips">${[['pendente', 'Aguardando'], ['live', 'No ar'], ['aprovada', 'Aprovadas'], ['recusada', 'Recusadas'], ['all', 'Todas']].map(([k, l]) => `<button class="chip ${st.adStatus === k ? 'is-on' : ''}" data-adstatus="${k}">${l}</button>`).join('')}</div>
+    <div class="ad-admin-list">${D.campaigns.map((a) => { const live = a.status === 'aprovada' && a.paid && new Date(a.starts_at) <= now && new Date(a.ends_at) > now;
+      return `<article class="panel ad-admin">
+        <div class="ad-admin__prev">${adsUI.html({ ...a, id: 0 }, { preview: true })}</div>
+        <div class="ad-admin__info">
+          <p><span class="cell-m">${logo({ name: a.market, color: a.color, logo_url: a.logo_url }, 'xs')} <b>${esc(a.market)}</b></span> · ${esc(a.slot_name || a.slot)} · ${esc(a.plan_name || '')}</p>
+          <p class="small">${new Date(a.starts_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} até ${new Date(a.ends_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+          <p><b>${brl(Number(a.price))}</b> ${a.paid ? '<span class="pill pill--ok">Pago</span>' : '<span class="pill pill--warn">A pagar</span>'} ${live ? '<span class="pill pill--ok">No ar</span>' : `<span class="pill pill--soft">${esc(a.status)}</span>`}</p>
+          ${a.target_type !== 'none' ? `<p class="small muted">Botão leva para: ${a.target_type === 'product' ? 'produto' : a.target_type === 'store' ? 'rota até a loja' : esc(a.target_value || '')}</p>` : ''}
+          ${a.reject_reason ? `<p class="small up">Motivo: ${esc(a.reject_reason)}</p>` : ''}
+          <p class="small muted">${fmtN(a.views)} vistos · ${fmtN(a.reveals)} abertos · ${fmtN(a.clicks)} cliques${a.views ? ` (${((a.clicks / a.views) * 100).toFixed(1).replace('.', ',')}%)` : ''}</p>
+          <div class="row-actions">
+            ${a.status === 'pendente' ? `<button class="btn btn--primary btn--sm" data-adact="aprovar" data-id="${a.id}">Aprovar</button><button class="btn btn--ghost btn--sm" data-adact="recusar" data-id="${a.id}">Recusar</button>` : ''}
+            ${['pendente', 'aprovada', 'pausada'].includes(a.status) ? (a.paid ? `<button class="btn btn--text btn--sm" data-adact="nao_pago" data-id="${a.id}">Desmarcar pago</button>` : `<button class="btn btn--ghost btn--sm" data-adact="pago" data-id="${a.id}">Marcar como pago</button>`) : ''}
+            ${a.status === 'aprovada' ? `<button class="btn btn--ghost btn--sm" data-adact="pausar" data-id="${a.id}">Pausar</button>` : ''}${a.status === 'pausada' ? `<button class="btn btn--ghost btn--sm" data-adact="retomar" data-id="${a.id}">Retomar</button>` : ''}
+            <button class="btn btn--text btn--sm" data-adact="excluir" data-id="${a.id}">Excluir</button>
+          </div>
+        </div></article>`; }).join('') || '<p class="muted small" style="padding:12px 0">Nenhuma campanha aqui.</p>'}</div>
+
+    <div class="pt-grid">
+      <section class="panel"><div class="panel__head"><h2>Planos</h2><span class="muted small">preço base, multiplicado pelo espaço</span></div>
+        <div class="tbl-wrap"><table class="tbl tbl--sm"><thead><tr><th>Plano</th><th class="r">Horas</th><th class="r">Preço (R$)</th><th>Ativo</th><th></th></tr></thead><tbody>
+        ${D.plans.map((p) => `<tr><td><input class="input sel--sm" data-plan-f="name" data-id="${p.id}" value="${esc(p.name)}" /></td><td class="r"><input class="input sel--sm num-in" type="number" min="1" data-plan-f="hours" data-id="${p.id}" value="${p.hours}" /></td>
+          <td class="r"><input class="input sel--sm num-in" type="number" min="0" step="1" data-plan-f="price" data-id="${p.id}" value="${Number(p.price)}" /></td><td>${sw(`data-plan-active="${p.id}"`, p.active, 'Plano ativo')}</td>
+          <td><button class="btn btn--ghost btn--sm" data-plan-save="${p.id}">Salvar</button></td></tr>`).join('')}</tbody></table></div>
+        <form class="form form--inline" id="planNew"><label>Novo plano<input name="name" required placeholder="Ex.: Quinzenal" /></label><label>Horas<input name="hours" type="number" min="1" required value="360" style="width:90px" /></label><label>Preço<input name="price" type="number" min="0" required value="690" style="width:100px" /></label><button class="btn btn--ghost">Adicionar</button></form></section>
+      <section class="panel"><div class="panel__head"><h2>Espaços no site</h2><span class="muted small">multiplicador do preço e quantos anúncios ao mesmo tempo</span></div>
+        <div class="tbl-wrap"><table class="tbl tbl--sm"><thead><tr><th>Espaço</th><th class="r">×</th><th class="r">Vagas</th><th>Ativo</th><th></th></tr></thead><tbody>
+        ${D.slots.map((x) => `<tr><td><b>${esc(x.name)}</b><small class="muted">${esc(x.description || '')}</small></td><td class="r"><input class="input sel--sm num-in" type="number" min="0.1" step="0.1" data-slot-f="multiplier" data-key="${x.key}" value="${Number(x.multiplier)}" /></td>
+          <td class="r"><input class="input sel--sm num-in" type="number" min="1" max="10" data-slot-f="max_concurrent" data-key="${x.key}" value="${x.max_concurrent}" /></td><td>${sw(`data-slot-active="${x.key}"`, x.active, 'Espaço ativo')}</td>
+          <td><button class="btn btn--ghost btn--sm" data-slot-save="${x.key}">Salvar</button></td></tr>`).join('')}</tbody></table></div>
+        <p class="muted small">Exemplo: Diário (${brl(Number(D.plans.find((p) => p.hours === 24)?.price || 89))}) no destaque da página inicial (×${String(D.slots.find((x) => x.key === 'home')?.multiplier || 1.5).replace('.', ',')}) = ${brl(Math.round(Number(D.plans.find((p) => p.hours === 24)?.price || 89) * Number(D.slots.find((x) => x.key === 'home')?.multiplier || 1.5)))}.</p></section>
+    </div>`;
 }
 
 // ================================================================ PRODUTOS E PROMOÇÕES
@@ -383,6 +451,7 @@ async function renderConfig() {
     ['promos_enabled', 'Promoções aparecem no site', 'Desligado: o site mostra só o preço normal de todos os mercados.'],
     ['portal_enabled', 'Área do supermercado liberada', 'Desligado: nenhum mercado consegue entrar no portal.'],
     ['tracking_enabled', 'Coleta de métricas de uso', 'Desligado: buscas, visualizações e rotas deixam de ser registradas.'],
+    ['ads_enabled', 'Publicidade aparece no site', 'Desligado: nenhum anúncio é mostrado, mesmo os pagos e aprovados.'],
   ];
   $('#cfg').innerHTML = `
     <section class="panel"><div class="panel__head"><h2>Funções do site</h2></div>
@@ -458,6 +527,27 @@ document.addEventListener('click', async (e) => {
   if (d.upage) { st.usersPage += Number(d.upage); return loadUsers(); }
   if (d.uReset) { if (await run(() => A.setUser(d.uReset, null, true), 'Comparações zeradas.')) loadUsers(); return; }
   if (d.rstatus) { st.repStatus = d.rstatus; return renderModeration(); }
+  if (d.modtab) { st.modTab = d.modtab; st.repStatus = 'pendente'; return renderModeration(); }
+  if (d.pstatus) { st.repStatus = d.pstatus; return renderPhotos(); }
+  if (d.phrev) { if (await run(() => A.reviewPhoto(Number(d.phrev), d.ok === '1'), d.ok === '1' ? 'Foto aprovada.' : 'Foto recusada.')) renderPhotos(); return; }
+  if (d.adstatus) { st.adStatus = d.adstatus; return renderAdsAdmin(); }
+  if (d.adact) {
+    let reason = null;
+    if (d.adact === 'recusar') { reason = prompt('Motivo da recusa (o supermercado vê esta mensagem):', 'Imagem com muito texto. Use uma foto real do produto.'); if (reason == null) return; }
+    if (d.adact === 'excluir' && !confirm('Excluir esta campanha?')) return;
+    if (await run(() => A.adSet(Number(d.id), d.adact, reason), 'Feito.')) renderAdsAdmin();
+    return;
+  }
+  if (d.planSave) {
+    const id = d.planSave; const v = (f) => $(`[data-plan-f="${f}"][data-id="${id}"]`).value;
+    if (await run(() => A.savePlan({ id, name: v('name'), hours: Number(v('hours')), price: Number(v('price')) }), 'Plano salvo.')) renderAdsAdmin();
+    return;
+  }
+  if (d.slotSave) {
+    const k = d.slotSave; const v = (f) => $(`[data-slot-f="${f}"][data-key="${k}"]`).value;
+    if (await run(() => A.saveSlot({ key: k, multiplier: Number(v('multiplier')), max_concurrent: Number(v('max_concurrent')) }), 'Espaço salvo.')) renderAdsAdmin();
+    return;
+  }
   if (d.rev) { if (await run(() => A.reviewReport(Number(d.rev), d.ok === '1'), d.ok === '1' ? 'Preço aprovado e publicado.' : 'Preço recusado.')) renderModeration(); return; }
   if (d.csv) { t.disabled = true; await run(() => exportCSV(d.csv)); t.disabled = false; return; }
   if (d.print !== undefined) { location.hash = '#geral'; setTimeout(() => window.print(), 1800); return; }
@@ -480,6 +570,8 @@ document.addEventListener('change', async (e) => {
   if (d.pActive) { if (!(await run(() => A.setProduct(Number(d.pActive), t.checked), t.checked ? 'Produto ativado.' : 'Produto tirado do site.'))) revert(); else t.closest('tr').classList.toggle('is-off', !t.checked); return; }
   if (d.prActive) { if (!(await run(() => A.setPromotion(Number(d.prActive), t.checked), t.checked ? 'Promoção ligada.' : 'Promoção desligada.'))) revert(); return; }
   if (d.set) { if (!(await run(() => A.setSetting(d.set, t.checked), 'Configuração salva.'))) revert(); }
+  if (d.planActive) { if (!(await run(() => A.savePlan({ id: d.planActive, active: t.checked }), t.checked ? 'Plano ativado.' : 'Plano desativado.'))) revert(); }
+  if (d.slotActive) { if (!(await run(() => A.saveSlot({ key: d.slotActive, active: t.checked }), t.checked ? 'Espaço ativado.' : 'Espaço desativado.'))) revert(); }
 });
 
 let qT;
@@ -519,6 +611,8 @@ document.addEventListener('submit', async (e) => {
       await A.setSetting('quick_comparisons', Math.max(0, Number(f.quick.value) || 0)); toast('Limites salvos.');
     } else if (fid === 'cfgBanner') {
       await A.setSetting('banner', f.banner.value.trim()); toast(f.banner.value.trim() ? 'Aviso publicado no site.' : 'Aviso retirado.');
+    } else if (fid === 'planNew') {
+      await A.savePlan({ name: f.name.value.trim(), hours: Number(f.hours.value), price: Number(f.price.value) }); toast('Plano criado.'); renderAdsAdmin();
     } else if (fid === 'admAdd') {
       await A.addAdmin(f.email.value.trim()); toast('Administrador adicionado.'); renderConfig();
     }
