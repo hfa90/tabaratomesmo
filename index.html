@@ -16,6 +16,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="css/styles.css" />
+  <script>
+    // tema claro é o padrão; o escuro é opcional e fica salvo no aparelho
+    try { if (localStorage.getItem('tb.theme') === '"dark"') { document.documentElement.dataset.theme = 'dark'; document.querySelector('meta[name=theme-color]').content = '#0B2C22'; } } catch (e) {}
+  </script>
 </head>
 <body>
   <!-- ===== TOPO ===== -->
@@ -33,6 +37,10 @@
         <span id="locLabel">Usar minha localização</span>
       </button>
 
+      <button class="theme-btn" id="themeBtn" type="button" aria-label="Usar tema escuro" aria-pressed="false">
+        <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
       <nav class="topnav" aria-label="Seções">
         <a href="#ofertas" data-nav="ofertas">Ofertas</a>
         <a href="#mapa" data-nav="mapa">Mapa</a>
@@ -64,9 +72,6 @@
           </label>
         </div>
         <aside class="spot" id="spotlight" aria-label="Destaque da semana"></aside>
-        <div class="hero__ticker">
-          <div class="ticker" id="ticker"></div>
-        </div>
       </div>
 
       <div class="nearby" id="nearby">

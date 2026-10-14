@@ -45,12 +45,21 @@ export function initials(name) {
     .slice(0, 2).map((w) => w[0]).join('').toUpperCase() || name.slice(0, 2).toUpperCase();
 }
 
-/** Logomarca oficial (assets/logos/*.png). Se o arquivo não existir, mostra monograma. */
+/** Ícone da logomarca oficial (assets/logos/<slug>-icon.png) para miniaturas.
+ *  Se a imagem não existir, mostra um monograma com a cor da rede. */
+const iconUrl = (m) => (m.logo_url && m.logo_url.startsWith('assets/') ? m.logo_url.replace(/\.png$/, '-icon.png') : m.logo_url);
 export function logo(m, size = 'sm') {
+  const src = iconUrl(m);
   return `<span class="logo logo--${size}" style="--c:${esc(m.color || '#0E3B2E')}" title="${esc(m.name)}">
     <i aria-hidden="true">${esc(initials(m.name))}</i>
-    ${m.logo_url ? `<img src="${esc(m.logo_url)}" alt="${esc(m.name)}" loading="lazy" decoding="async" />` : ''}
+    ${src ? `<img src="${esc(src)}" alt="${esc(m.name)}" loading="lazy" decoding="async" />` : ''}
   </span>`;
+}
+/** Logomarca completa, para destaques grandes */
+export function logoFull(m, cls = '') {
+  return m.logo_url
+    ? `<img class="logo-full ${cls}" src="${esc(m.logo_url)}" alt="${esc(m.name)}" loading="lazy" decoding="async" />`
+    : logo(m, 'lg');
 }
 // imagem quebrada → remove e deixa o monograma
 document.addEventListener('error', (e) => {

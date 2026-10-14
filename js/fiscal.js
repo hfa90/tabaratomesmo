@@ -67,35 +67,14 @@ export function mystery() {
 export async function renderHome() {
   const el = $('#crowd'); if (!el || !S.products.length) return;
   const my = mystery();
-  const bairro = S.profile?.neighborhood || S.home?.label || (S.pos?.label !== 'Sua localização' ? S.pos?.label : null);
-  el.innerHTML = `
-    ${my ? `<article class="mystery">
-      <div class="mystery__q" aria-hidden="true">?</div>
-      <div class="mystery__body">
-        <p class="mystery__k">Preço misterioso da semana</p>
-        <h3>Quanto custa ${esc(my.p.name.toLowerCase())} ${esc(my.p.brand && my.p.brand !== 'Granel' ? my.p.brand : '')} (${esc(my.p.unit)}) no ${esc(my.m.name)}?</h3>
-        <p class="muted">${my.last ? `O último preço que temos é de ${ago(my.last.at)}.` : 'Ninguém informou ainda.'} Quem descobrir primeiro leva <b>${my.last ? 15 : 25} pontos</b>.</p>
-      </div>
-      <button class="btn btn--tag" data-fiscal-one="${my.p.id}" data-fiscal-m="${my.m.id}">Eu vi esse preço</button>
-    </article>` : ''}
-    <article class="crowd" id="crowdRank"><div class="skeleton" style="height:110px"></div></article>`;
-  try {
-    const [stats, rank] = await Promise.all([api.communityStats(), api.leaderboard(bairro || null)]);
-    const rankAll = rank.length ? rank : await api.leaderboard(null);
-    $('#crowdRank').innerHTML = `
-      <div class="crowd__head">
-        <h3>Fiscais ${bairro && rank.length ? `de ${esc(bairro)}` : 'de Manaus'} este mês</h3>
-        <p class="muted small">${stats.reports_7d ? `${stats.reports_7d} preços informados por vizinhos nos últimos 7 dias.` : 'Os preços daqui também vêm de quem compra. Informe o que você viu na prateleira.'}</p>
-      </div>
-      ${rankAll.length ? `<ol class="rank">${rankAll.slice(0, 3).map((r, i) => `<li class="${r.is_me ? 'is-me' : ''}"><span class="rank__pos">${i + 1}º</span><b>${esc(r.name)}</b><small>${esc(r.neighborhood || '')}</small><em>${r.points} pts</em></li>`).join('')}</ol>`
-        : `<p class="crowd__empty">O ranking do mês está vazio. O primeiro preço que você informar já te coloca em 1º lugar${bairro ? ` em ${esc(bairro)}` : ''}.</p>`}
-      <div class="crowd__cta">
-        <button class="btn btn--primary btn--sm" data-fiscal-market="">Informar preços</button>
-        <span class="muted small">Cada preço vale de 10 a 25 pontos${S.user && !S.profile?.completed_at ? ' e libera +2 comparações' : ''}.</span>
-      </div>`;
-  } catch (e) {
-    $('#crowdRank').innerHTML = `<p class="muted">Ranking indisponível no momento.</p>`;
-  }
+  if (!my) { el.innerHTML = ''; return; }
+  el.innerHTML = `<article class="mystery">
+      <span class="mystery__q" aria-hidden="true">?</span>
+      <p class="mystery__body"><span class="mystery__k">Preço misterioso da semana</span>
+        Quanto custa ${esc(my.p.name.toLowerCase())}${my.p.brand && my.p.brand !== 'Granel' ? ' ' + esc(my.p.brand) : ''} (${esc(my.p.unit)}) no ${esc(my.m.name)}?
+        <small>${my.last ? `Último preço ${ago(my.last.at)}.` : 'Ninguém informou ainda.'} Vale ${my.last ? 15 : 25} pontos.</small></p>
+      <button class="btn btn--sm btn--tag" data-fiscal-one="${my.p.id}" data-fiscal-m="${my.m.id}">Eu sei</button>
+    </article>`;
 }
 
 // ---------------------------------------------------------------- sheet do fiscal

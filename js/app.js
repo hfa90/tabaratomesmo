@@ -3,7 +3,7 @@ import * as api from './api.js';
 import { lineChart } from './chart.js';
 import {
   S, $, $$, esc, brl, pct, km, reduceMotion, haversine, isOn, visiblePrices,
-  initials, logo, priceTag, changeBadge, stepper, hooks, ago,
+  initials, logo, logoFull, priceTag, changeBadge, stepper, hooks, ago,
 } from './core.js';
 import * as rancho from './rancho.js';
 import * as fiscal from './fiscal.js';
@@ -12,11 +12,14 @@ import * as fiscal from './fiscal.js';
 function card(p, i) {
   const prices = visiblePrices(p);
   if (!prices.length) return '';
-  const best = prices[0], worst = prices[prices.length - 1];
+  const best = prices[0];
   const bm = S.markets.get(best.market_id);
   const nb = S.nearest.get(best.market_id);
-  const nearestMarket = S.pos ? [...S.nearest.entries()].filter(([id]) => isOn(id)).sort((a, b) => a[1].km - b[1].km)[0]?.[0] : null;
-  const save = worst.price - best.price;
+  const others = prices.slice(1);
+  const unknown = [...S.markets.values()].filter((m) => isOn(m.id) && !p.prices.some((x) => x.market_id === m.id));
+  const c = p.change_pct;
+  const chg = c != null && Math.abs(c) >= 0.5
+    ? `<span class="chg-t ${c < 0 ? 'down' : 'up'}" title="Variação média em 7 dias">${c < 0 ? '▼' : '▲'} ${Math.abs(c).toFixed(1).replace('.', ',')}%</span>` : '';
   return `<article class="card" data-pid="${p.id}" style="--i:${Math.min(i, 12)}">
     <button class="card__hit" data-open-product="${p.id}" aria-label="Comparar ${esc(p.name)} ${esc(p.brand || '')}"></button>
     <header class="card__head">
@@ -34,25 +37,17 @@ function card(p, i) {
       ${priceTag(best.price)}
       <div class="card__where">
         ${logo(bm, 'md')}
-        <span><b>${esc(bm.name)}</b>${nb ? `<small>${km(nb.km)} de você</small>` : `<small>menor preço</small>`}</span>
+        <span><b>${esc(bm.name)}</b><small>${nb ? `${km(nb.km)}` : 'menor preço'}${chg ? ' ' + chg : ''}</small></span>
       </div>
     </div>
-    ${changeBadge(p.change_pct)}
 
-    <ul class="mini" aria-label="Preço em cada supermercado">
-      ${prices.map((x, j) => {
-        const m = S.markets.get(x.market_id);
-        const diff = x.price - best.price;
-        return `<li class="${j === 0 ? 'is-best' : ''} ${x.market_id === nearestMarket ? 'is-near' : ''}" title="${esc(m.name)}${x.market_id === nearestMarket ? ' (mais perto)' : ''}">
-          ${logo(m, 'xs')}<span class="mini__p">${brl(x.price)}</span>${j ? `<span class="mini__d">+${diff.toFixed(2).replace('.', ',')}</span>` : ''}
-        </li>`;
-      }).join('')}
-      ${[...S.markets.values()].filter((m) => isOn(m.id) && !p.prices.some((x) => x.market_id === m.id)).map((m) =>
-        `<li class="is-unknown"><button data-fiscal-one="${p.id}" data-fiscal-m="${m.id}" title="Ninguém informou o preço no ${esc(m.name)}. Você sabe?">${logo(m, 'xs')}<span class="mini__p">R$ ?</span></button></li>`).join('')}
+    <ul class="mini" aria-label="Preço nos outros supermercados">
+      ${others.length ? others.map((x) => `<li title="${esc(S.markets.get(x.market_id).name)}">${logo(S.markets.get(x.market_id), 'xs')}<span>${brl(x.price).replace('R$', '').trim()}</span></li>`).join('')
+        : '<li class="mini__only">Só neste mercado</li>'}
     </ul>
 
     <footer class="card__foot">
-      <span class="save">${prices.length > 1 && save > 0.009 ? `Economize até <b>${brl(save)}</b>` : prices.length === 1 ? 'Só em 1 mercado' : 'Mesmo preço'}</span>
+      ${unknown.length ? `<button class="ask" data-fiscal-one="${p.id}" data-fiscal-m="${unknown[0].id}" title="Sem preço em: ${esc(unknown.map((m) => m.name).join(', '))}">${unknown.length} sem preço. Você sabe?</button>` : '<span></span>'}
       ${stepper(p.id)}
     </footer>
   </article>`;
@@ -102,14 +97,13 @@ function renderNearby() {
   const ms = [...S.markets.values()].map((m) => ({ m, n: S.nearest.get(m.id) }))
     .sort((a, b) => (a.n?.km ?? 999) - (b.n?.km ?? 999) || a.m.name.localeCompare(b.m.name));
   $('#nearbyHint').innerHTML = S.pos
-    ? `Perto de <b>${esc(S.pos.label || 'você')}</b>. Toque para incluir ou tirar da comparação.`
-    : `<button class="linkish" data-open="loc">Ative a localização</button> para ver o mercado mais perto.`;
+    ? `Toque para tirar ou incluir na comparação.`
+    : `<button class="linkish" data-open="loc">Ative a localização</button> para ver o mais perto.`;
   $('#nearbyRow').innerHTML = ms.map(({ m, n }, i) => `
     <button class="market ${isOn(m.id) ? '' : 'is-off'} ${S.pos && i === 0 ? 'is-closest' : ''}" data-market="${m.id}" aria-pressed="${isOn(m.id)}">
-      ${logo(m, 'lg')}
-      <span class="market__txt"><b>${esc(m.name)}</b>
-      <small>${n ? `${km(n.km)}, ${esc(n.store.neighborhood)}${n.store.approx ? '*' : ''}` : `${S.stores.filter((s) => s.supermarket_id === m.id).length} lojas`}</small></span>
-      ${S.pos && i === 0 ? '<em>Mais perto</em>' : ''}
+      ${logo(m, 'md')}
+      <span class="market__txt"><b>${esc(m.name.replace(/^Supermercados\s+/, ''))}</b>
+      <small>${n ? `${S.pos && i === 0 ? 'mais perto, ' : ''}${km(n.km)}` : `${S.stores.filter((s) => s.supermarket_id === m.id).length} lojas`}</small></span>
     </button>`).join('');
 }
 
@@ -125,22 +119,8 @@ function renderSpotlight() {
     <span class="spot__name">${esc(r.p.name)}<small>${esc([r.p.brand, r.p.unit].filter(Boolean).join(', '))}</small></span>
     <span class="spot__row">${priceTag(r.x.price, 'tag--xl')}
       <span class="spot__was">era <s>${brl(r.x.prev)}</s><b>▼ ${Math.abs(r.c).toFixed(1).replace('.', ',')}%</b></span></span>
-    <span class="spot__m">${logo(m, 'sm')} no ${esc(m.name)}</span>
+    <span class="spot__m"><span class="spot__logo">${logoFull(m)}</span>no ${esc(m.name)}</span>
   </button>`;
-}
-
-function renderTicker() {
-  const movers = S.products.flatMap((p) => p.prices.filter((x) => x.prev).map((x) => ({ p, x, c: (x.price / x.prev - 1) * 100 })))
-    .filter((r) => Math.abs(r.c) >= 4).sort((a, b) => Math.abs(b.c) - Math.abs(a.c)).slice(0, 14);
-  if (!movers.length) { $('.hero__ticker').hidden = true; return; }
-  const item = ({ p, x, c }) => {
-    const m = S.markets.get(x.market_id);
-    return `<button class="tick ${c < 0 ? 'tick--down' : 'tick--up'}" data-open-product="${p.id}">
-      ${logo(m, 'xs')}<span class="tick__n">${esc(p.name)} <small>${esc(p.brand || '')}</small></span>
-      <span class="tick__v">${brl(x.price)}</span><span class="tick__c">${c < 0 ? '▼' : '▲'} ${Math.abs(c).toFixed(1).replace('.', ',')}%</span></button>`;
-  };
-  const html = movers.map(item).join('');
-  $('#ticker').innerHTML = `<div class="ticker__track">${html}</div><div class="ticker__track" aria-hidden="true">${html}</div>`;
 }
 
 // ======================================================================
@@ -699,6 +679,7 @@ document.addEventListener('click', async (e) => {
   if (d.open === 'home') return openLoc('home', () => renderAccount());
   if (d.open === 'complete') return openAuth('complete');
   if (t.id === 'locBtn') return openLoc('pos');
+  if (t.id === 'themeBtn') return toggleTheme();
   if (t.id === 'useGps') return requestGps();
   if (t.id === 'logout') { await api.signOut(); location.hash = '#ofertas'; toast('Você saiu da conta.'); }
 });
@@ -722,9 +703,18 @@ function skeleton() {
   $('#productGrid').innerHTML = Array.from({ length: 6 }, () => `<div class="card card--skel"><div class="skeleton" style="height:48px"></div><div class="skeleton" style="height:64px;width:60%"></div><div class="skeleton" style="height:40px"></div></div>`).join('');
 }
 
+function toggleTheme() {
+  const dark = document.documentElement.dataset.theme !== 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  api.store.set('tb.theme', dark ? 'dark' : 'light');
+  $('meta[name=theme-color]').content = dark ? '#0B2C22' : '#0E3B2E';
+  $('#themeBtn').setAttribute('aria-pressed', dark);
+  $('#themeBtn').setAttribute('aria-label', dark ? 'Usar tema claro' : 'Usar tema escuro');
+}
+
 async function refreshCatalog() {
   const data = await api.loadCatalog();
-  S.products = data.products; renderGrid(); renderTicker();
+  S.products = data.products; renderGrid();
   if (location.hash === '#lista') renderList();
 }
 Object.assign(hooks, {
@@ -744,7 +734,7 @@ async function boot() {
 
   if (S.pos) { computeNearest(); $('#locLabel').textContent = S.pos.label || 'Minha localização'; $('#locBtn').classList.add('is-set'); }
   rancho.meta();
-  renderChips(); renderNearby(); renderSpotlight(); renderTicker(); renderGrid(); route();
+  renderChips(); renderNearby(); renderSpotlight(); renderGrid(); route();
   fiscal.renderHome(); fiscal.checkAtStore();
 
   // Se o usuário já autorizou a localização antes, atualiza em silêncio

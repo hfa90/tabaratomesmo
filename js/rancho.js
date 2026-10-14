@@ -2,7 +2,7 @@
 import * as api from './api.js';
 import { BAIRROS } from './config.js';
 import {
-  S, $, $$, esc, brl, km, haversine, isOn, logo, priceTag, stepper, hooks, DOW, DOW_SHORT, reduceMotion,
+  S, $, $$, esc, brl, km, haversine, isOn, logo, logoFull, priceTag, stepper, hooks, DOW, DOW_SHORT, reduceMotion,
 } from './core.js';
 
 // ---------------------------------------------------------------- configuração do deslocamento
@@ -318,7 +318,7 @@ export async function renderReport(scroll = true) {
     <section class="rep" aria-labelledby="repTitle">
       <header class="rep__hero">
         <p class="rep__kick">${esc(m.name)}: onde comprar</p>
-        <div class="rep__win">${logo(r.best.m, 'lg')}<h2 id="repTitle">${esc(r.best.m.name)}</h2></div>
+        <div class="rep__win"><span class="rep__logo">${logoFull(r.best.m)}</span><h2 id="repTitle">${esc(r.best.m.name)}</h2></div>
         ${priceTag(r.best.total, 'tag--xl')}
         <p class="rep__lead">${r.base && r.base !== r.best
           ? `Você economiza <b>${brl(r.savings)}</b> em relação ao ${esc(r.base.m.name)}, o mercado mais perto da sua casa, já contando o deslocamento.`

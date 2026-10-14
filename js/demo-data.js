@@ -1,11 +1,11 @@
 // Gerado a partir do seed de supabase/schema.sql — usado só quando o banco não responde.
 // prices: [product_id, supermarket_id, price, dias_atras]
 export const DEMO = {
-  supermarkets: [{"id":1,"slug":"nova-era","name":"Nova Era","logo_url":"assets/logos/nova-era.png","color":"#C8102E"}, 
- {"id":2,"slug":"db","name":"Supermercados DB","logo_url":"assets/logos/db.png","color":"#00529B"}, 
- {"id":3,"slug":"veneza","name":"Veneza","logo_url":"assets/logos/veneza.png","color":"#E87722"}, 
- {"id":4,"slug":"baratao-da-carne","name":"Baratão da Carne","logo_url":"assets/logos/baratao-da-carne.png","color":"#8B1A1A"}, 
- {"id":5,"slug":"coema","name":"Coema","logo_url":"assets/logos/coema.png","color":"#007A3D"}],
+  supermarkets: [{"id":1,"slug":"nova-era","name":"Nova Era","logo_url":"assets/logos/nova-era.png","color":"#C21A19"}, 
+ {"id":2,"slug":"db","name":"Supermercados DB","logo_url":"assets/logos/db.png","color":"#D99A00"}, 
+ {"id":3,"slug":"veneza","name":"Veneza","logo_url":"assets/logos/veneza.png","color":"#2E3A87"}, 
+ {"id":4,"slug":"baratao-da-carne","name":"Baratão da Carne","logo_url":"assets/logos/baratao-da-carne.png","color":"#8B4A2B"}, 
+ {"id":5,"slug":"coema","name":"Coema","logo_url":"assets/logos/coema.png","color":"#009A51"}],
   stores: [{"id":1,"supermarket_id":1,"name":"Nova Era Japiim","neighborhood":"Japiim","lat":-3.116,"lng":-59.987,"approx":true}, 
  {"id":2,"supermarket_id":1,"name":"Nova Era Compensa","neighborhood":"Compensa","lat":-3.105,"lng":-60.054,"approx":true}, 
  {"id":3,"supermarket_id":1,"name":"Nova Era Flores","neighborhood":"Flores","lat":-3.0735,"lng":-60.016,"approx":true}, 

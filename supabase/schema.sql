@@ -537,7 +537,7 @@ insert into public.supermarkets (slug, name, logo_url, color) values
  ('nova-era',         'Nova Era',          'assets/logos/nova-era.png',         '#C8102E'),
  ('db',               'Supermercados DB',  'assets/logos/db.png',               '#00529B'),
  ('veneza',           'Veneza',            'assets/logos/veneza.png',           '#E87722'),
- ('baratao-da-carne', 'Baratão da Carne',  'assets/logos/baratao-da-carne.png', '#8B1A1A'),
+ ('baratao-da-carne', 'Baratão da Carne',  'assets/logos/baratao-da-carne.png', '#8B4A2B'),
  ('coema',            'Coema',             'assets/logos/coema.png',            '#007A3D');
 
 insert into public.stores (supermarket_id, name, neighborhood, lat, lng)
@@ -698,3 +698,8 @@ begin
     raise notice 'Histórico das proteínas atualizado.';
   end if;
 end $prot$;
+
+-- Cores das redes alinhadas às logomarcas oficiais (usadas em gráficos e barras)
+update public.supermarkets set color = v.color
+from (values ('nova-era','#C21A19'), ('db','#D99A00'), ('veneza','#2E3A87'), ('baratao-da-carne','#8B4A2B'), ('coema','#009A51')) as v(slug, color)
+where supermarkets.slug = v.slug;
