@@ -291,7 +291,7 @@ async function demoDashboard(mid, days) {
     period_days: days, demo: true,
     kpis: { searches: sum('searches'), searches_prev: Math.round(sum('searches') * 0.86), people: Math.round(1080 * k), people_prev: Math.round(950 * k),
       views: sum('views'), adds: sum('adds'), routes: sum('routes'), routes_prev: Math.round(sum('routes') * 0.8), ranchos,
-      rancho_wins: Math.round(ranchos * 0.31), bought: Math.round((myBest?.bought_m || 100) * k), products: cat.length,
+      rancho_wins: Math.round(ranchos * 0.31), visits: Math.round(310 * k), bought: Math.round((myBest?.bought_m || 100) * k), products: cat.length,
       cheapest: cat.filter((r) => r.rank === 1).length, price_index: Math.round(cat.reduce((s, r) => s + (r.avg_other ? r.price / r.avg_other : 1), 0) / Math.max(cat.length, 1) * 1000) / 10,
       promos_live: pr.length },
     top_searches, no_results, top_products, top_brands, top_categories, ranking, zones, neighborhoods, gender, age, hours, daily, opportunities, promos: pr,

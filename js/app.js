@@ -12,6 +12,7 @@ import { track } from './track.js';
 import * as carrinho from './carrinho.js';
 import * as fila from './fila.js';
 import * as ads from './ads.js';
+import * as presence from './presence.js';
 
 
 function card(p, i) {
@@ -186,6 +187,7 @@ function requestGps() {
       const near = BAIRROS.map((b) => ({ b, d: haversine(p, b) })).sort((a, b) => a.d - b.d)[0];
       const wasHome = locMode === 'home';
       applyLoc({ ...p, label: near.d < 4 ? near.b.name : 'Sua localização', gps: !wasHome });
+      presence.start();
       if (wasHome) return;
       const closest = [...S.nearest.entries()].sort((a, b) => a[1].km - b[1].km)[0];
       if (closest) toast(`Mais perto: ${S.markets.get(closest[0]).name}, a ${km(closest[1].km)}.`);
@@ -210,7 +212,7 @@ function openSheet(sel) {
   const el = $(sel); lastFocus = document.activeElement;
   el.hidden = false; document.body.classList.add('no-scroll');
   requestAnimationFrame(() => el.classList.add('is-open'));
-  setTimeout(() => (el.querySelector('input, select, button:not([data-close])') || el.querySelector('.sheet__close'))?.focus({ preventScroll: true }), 60);
+  setTimeout(() => (el.querySelector('[data-autofocus]') || el.querySelector('input, select, button:not([data-close])') || el.querySelector('.sheet__close'))?.focus({ preventScroll: true }), 60);
 }
 function closeSheet(sel) {
   const el = typeof sel === 'string' ? $(sel) : sel;
@@ -741,6 +743,7 @@ async function refreshCatalog() {
 }
 Object.assign(hooks, {
   setQty, toast, openSheet, closeSheet, openAuth, refreshCatalog, card, openProduct,
+  onGps: (p) => { const near = BAIRROS.map((b) => ({ b, d: haversine(p, b) })).sort((a, b) => a.d - b.d)[0]; setPos({ ...p, label: near.d < 4 ? near.b.name : 'Sua localização', gps: true }); },
   afterListLoad: () => { updateListBadge(); renderGrid(); if (location.hash === '#lista') renderList(); },
   openHome: (cb) => openLoc('home', cb),
   afterContribution: () => { fiscal.renderHome(); if (S.user) api.getProfile().then((p) => { S.profile = p; renderProfileBanner(); }).catch(() => {}); },
@@ -767,6 +770,7 @@ async function boot() {
   // Se o usuário já autorizou a localização antes, atualiza em silêncio
   try {
     const perm = await navigator.permissions?.query({ name: 'geolocation' });
+    if (perm?.state === 'granted') presence.start();
     if (perm?.state === 'granted') navigator.geolocation.getCurrentPosition((g) => {
       const p = { lat: g.coords.latitude, lng: g.coords.longitude };
       const near = BAIRROS.map((b) => ({ b, d: haversine(p, b) })).sort((a, b) => a.d - b.d)[0];

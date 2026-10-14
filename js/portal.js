@@ -179,7 +179,7 @@ async function renderDashboard() {
       ${kpi('No rancho das pessoas', K.adds, { hint: 'seus produtos adicionados' })}
       ${kpi('Rotas até suas lojas', K.routes, { prev: K.routes_prev })}
       ${kpi('Ranchos mais baratos aqui', K.rancho_wins, { hint: `${share}% dos ${fmtN(K.ranchos)} ranchos concluídos`, accent: true })}
-      ${kpi('Compras confirmadas', K.bought, { hint: 'clientes que marcaram que compraram aqui' })}
+      ${kpi('Compras confirmadas', K.bought, { hint: K.visits != null ? `${fmtN(K.visits)} pessoas chegaram às suas lojas com o site aberto` : 'clientes que marcaram que compraram aqui' })}
       ${kpi('Índice de preço', K.price_index ?? 100, { fmt: (v) => String(v).replace('.', ','), hint: `100 = média dos concorrentes · ${K.cheapest} de ${K.products} produtos com menor preço` })}
     </section>
 

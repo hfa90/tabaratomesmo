@@ -58,7 +58,7 @@ async function demo() {
     members: [{ user_id: 'u3', supermarket_id: 5, email: users[4].email, full_name: users[4].full_name, role: 'admin', suspended: false, created_at: new Date(Date.now() - 9 * 864e5).toISOString(), last_sign_in_at: new Date().toISOString() },
       { user_id: 'u7', supermarket_id: 1, email: users[8].email, full_name: users[8].full_name, role: 'admin', suspended: false, created_at: new Date(Date.now() - 4 * 864e5).toISOString(), last_sign_in_at: null }],
     invites: [{ code: 'A1B2C3D4', supermarket_id: 2, role: 'admin', uses_left: 5, expires_at: new Date(Date.now() + 20 * 864e5).toISOString(), created_at: new Date().toISOString() }],
-    users, settings: { anon_comparisons: 3, quick_comparisons: 15, collab_enabled: true, promos_enabled: true, portal_enabled: true, tracking_enabled: true, ads_enabled: true, banner: '' },
+    users, settings: { anon_comparisons: 3, quick_comparisons: 15, collab_enabled: true, promos_enabled: true, portal_enabled: true, tracking_enabled: true, ads_enabled: true, welcome_enabled: true, welcome_radius: 150, banner: '' },
     admins: [{ email: 'haydenfernandes.ti@gmail.com', added_by: 'instalação', created_at: new Date().toISOString(), has_account: true }],
     log: [], productsOff: [], promoOff: [],
     reports: Array.from({ length: 14 }, (_, i) => {

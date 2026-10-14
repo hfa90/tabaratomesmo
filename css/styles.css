@@ -885,3 +885,24 @@ body.no-collab [data-report], body.no-collab .ask-row, body.no-collab [data-fisc
 .ck-head > div { min-width: 0; flex: 1 1 200px; }
 .ck, .fila { grid-template-columns: minmax(0, 1fr); }
 .ck-voice { grid-template-columns: minmax(0, 1fr); } .ck-mic > span:last-child { min-width: 0; }
+
+/* boas-vindas na loja */
+.sheet--welcome .sheet__panel { padding-top: 0; overflow-x: hidden; }
+.sheet--welcome .sheet__grip { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 2; background: rgba(255,255,255,.6); margin: 0; }
+.sheet--welcome .sheet__close { color: #fff; background: rgba(0,0,0,.18); }
+.wl { display: grid; gap: 16px; }
+.wl-top { margin: 0 -20px; padding: 34px 20px 20px; background: linear-gradient(160deg, var(--c), color-mix(in srgb, var(--c) 70%, #000)); color: #fff; display: grid; justify-items: center; text-align: center; gap: 4px; border-radius: 22px 22px 0 0; }
+.wl-logo { width: 76px; height: 76px; border-radius: 20px; overflow: hidden; background: #fff; box-shadow: 0 8px 22px -8px rgba(0,0,0,.5); margin-bottom: 8px; animation: wl-pop .5s cubic-bezier(.2,1.4,.4,1) both; }
+@keyframes wl-pop { from { transform: scale(.6); opacity: 0; } }
+.wl-hi { font-size: .9rem; opacity: .9; }
+.wl-top .sheet__title { padding: 0; margin: 0; color: #fff; }
+.wl-sub { font-size: .82rem; opacity: .85; }
+.wl-offers { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.wl-offers button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-radius: 12px; text-align: left; }
+.wl-offers button:hover { background: var(--surface-2); }
+.wl-price { display: grid; justify-items: end; gap: 2px; }
+.wl-price b { font: 700 1.05rem var(--display); }
+.wl-price small { font-size: .72rem; font-weight: 700; }
+.wl-rancho { padding: 12px 14px; border-radius: 12px; background: var(--brand-soft); font-size: .9rem; }
+.wl-actions { display: grid; gap: 8px; }
+@media (min-width: 600px) { .sheet--welcome .sheet__panel { padding-top: 0; } .wl-top { margin: 0 -26px; padding-top: 30px; border-radius: 24px 24px 0 0; } }

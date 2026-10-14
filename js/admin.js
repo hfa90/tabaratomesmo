@@ -114,7 +114,7 @@ async function renderOverview() {
       ${kpi('Novos cadastros', K.users_new, { prev: K.users_new_prev })}
       ${kpi('Visitantes', K.visitors, { prev: K.visitors_prev })}
       ${kpi('Buscas', K.searches, { prev: K.searches_prev })}
-      ${kpi('Ranchos concluídos', K.ranchos, { hint: `${fmtN(K.lists)} listas movimentadas` })}
+      ${kpi('Ranchos concluídos', K.ranchos, { hint: `${fmtN(K.lists)} listas movimentadas${K.visits != null ? ` · ${fmtN(K.visits)} chegadas em lojas` : ''}` })}
       ${kpi('Compras confirmadas', K.bought, { hint: K.spent ? `${brl(Number(K.spent))} declarados` : 'clientes que marcaram onde compraram' })}
       ${kpi('Economia gerada', Number(K.savings), { fmt: (v) => brl(v), hint: `${brl(Number(K.savings_all))} desde o início`, accent: true })}
       ${kpi('Preços enviados', K.reports, { hint: `${fmtN(K.reports_pending)} aguardando moderação` })}
@@ -249,7 +249,7 @@ async function storesSheet(id) {
       <label>Endereço<input name="address" /></label>
       <div class="form__row"><label>Latitude<input name="lat" inputmode="decimal" required placeholder="-3.0700" /></label><label>Longitude<input name="lng" inputmode="decimal" required placeholder="-60.0200" /></label></div>
       <label class="check"><input type="checkbox" name="approx" /> Posição aproximada</label>
-      <p class="muted small">Dica: no Google Maps, clique com o botão direito no local e copie as coordenadas.</p>
+      <p class="muted small">Dica: no Google Maps, clique com o botão direito na entrada da loja e copie as coordenadas. As boas-vindas automáticas dependem delas: posição aproximada faz o site não reconhecer a loja.</p>
       <p class="form__err" role="alert"></p><button class="btn btn--primary">Salvar loja</button></form>`;
   $('#stBody')._stores = D.stores;
 }
@@ -452,6 +452,7 @@ async function renderConfig() {
     ['portal_enabled', 'Área do supermercado liberada', 'Desligado: nenhum mercado consegue entrar no portal.'],
     ['tracking_enabled', 'Coleta de métricas de uso', 'Desligado: buscas, visualizações e rotas deixam de ser registradas.'],
     ['ads_enabled', 'Publicidade aparece no site', 'Desligado: nenhum anúncio é mostrado, mesmo os pagos e aprovados.'],
+    ['welcome_enabled', 'Boas-vindas ao chegar numa loja', 'Com a localização liberada, o site reconhece a loja pelo GPS e mostra as ofertas dela.'],
   ];
   $('#cfg').innerHTML = `
     <section class="panel"><div class="panel__head"><h2>Funções do site</h2></div>
@@ -461,7 +462,8 @@ async function renderConfig() {
         <form class="form" id="cfgLimits">
           <label>Sem cadastro<input name="anon" type="number" min="0" max="999" value="${Number(val('anon_comparisons') ?? 3)}" /></label>
           <label>Com cadastro rápido<input name="quick" type="number" min="0" max="9999" value="${Number(val('quick_comparisons') ?? 15)}" /></label>
-          <p class="muted small">Cadastro completo é sempre sem limite. Cada preço informado libera +2 comparações.</p>
+          <label>Raio das boas-vindas na loja (metros)<input name="radius" type="number" min="50" max="500" value="${Number(val('welcome_radius') ?? 150)}" /></label>
+          <p class="muted small">Cadastro completo é sempre sem limite. Cada preço informado libera +2 comparações. O raio vale para todas as lojas: 150 m cobre o estacionamento de um supermercado médio.</p>
           <button class="btn btn--primary">Salvar limites</button></form></section>
       <section class="panel"><div class="panel__head"><h2>Aviso no topo do site</h2></div>
         <form class="form" id="cfgBanner"><label>Mensagem<textarea name="banner" maxlength="200" placeholder="Ex.: Semana do rancho: promoções exclusivas até domingo!">${esc(val('banner') || '')}</textarea></label>
@@ -608,7 +610,8 @@ document.addEventListener('submit', async (e) => {
       toast('Loja salva.'); storesSheet(Number(f.dataset.mk)); refreshMarketsSoon();
     } else if (fid === 'cfgLimits') {
       await A.setSetting('anon_comparisons', Math.max(0, Number(f.anon.value) || 0));
-      await A.setSetting('quick_comparisons', Math.max(0, Number(f.quick.value) || 0)); toast('Limites salvos.');
+      await A.setSetting('quick_comparisons', Math.max(0, Number(f.quick.value) || 0));
+      await A.setSetting('welcome_radius', Math.min(500, Math.max(50, Number(f.radius.value) || 150))); toast('Limites salvos.');
     } else if (fid === 'cfgBanner') {
       await A.setSetting('banner', f.banner.value.trim()); toast(f.banner.value.trim() ? 'Aviso publicado no site.' : 'Aviso retirado.');
     } else if (fid === 'planNew') {

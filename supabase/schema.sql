@@ -112,7 +112,9 @@ insert into public.app_settings (key, value, label) values
  ('promos_enabled',    'true', 'Promoções dos mercados aparecem no site'),
  ('portal_enabled',    'true', 'Área do supermercado liberada'),
  ('tracking_enabled',  'true', 'Coleta de métricas de uso'),
- ('banner',            '""',   'Aviso no topo do site (vazio = sem aviso)')
+ ('banner',            '""',   'Aviso no topo do site (vazio = sem aviso)'),
+ ('welcome_enabled',   'true', 'Boas-vindas quando a pessoa chega numa loja'),
+ ('welcome_radius',    '150',  'Distância da loja para dar boas-vindas (metros)')
 on conflict (key) do nothing;
 
 create or replace function public.setting(p_key text)
@@ -1240,7 +1242,7 @@ create table if not exists public.events (
 alter table public.events add column if not exists ad_id bigint;
 alter table public.events drop constraint if exists events_kind_check;
 alter table public.events add constraint events_kind_check check (kind in
-  ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open'));
+  ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit'));
 create index if not exists events_ad on public.events (ad_id, kind) where ad_id is not null;
 create index if not exists events_kind_time on public.events (kind, created_at desc);
 create index if not exists events_market on public.events (supermarket_id, created_at desc);
@@ -1263,7 +1265,7 @@ begin
                 when age(pf.birth_date) < interval '60 years' then '45-59'
                 else '60+' end;
   for e in select * from jsonb_array_elements(p_events) loop
-    continue when coalesce(e->>'kind', '') not in ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open');
+    continue when coalesce(e->>'kind', '') not in ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit');
     v_nb := coalesce(nullif(pf.neighborhood, ''), nullif(left(e->>'neighborhood', 60), ''));
     insert into events (kind, session_id, user_id, product_id, supermarket_id, query, results,
                         neighborhood, zone, gender, age_band, value, ad_id)
@@ -1329,6 +1331,7 @@ begin
       'views',         (select count(*) from ev where kind = 'view' and product_id in (select product_id from mine)),
       'adds',          (select count(*) from ev where kind = 'add' and product_id in (select product_id from mine)),
       'routes',        (select count(*) from ev where kind = 'route' and supermarket_id = p_market),
+      'visits',        (select count(distinct who) from ev where kind = 'store_visit' and supermarket_id = p_market),
       'routes_prev',   (select count(*) from evp where kind = 'route' and supermarket_id = p_market),
       'ranchos',       (select count(*) from ev where kind = 'rancho_done'),
       'rancho_wins',   (select count(*) from ev where kind = 'rancho_done' and supermarket_id = p_market),
@@ -1476,6 +1479,7 @@ begin
       'bought',           (select count(*) from ev where kind = 'bought'),
       'spent',            (select coalesce(sum(value), 0) from ev where kind = 'bought'),
       'routes',           (select count(*) from ev where kind = 'route'),
+      'visits',           (select count(*) from ev where kind = 'store_visit'),
       'savings',          (select coalesce(sum(savings), 0) from shopping_lists where completed_at >= v_since),
       'savings_all',      (select coalesce(sum(savings), 0) from shopping_lists),
       'lists',            (select count(*) from shopping_lists where updated_at >= v_since),
