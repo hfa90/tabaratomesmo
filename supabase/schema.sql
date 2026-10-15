@@ -1242,7 +1242,7 @@ create table if not exists public.events (
 alter table public.events add column if not exists ad_id bigint;
 alter table public.events drop constraint if exists events_kind_check;
 alter table public.events add constraint events_kind_check check (kind in
-  ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit'));
+  ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool'));
 create index if not exists events_ad on public.events (ad_id, kind) where ad_id is not null;
 create index if not exists events_kind_time on public.events (kind, created_at desc);
 create index if not exists events_market on public.events (supermarket_id, created_at desc);
@@ -1265,7 +1265,7 @@ begin
                 when age(pf.birth_date) < interval '60 years' then '45-59'
                 else '60+' end;
   for e in select * from jsonb_array_elements(p_events) loop
-    continue when coalesce(e->>'kind', '') not in ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit');
+    continue when coalesce(e->>'kind', '') not in ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool');
     v_nb := coalesce(nullif(pf.neighborhood, ''), nullif(left(e->>'neighborhood', 60), ''));
     insert into events (kind, session_id, user_id, product_id, supermarket_id, query, results,
                         neighborhood, zone, gender, age_band, value, ad_id)
@@ -2198,3 +2198,37 @@ begin
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;
 end $$;
+
+
+-- =====================================================================
+--  Ajudantes do mercado: códigos de barras ensinados pelos usuários
+--  Quando a pessoa lê um código que o site não conhece, ela escolhe o
+--  produto ("me ensina: qual é?"). Duas pessoas diferentes indicando o
+--  mesmo produto para o mesmo código gravam o EAN no produto sozinhas.
+-- =====================================================================
+create table if not exists public.ean_suggestions (
+  id          bigserial primary key,
+  created_at  timestamptz not null default now(),
+  ean         text not null check (ean ~ '^[0-9]{8,14}$'),
+  product_id  int not null references public.products(id) on delete cascade,
+  user_id     uuid not null default auth.uid(),
+  unique (ean, product_id, user_id)
+);
+alter table public.ean_suggestions enable row level security;
+drop policy if exists ean_sugg_insert on public.ean_suggestions;
+create policy ean_sugg_insert on public.ean_suggestions for insert to authenticated with check (user_id = auth.uid());
+drop policy if exists ean_sugg_admin on public.ean_suggestions;
+create policy ean_sugg_admin on public.ean_suggestions for select to authenticated using (is_master());
+
+create or replace function public.ean_suggestion_apply()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_norm text := ltrim(new.ean, '0');
+begin
+  if exists (select 1 from products where ltrim(coalesce(ean, ''), '0') = v_norm) then return new; end if;
+  if (select count(distinct user_id) from ean_suggestions where ltrim(ean, '0') = v_norm and product_id = new.product_id) >= 2 then
+    update products set ean = new.ean where id = new.product_id and ean is null;
+  end if;
+  return new;
+end $$;
+drop trigger if exists ean_suggestion_apply on public.ean_suggestions;
+create trigger ean_suggestion_apply after insert on public.ean_suggestions for each row execute function public.ean_suggestion_apply();

@@ -13,6 +13,8 @@ import * as carrinho from './carrinho.js';
 import * as fila from './fila.js';
 import * as ads from './ads.js';
 import * as presence from './presence.js';
+import { perUnit, perUnitBadge, sizeSiblings } from './unitprice.js';
+import * as ajudantes from './ajudantes.js';
 
 
 function card(p, i) {
@@ -34,7 +36,7 @@ function card(p, i) {
       <h3>${esc(p.name)}</h3>
       <p>${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</p>
     </div>
-    <div class="card__price">${priceTag(best.price)}${best.regular ? `<s class="was">${brl(best.regular)}</s>` : ''}${trend}${promo ? promoPill(promo) : ''}</div>
+    <div class="card__price">${priceTag(best.price)}${best.regular ? `<s class="was">${brl(best.regular)}</s>` : ''}${trend}${promo ? promoPill(promo) : ''}${perUnitBadge(p.unit, best.price)}</div>
     <div class="card__where">${logo(bm, 'xs')}<span>${esc(bm.name)}${nb ? ` · ${km(nb.km)}` : ''}</span></div>
     <footer class="card__foot">
       <span class="card__others">${others.length ? `+${others.length} ${others.length > 1 ? 'mercados' : 'mercado'}, até ${brl(others[others.length - 1].price)}` : 'Só neste mercado'}</span>
@@ -218,6 +220,7 @@ function closeSheet(sel) {
   const el = typeof sel === 'string' ? $(sel) : sel;
   if (!el || el.hidden) return;
   el.classList.remove('is-open');
+  el.dispatchEvent(new CustomEvent('sheetclose'));
   setTimeout(() => { el.hidden = true; if (!$$('.sheet.is-open').length) document.body.classList.remove('no-scroll'); }, reduceMotion ? 0 : 260);
   lastFocus?.focus?.({ preventScroll: true });
 }
@@ -287,6 +290,7 @@ async function openProduct(pid) {
         <div>
           <p>Menor preço no <b>${esc(bm.name)}</b></p>
           ${priceTag(best.price, 'lg')} ${best.regular ? `<s class="was">${brl(best.regular)}</s>` : ''}
+          ${perUnit(p.unit, best.price) && Math.abs(perUnit(p.unit, best.price).qty - 1) > 1e-9 ? `<p class="pd__ppu">⚖️ Sai <b>${perUnit(p.unit, best.price).text}</b></p>` : ''}
         </div>
         ${changeBadge(p.change_pct)}
       </div>
@@ -309,7 +313,7 @@ async function openProduct(pid) {
             return `<li class="bar ${j === 0 ? 'is-best' : ''}">
               ${logo(m, 'md')}
               <div class="bar__main">
-                <div class="bar__top"><b>${esc(m.name)} ${promoPill(x)}</b><span class="bar__price">${brl(x.price)}</span></div>
+                <div class="bar__top"><b>${esc(m.name)} ${promoPill(x)}</b><span class="bar__price">${brl(x.price)}${perUnitBadge(p.unit, x.price)}</span></div>
                 <div class="bar__track"><span style="--w:${w}%"></span></div>
                 <div class="bar__meta">
                   <span>${j === 0 ? 'Menor preço' : `+${brl(x.price - best.price)} (${pct((x.price / best.price - 1) * 100)})`}</span>
@@ -322,6 +326,8 @@ async function openProduct(pid) {
           }).join('')}
         </ol>
       </div>
+
+      ${sizesBox(p)}
 
       ${unknown.length ? `<div class="ask-row"><span>Sem preço em ${esc(unknown.map((m) => m.name).join(', '))}.</span><button class="btn btn--sm btn--ghost" data-fiscal-one="${p.id}" data-fiscal-m="${unknown[0].id}">Eu sei o preço</button></div>` : ''}
 
@@ -346,6 +352,19 @@ async function openProduct(pid) {
   $('#productSheet').dataset.pid = pid;
   openSheet('#productSheet');
   drawHistory(pid, 30);
+}
+
+/** "Qual tamanho compensa?": outros tamanhos do mesmo produto, pelo preço do quilo/litro */
+function sizesBox(p) {
+  const sib = sizeSiblings(p, S.products, (q) => visiblePrices(q)[0]?.price);
+  if (!sib.length) return `<button class="size-cta" data-tool="tamanho" data-tool-pid="${p.id}"><span aria-hidden="true">⚖️</span><span><b>Achou outro tamanho na prateleira?</b><small>Descubra qual pacote compensa mais</small></span><em>›</em></button>`;
+  const best = sib[0];
+  return `<div class="sizes">
+    <h3 class="pd__h">⚖️ Qual tamanho compensa?</h3>
+    <ol class="sizes__list">${sib.map((x, i) => `<li class="${i === 0 ? 'is-best' : ''} ${x.p.id === p.id ? 'is-me' : ''}">
+      <button data-open-product="${x.p.id}"><span class="sizes__u">${esc(x.p.unit)}</span><span class="sizes__p">${brl(x.price)}</span>
+      <span class="sizes__k">${x.pu.text}</span>${i === 0 ? '<span class="sizes__win">👍 Compensa</span>' : `<span class="sizes__more">+${Math.round((x.pu.value / best.pu.value - 1) * 100)}%</span>`}</button></li>`).join('')}</ol>
+  </div>`;
 }
 
 async function drawHistory(pid, days) {
@@ -746,6 +765,7 @@ Object.assign(hooks, {
   onGps: (p) => { const near = BAIRROS.map((b) => ({ b, d: haversine(p, b) })).sort((a, b) => a.d - b.d)[0]; setPos({ ...p, label: near.d < 4 ? near.b.name : 'Sua localização', gps: true }); },
   afterListLoad: () => { updateListBadge(); renderGrid(); if (location.hash === '#lista') renderList(); },
   openHome: (cb) => openLoc('home', cb),
+  ranchoMode: (m) => rancho.setMode(m),
   afterContribution: () => { fiscal.renderHome(); if (S.user) api.getProfile().then((p) => { S.profile = p; renderProfileBanner(); }).catch(() => {}); },
 });
 
@@ -766,6 +786,7 @@ async function boot() {
   rancho.meta();
   renderChips(); renderNearby(); renderDeals(); renderGrid(); route();
   fiscal.renderHome(); fiscal.checkAtStore();
+  ajudantes.renderHub();
 
   // Se o usuário já autorizou a localização antes, atualiza em silêncio
   try {

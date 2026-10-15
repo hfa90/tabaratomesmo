@@ -469,6 +469,16 @@ export async function adsLive() {
   } catch { return []; }
 }
 
+// ---------------------------------------------------------------- leitor de código: código ensinado pelo usuário
+export async function suggestEan(ean, product_id) {
+  if (MODE === 'demo') return;
+  const c = await client();
+  const { data: u } = await c.auth.getUser();
+  if (!u.user) return; // sem conta, fica só no aparelho
+  const { error } = await c.from('ean_suggestions').insert({ ean, product_id });
+  if (error && error.code !== '23505') throw error;
+}
+
 // ---------------------------------------------------------------- carrinho: foto da etiqueta
 export async function sendShelfPhoto(blob, row) {
   if (MODE === 'demo') { const l = ls.get('tb.demoPhotos', []); l.push({ ...row, at: new Date().toISOString() }); ls.set('tb.demoPhotos', l); return; }

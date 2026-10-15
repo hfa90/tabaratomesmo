@@ -4,6 +4,8 @@ import { track } from './track.js';
 import * as ads from './ads.js';
 let adRanchoHTML = '';
 import { BAIRROS } from './config.js';
+import { currentMarket } from './carrinho.js';
+import { openTool } from './ajudantes.js';
 import {
   S, $, $$, esc, brl, km, haversine, isOn, logo, logoFull, priceTag, stepper, hooks, DOW, DOW_SHORT, reduceMotion, media,
 } from './core.js';
@@ -267,6 +269,100 @@ function shell() {
     </div>`;
 }
 
+function itemRow({ p, qty }, checked) {
+  const b = bestOf(p); const on = checked.has(p.id);
+  return `<li class="rx-item ${on ? 'is-checked' : ''}" data-pid="${p.id}">
+    <label class="tick"><input type="checkbox" data-check="${p.id}" ${on ? 'checked' : ''} aria-label="Já peguei ${esc(p.name)}" /><span></span></label>
+    ${media(p, 'rx-media')}
+    <div class="rx-txt"><span class="rx-name">${esc(p.name)}</span>
+      <span class="rx-meta">${mode === 'plan' ? `${logo(S.markets.get(b.market_id), 'xs')} <span>${brl(b.price)}${qty > 1 ? ` × ${qty}` : ''} · ${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</span>` : `<span>${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</span>`}</span></div>
+    <span class="rx-qty">${qty}×</span>
+    <span class="rx-sub">${brl(b.price * qty)}</span>
+    ${stepper(p.id)}
+  </li>`;
+}
+
+// ---------------------------------------------------------------- caminho no mercado (lista na ordem dos corredores)
+// Ordem padrão de uma volta só: hortifrúti na entrada, secos no meio, refrigerados e congelados por último.
+export const AISLES = [
+  { id: 'hortifruti', icon: '🥬', name: 'Frutas e verduras' },
+  { id: 'mercearia', icon: '🥫', name: 'Mercearia', hint: 'arroz, feijão, café, biscoito' },
+  { id: 'bebidas', icon: '🥤', name: 'Bebidas' },
+  { id: 'limpeza', icon: '🧴', name: 'Limpeza' },
+  { id: 'higiene', icon: '🧼', name: 'Higiene' },
+  { id: 'laticinios', icon: '🧀', name: 'Frios e laticínios', hint: 'leite, queijo, manteiga' },
+  { id: 'carnes', icon: '🥩', name: 'Açougue e peixaria' },
+  { id: 'congelados', icon: '🧊', name: 'Congelados', hint: 'por último, para não derreter' },
+];
+const sectionOf = (p) => (/congelad|sorvete|\bgelo\b|picol/.test((p.name || '').toLowerCase()) ? 'congelados' : p.category_slug);
+const aisleKey = () => `tb.aisle.${currentMarket() ?? 'all'}`;
+export function aisleOrder() {
+  const saved = api.store.get(aisleKey(), null);
+  const ids = AISLES.map((a) => a.id);
+  // categorias novas que o site ainda não conhece entram antes dos congelados
+  const extra = S.categories.map((c) => c.slug).filter((x) => !ids.includes(x));
+  const base = [...ids.slice(0, -1), ...extra, 'congelados'];
+  if (!Array.isArray(saved)) return base;
+  return [...saved.filter((x) => base.includes(x)), ...base.filter((x) => !saved.includes(x))];
+}
+const aisleInfo = (id) => AISLES.find((a) => a.id === id) || { id, icon: S.categories.find((c) => c.slug === id)?.icon || '🛒', name: S.categories.find((c) => c.slug === id)?.name || id };
+
+let lastStop = null;
+function trailHTML(its, checked) {
+  const order = aisleOrder();
+  const by = new Map();
+  for (const it of its) { const k = sectionOf(it.p); (by.get(k) || by.set(k, []).get(k)).push(it); }
+  const stops = order.filter((id) => by.has(id)).map((id) => {
+    const arr = by.get(id).sort((a, b) => checked.has(a.p.id) - checked.has(b.p.id));
+    const left = arr.filter(({ p }) => !checked.has(p.id)).length;
+    return { ...aisleInfo(id), arr, left, done: left === 0 };
+  });
+  const cur = stops.find((x) => !x.done);
+  const m = S.markets.get(currentMarket());
+  const all = stops.every((x) => x.done);
+  return `
+    <div class="trail">
+      <div class="trail__head">
+        <p><span aria-hidden="true">🗺️</span> <b>Caminho no mercado</b>${m ? ` <span class="trail__m">${logo(m, 'xs')} ${esc(m.name)}</span>` : ''}</p>
+        <button class="btn btn--text btn--sm" data-aisle="edit">Mudar a ordem</button>
+      </div>
+      <ol class="trail__map" aria-label="Paradas">${stops.map((x, i) => `<li class="${x.done ? 'is-done' : x === cur ? 'is-cur' : ''}">
+        <button type="button" data-stop="${esc(x.id)}" aria-label="Parada ${i + 1}: ${esc(x.name)}${x.done ? ', pronto' : ''}"><span class="trail__dot">${x.done ? '✓' : x.icon}</span><small>${i + 1}</small></button></li>`).join('')}</ol>
+      ${all ? `<div class="trail__now is-done"><span aria-hidden="true">🎉</span><span><b>Pegou tudo!</b> Agora é só ir para o caixa.</span><a class="btn btn--primary btn--sm" href="#fila">Estou na fila</a></div>`
+        : `<div class="trail__now"><span class="trail__big" aria-hidden="true">${cur.icon}</span><span><small>Agora vá para</small><b>${esc(cur.name)}</b><small>pegue ${cur.left} ${cur.left > 1 ? 'coisas' : 'coisa'}${cur.hint ? ` · ${esc(cur.hint)}` : ''}</small></span></div>`}
+    </div>
+    ${stops.map((x, i) => `<details class="rx-group stop ${x.done ? 'is-done' : x === cur ? 'is-cur' : ''}" id="stop-${esc(x.id)}" ${x.done ? '' : 'open'}>
+      <summary><span class="stop__n">${x.done ? '✓' : i + 1}</span><span class="stop__i" aria-hidden="true">${x.icon}</span><span class="stop__t"><b>${esc(x.name)}</b>${x.done ? '<small>Pronto!</small>' : x.hint ? `<small>${esc(x.hint)}</small>` : ''}</span><span class="cnt">${x.arr.length - x.left}/${x.arr.length}</span></summary>
+      <ul class="rx-items">${x.arr.map((it) => itemRow(it, checked)).join('')}</ul>
+    </details>`).join('')}`;
+}
+function afterTrail() {
+  const cur = $('.stop.is-cur');
+  const id = cur?.id || null;
+  // terminou uma parada: rola até a próxima
+  if (lastStop && id && id !== lastStop && cur) cur.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  lastStop = id;
+}
+
+function aisleEditor() {
+  const order = aisleOrder();
+  const m = S.markets.get(currentMarket());
+  openTool('caminho', `
+    <div class="tool">
+      <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">🗺️</span> Ordem do caminho</h2>
+      <p class="tool__lead">Cada mercado é diferente. Arrume na ordem em que você anda${m ? ` no <b>${esc(m.name)}</b>` : ''}: o app lembra.</p>
+      <ol class="aisles">${order.map((id, i) => { const a = aisleInfo(id); return `<li><span class="stop__n">${i + 1}</span><span class="stop__i" aria-hidden="true">${a.icon}</span><b>${esc(a.name)}</b>
+        <span class="aisles__b"><button data-aisle-up="${esc(id)}" ${i === 0 ? 'disabled' : ''} aria-label="Subir ${esc(a.name)}">▲</button><button data-aisle-down="${esc(id)}" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Descer ${esc(a.name)}">▼</button></span></li>`; }).join('')}</ol>
+      <div class="tool__actions"><button class="btn btn--primary btn--xl" data-aisle="done">Pronto</button><button class="btn btn--text" data-aisle="reset">Voltar ao padrão</button></div>
+    </div>`);
+}
+function moveAisle(id, dir) {
+  const o = aisleOrder(); const i = o.indexOf(id); const j = i + dir;
+  if (i < 0 || j < 0 || j >= o.length) return;
+  [o[i], o[j]] = [o[j], o[i]]; api.store.set(aisleKey(), o); aisleEditor();
+}
+export function setMode(m) { mode = m; api.store.set('tb.rmode', mode); }
+
 export function render() {
   shell();
   const m = meta();
@@ -311,25 +407,15 @@ export function render() {
   for (const it of its) { const k = it.p.category_slug; (groups.get(k) || groups.set(k, []).get(k)).push(it); }
   const openState = api.store.get('tb.rgroups', {});
   $('#rxGroups').classList.toggle('rx-mode-shop', mode === 'shop');
-  $('#rxGroups').innerHTML = [...groups].sort((a, b) => (C.get(a[0])?.sort ?? 99) - (C.get(b[0])?.sort ?? 99)).map(([slug, arr]) => {
+  if (mode === 'shop') $('#rxGroups').innerHTML = trailHTML(its, checked);
+  else $('#rxGroups').innerHTML = [...groups].sort((a, b) => (C.get(a[0])?.sort ?? 99) - (C.get(b[0])?.sort ?? 99)).map(([slug, arr]) => {
     const n = arr.filter(({ p }) => checked.has(p.id)).length;
-    if (mode === 'shop') arr.sort((a, b) => checked.has(a.p.id) - checked.has(b.p.id));
     return `<details class="rx-group" data-group="${esc(slug)}" ${openState[slug] === false ? '' : 'open'}>
       <summary>${esc(C.get(slug)?.name || slug)}<span class="cnt">${n ? `${n}/` : ''}${arr.length}</span></summary>
-      <ul class="rx-items">${arr.map(({ p, qty }) => {
-        const b = bestOf(p); const on = checked.has(p.id);
-        return `<li class="rx-item ${on ? 'is-checked' : ''}" data-pid="${p.id}">
-          <label class="tick"><input type="checkbox" data-check="${p.id}" ${on ? 'checked' : ''} aria-label="Já peguei ${esc(p.name)}" /><span></span></label>
-          ${media(p, 'rx-media')}
-          <div class="rx-txt"><span class="rx-name">${esc(p.name)}</span>
-            <span class="rx-meta">${mode === 'plan' ? `${logo(S.markets.get(b.market_id), 'xs')} <span>${brl(b.price)}${qty > 1 ? ` × ${qty}` : ''} · ${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</span>` : `<span>${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</span>`}</span></div>
-          <span class="rx-qty">${qty}×</span>
-          <span class="rx-sub">${brl(b.price * qty)}</span>
-          ${stepper(p.id)}
-        </li>`;
-      }).join('')}</ul>
+      <ul class="rx-items">${arr.map((it) => itemRow(it, checked)).join('')}</ul>
     </details>`;
   }).join('');
+  if (mode === 'shop') afterTrail();
 
   // ---- resumo lateral
   const r = computeReport();
@@ -550,7 +636,13 @@ document.addEventListener('click', async (e) => {
     if (S.user) api.updateProfile({ transport: d.mode }).catch(() => {});
     renderReport(false); render(); return;
   }
-  if (d.rmode) { mode = d.rmode; api.store.set('tb.rmode', mode); render(); return; }
+  if (d.rmode) { mode = d.rmode; api.store.set('tb.rmode', mode); lastStop = null; render(); return; }
+  if (d.aisle === 'edit') return aisleEditor();
+  if (d.aisle === 'done') { hooks.closeSheet?.('#toolSheet'); return render(); }
+  if (d.aisle === 'reset') { api.store.set(aisleKey(), null); aisleEditor(); return render(); }
+  if (d.aisleUp) { moveAisle(d.aisleUp, -1); return render(); }
+  if (d.aisleDown) { moveAisle(d.aisleDown, 1); return render(); }
+  if (d.stop) { e.preventDefault(); const el = document.getElementById('stop-' + d.stop); if (el) { el.open = true; el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }); } return; }
   if (d.bought) {
     const m = meta(); const v = parseFloat(($('#spentValue')?.value || '').replace(/\./g, '').replace(',', '.'));
     m.bought = Number(d.bought); m.spent = v > 0 ? Math.round(v * 100) / 100 : null;

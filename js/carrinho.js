@@ -2,7 +2,7 @@
 // o site anota, soma, compara com o orçamento e confere o preço com o do site.
 import * as api from './api.js';
 import { S, $, $$, esc, brl, logo, hooks, haversine, isOn, media } from './core.js';
-import { parse, match, verdict } from './voice.js';
+import { parse, match, verdict, promoEffective } from './voice.js';
 import { track } from './track.js';
 import * as ads from './ads.js';
 
@@ -60,6 +60,11 @@ export function render() {
             <span class="ck-mic__b">${MIC}</span>
             <span><b>${listening ? 'Ouvindo… fale o item' : 'Toque e fale o item'}</b><small>Ex.: “Nescau 370 gramas 9 e 49”</small></span>
           </button>` : '<p class="note small">Seu navegador não reconhece fala. Digite como você falaria, por exemplo “arroz 5 quilos 25,75”.</p>'}
+        <div class="ck-tools">
+          <button class="ck-tool ck-tool--scan" data-tool="scan"><span aria-hidden="true">📷</span><b>Ler código</b></button>
+          <button class="ck-tool" data-tool="promo"><span aria-hidden="true">🏷️</span><b>Promoção vale?</b></button>
+          <button class="ck-tool" data-tool="tamanho"><span aria-hidden="true">⚖️</span><b>Qual compensa?</b></button>
+        </div>
         <div class="ck-heard" id="ckHeard" ${listening ? '' : 'hidden'}></div>
         <form class="ck-type" id="ckType" autocomplete="off">
           <input name="q" placeholder="ou digite: leite 1 litro 5,49" enterkeyhint="done" aria-label="Digite o item com o preço" />
@@ -91,7 +96,7 @@ function row(i) {
   return `<li class="ck-item" data-ci="${i.id}">
     ${p ? media(p, 'rx-media') : '<span class="rx-media" aria-hidden="true">🛒</span>'}
     <div class="rx-txt"><span class="rx-name">${esc(i.name)}</span>
-      <span class="rx-meta">${ic ? `<span class="ck-st ck-st--${cls}" title="${tip}">${ic} ${tip}</span>` : ''}${i.site_price != null && i.status === 'diferente' ? ` <span>site: ${brl(i.site_price)}</span>` : ''}${i.photo ? ' <span>· foto enviada</span>' : ''}</span></div>
+      <span class="rx-meta">${ic ? `<span class="ck-st ck-st--${cls}" title="${tip}">${ic} ${tip}</span>` : ''}${i.site_price != null && i.status === 'diferente' ? ` <span>site: ${brl(i.site_price)}</span>` : ''}${i.photo ? ' <span>· foto enviada</span>' : ''}${i.promo ? ` <span class="pill pill--promo">🏷️ ${esc(i.promo)}</span>` : ''}</span></div>
     <label class="price-in ck-price"><span>R$</span><input inputmode="decimal" value="${i.price != null ? i.price.toFixed(2).replace('.', ',') : ''}" placeholder="0,00" data-ck-price="${i.id}" aria-label="Preço de ${esc(i.name)}" /></label>
     <span class="stepper"><button data-ck-dec="${i.id}" aria-label="Menos">−</button><output>${i.qty}</output><button data-ck-inc="${i.id}" aria-label="Mais">+</button></span>
     <b class="rx-sub">${brl((i.price || 0) * i.qty)}</b>
@@ -121,13 +126,47 @@ export function addFromSpeech(alternatives, source = 'voz') {
     price: o.p.price ?? (v.site ?? null), status: o.p.price == null && v.site != null ? 'sem_valor' : v.kind,
     site_price: v.site ?? null, size: o.p.size?.label || null, at: new Date().toISOString(),
   };
+  // promoção falada ("leve 3 pague 2"): guarda a quantidade e o preço de cada um já com o desconto
+  const pe = o.p.promo && item.price != null ? promoEffective(o.p.promo, item.price) : null;
+  if (pe) { item.qty = pe.qty; item.price = pe.unit; item.promo = o.p.promo.label; item.status = 'manual'; }
   const c = st(); c.startedAt ||= item.at; c.items.unshift(item); save(); lastAdded = item.id;
   track('cart_item', { product_id: item.product_id, market_id: mid, value: item.price });
   render();
+  if (pe) { flash(item.id); hooks.toast?.(`🏷️ ${item.promo}: cada um sai ${brl(pe.unit)}. Você economiza ${brl(pe.save)}.`); return; }
   flash(item.id);
   if (item.price == null) return askPrice(item);
   if (['diferente', 'sem_preco', 'tamanho', 'novo'].includes(item.status)) return askPhoto(item, v);
   hooks.toast?.(item.status === 'confere' ? `✓ ${item.name}: ${brl(item.price)}, confere com o site.` : `${item.name}: ${brl(item.price)} adicionado.`);
+}
+
+/** adiciona um produto conhecido (do leitor de código de barras ou da calculadora de promoção) */
+export function addProduct(p, { price = null, qty = 1, note = '' } = {}) {
+  const mid = currentMarket();
+  const x = p.prices?.find((y) => y.market_id === mid);
+  const site = x?.price ?? null;
+  const value = price ?? site;
+  const item = {
+    id: uid(), spoken: note || p.name, qty,
+    name: `${p.name}${p.brand && p.brand !== 'Granel' ? ' ' + p.brand : ''} ${p.unit || ''}`.trim(),
+    product_id: p.id, guess_id: p.id, price: value,
+    status: price == null ? (site != null ? 'sem_valor' : 'sem_preco') : note ? 'manual' : site == null ? 'sem_preco' : Math.abs(price - site) <= 0.01 ? 'confere' : note ? 'manual' : 'diferente',
+    site_price: site, size: p.unit || null, at: new Date().toISOString(), promo: note || null,
+  };
+  const c = st(); c.startedAt ||= item.at; c.items.unshift(item); save(); lastAdded = item.id;
+  track('cart_item', { product_id: p.id, market_id: mid, value: item.price });
+  if (location.hash === '#carrinho') { render(); flash(item.id); }
+  if (item.price == null) { askPrice(item); return item; }
+  hooks.toast?.(`🛒 ${item.name}: ${brl(item.price)}${qty > 1 ? ` × ${qty}` : ''} no carrinho.`);
+  return item;
+}
+
+/** item sem cadastro no site (nome livre), por exemplo vindo da calculadora de promoção */
+export function addCustom({ name, price, qty = 1, note = '' }) {
+  const item = { id: uid(), spoken: name, qty, name, product_id: null, guess_id: null, price, status: 'manual', site_price: null, size: null, at: new Date().toISOString(), promo: note || null };
+  const c = st(); c.startedAt ||= item.at; c.items.unshift(item); save();
+  if (location.hash === '#carrinho') { render(); flash(item.id); }
+  hooks.toast?.(`🛒 ${name}: ${brl(price)}${qty > 1 ? ` × ${qty}` : ''} no carrinho.`);
+  return item;
 }
 
 function flash(id) {

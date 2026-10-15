@@ -29,12 +29,14 @@ const STOP = new Set(['esta', 'ta', 'tah', 'to', 'de', 'do', 'da', 'dos', 'das',
   'preco', 'precos', 'reais', 'real', 'centavo', 'centavos', 'com', 'no', 'na', 'nos', 'nas', 'e', 'sai', 'saindo', 'valor', 'ficou', 'fica', 'sao',
   'apenas', 'so', 'r', 'r$', 'rs', 'pra', 'para', 'agora', 'aqui', 'ai', 'la', 'cada', 'que', 'tem', 'peguei', 'pegar', 'levando', 'levei', 'leva', 'botei',
   'coloca', 'coloquei', 'adiciona', 'adicionar', 'anota', 'anotar', 'ok', 'tipo', 'mais', 'menos', 'uns', 'umas', 'conto', 'contos', 'pila', 'pilas',
-  'promocao', 'oferta', 'em', 'quilo', 'quilos', 'kilo', 'kilos', 'kg', 'litro', 'unidade', 'grama', 'gramas', 'vale', 'valendo', 'deu', 'da', 'dá', 'x', 'vezes', 'quantidade', 'qtd', 'item', 'itens']);
+  'promocao', 'oferta', 'em', 'leve', 'leva', 'pague', 'paga', 'segunda', 'desconto', 'porcento', 'metade', 'gratis', 'pela', 'quilo', 'quilos', 'kilo', 'kilos', 'kg', 'litro', 'unidade', 'grama', 'gramas', 'vale', 'valendo', 'deu', 'da', 'dá', 'x', 'vezes', 'quantidade', 'qtd', 'item', 'itens']);
 
 /** tokeniza e troca números por extenso por algarismos ("vinte e cinco" → 25, "doze e cinquenta" fica "12 e 50") */
 export function tokenize(text) {
   let s = strip(text)
     .replace(/r\$\s*/g, ' r$ ')
+    .replace(/%/g, ' porcento ').replace(/\bpor\s*cento\b/g, ' porcento ')
+    .replace(/\b2\s*(ª|a|º)(?=\s|$)/g, ' segunda ')
     .replace(/(\d)\s*:\s*(\d{2})(?!\d)/g, '$1,$2')            // "12:50" que o reconhecedor às vezes escreve
     .replace(/(\d)\s*(kg|kgs|g|gr|grs|ml|mls|l|lt|lts|un|und|unid|mg|k)\b/g, '$1 $2')
     .replace(/(\d)(gramas?|quilos?|kilos?|litros?|mililitros?|unidades?)\b/g, '$1 $2')
@@ -92,6 +94,29 @@ export function parse(text) {
   let price = null, size = null, qty = null;
 
   const mark = (...idx) => idx.forEach((k) => { if (k >= 0 && k < t.length) used[k] = true; });
+
+  // 0) promoção falada: "leve 3 pague 2", "segunda unidade 50% de desconto", "a segunda sai pela metade"
+  let promo = null;
+  for (let k = 0; k < t.length && !promo; k++) {
+    if (/^(leve|leva|compre|compra)$/.test(t[k]) && isNum(t[k + 1]) && /^(pague|paga)$/.test(t[k + 2] || '') && isNum(t[k + 3])) {
+      const buy = num(t[k + 1]), pay = num(t[k + 3]);
+      if (buy > pay && pay > 0) { promo = { kind: 'leve', buy, pay, label: `Leve ${buy}, pague ${pay}` }; mark(k, k + 1, k + 2, k + 3); }
+    } else if (t[k] === 'segunda') {
+      for (let j = k + 1; j < Math.min(t.length, k + 7); j++) {
+        let off = null;
+        if (isNum(t[j]) && t[j + 1] === 'porcento') off = num(t[j]);
+        else if (t[j] === 'metade') off = 50;
+        else if (/^(gratis|graca)$/.test(t[j])) off = 100;
+        if (off != null && off > 0 && off <= 100) {
+          let end = t[j + 1] === 'porcento' ? j + 1 : j;
+          while (/^(de|desconto|do|preco|off)$/.test(t[end + 1] || '')) end++;
+          promo = { kind: 'segunda', off, label: off === 100 ? '2ª unidade grátis' : `2ª unidade com ${off}% off` };
+          for (let z = k; z <= end; z++) mark(z);
+          break;
+        }
+      }
+    }
+  }
   const centsAfter = (k) => { // "e 50 (centavos)" a partir de k (que aponta para "e")
     if (t[k] === 'e' && isNum(t[k + 1]) && Number.isInteger(num(t[k + 1])) && num(t[k + 1]) < 100 && !unitOf(t[k + 2] || '')) {
       return { cents: num(t[k + 1]), end: t[k + 2] === 'centavos' || t[k + 2] === 'centavo' ? k + 2 : k + 1 };
@@ -187,7 +212,21 @@ export function parse(text) {
     words: nameTokens,
     size: size ? { ...size, label: sizeLabel(size.amount, size.unit), base: sizeBase(size.amount, size.unit) } : null,
     price: price != null && price > 0 && price < 100000 ? Math.round(price * 100) / 100 : null,
+    promo,
   };
+}
+
+/** quanto sai cada unidade numa promoção. promo: { kind: 'leve'|'segunda'|'atacado'|'depor', ... }, price = preço normal de 1 */
+export function promoEffective(promo, price) {
+  if (!promo || !(price > 0)) return null;
+  let qty = 1, total = price;
+  if (promo.kind === 'leve') { qty = promo.buy; total = price * promo.pay; }
+  else if (promo.kind === 'segunda') { qty = 2; total = price + price * (1 - promo.off / 100); }
+  else if (promo.kind === 'atacado') { qty = promo.from; total = promo.price * promo.from; }
+  else if (promo.kind === 'depor') { qty = 1; total = promo.price; }
+  const unit = total / qty;
+  const normal = price * qty;
+  return { qty, total: Math.round(total * 100) / 100, unit: Math.round(unit * 100) / 100, normal, save: Math.max(0, normal - total), pct: normal > 0 ? Math.max(0, (1 - total / normal) * 100) : 0 };
 }
 
 // ---------------------------------------------------------------- busca no catálogo
