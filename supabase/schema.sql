@@ -2232,3 +2232,42 @@ begin
 end $$;
 drop trigger if exists ean_suggestion_apply on public.ean_suggestions;
 create trigger ean_suggestion_apply after insert on public.ean_suggestions for each row execute function public.ean_suggestion_apply();
+
+-- =====================================================================
+--  Dias e formas de pagamento com desconto (cadastro no portal do mercado)
+--  Ex.: "Terça do Hortifrúti" 15% em hortifruti às terças;
+--       "5% no Pix" na loja toda, todos os dias, pagando com Pix.
+-- =====================================================================
+create table if not exists public.market_deals (
+  id             bigserial primary key,
+  supermarket_id smallint not null references public.supermarkets(id) on delete cascade,
+  title          text check (char_length(title) <= 60),
+  weekdays       smallint[] not null default '{}',          -- 0 = domingo … 6 = sábado; vazio = todos os dias
+  category_slug  text references public.categories(slug) on update cascade on delete set null, -- vazio = loja toda
+  payment        text check (payment in ('pix','debito','credito','cartao_loja','dinheiro','vale','app_loja')), -- vazio = qualquer forma
+  discount_pct   numeric(4,1) not null check (discount_pct > 0 and discount_pct <= 90),
+  note           text check (char_length(note) <= 120),
+  starts_on      date not null default current_date,
+  ends_on        date,
+  active         boolean not null default true,
+  created_by     uuid default auth.uid(),
+  created_at     timestamptz not null default now(),
+  check (weekdays <@ array[0,1,2,3,4,5,6]::smallint[]),
+  check (ends_on is null or ends_on >= starts_on)
+);
+create index if not exists market_deals_market on public.market_deals (supermarket_id) where active;
+alter table public.market_deals enable row level security;
+do $$ begin
+  drop policy if exists "public read deals" on public.market_deals;
+  create policy "public read deals" on public.market_deals for select using (active and (ends_on is null or ends_on >= current_date));
+  drop policy if exists "members read deals" on public.market_deals;
+  create policy "members read deals" on public.market_deals for select to authenticated using (public.is_market_member(supermarket_id));
+  drop policy if exists "members write deals" on public.market_deals;
+  create policy "members write deals" on public.market_deals for all to authenticated
+    using (public.is_market_member(supermarket_id)) with check (public.is_market_member(supermarket_id));
+  drop policy if exists "master deals" on public.market_deals;
+  create policy "master deals" on public.market_deals for all to authenticated using (public.is_master()) with check (public.is_master());
+end $$;
+grant select on public.market_deals to anon, authenticated;
+grant insert, update, delete on public.market_deals to authenticated;
+grant usage on sequence public.market_deals_id_seq to authenticated;

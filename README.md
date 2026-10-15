@@ -28,6 +28,9 @@ Comparador de preços de supermercados de Manaus: Nova Era, Supermercados DB, Ve
   - **⚖️ Qual compensa?** (`js/unitprice.js`): dois pacotes, A e B, com preço e tamanho (g, kg, ml, L, un); a coroa 👑 vai para o que sai mais barato por quilo/litro/unidade. Os cards e o detalhe do produto mostram o preço por kg/L quando o tamanho não é 1, e o detalhe lista os outros tamanhos do mesmo produto do que compensa mais para o que compensa menos.
   - **🏷️ Promoção vale?**: escolhe o tipo (leve 3 pague 2, 2ª unidade com desconto, preço de atacado a partir de N unidades, de/por) e mostra quanto sai cada um, quanto economiza e se outro mercado tem mais barato mesmo sem promoção. O carrinho por voz também entende "leve 3 pague 2" e "a segunda sai pela metade".
   - **🗺️ Caminho no mercado** (Rancho › No mercado): a lista vira uma trilha de paradas na ordem de uma volta só (frutas e verduras → mercearia → bebidas → limpeza → higiene → frios → açougue → congelados por último), com "Agora vá para…" e o avanço automático para a próxima parada. A ordem pode ser ajustada por mercado ("Mudar a ordem") e fica salva no aparelho.
+- **Funciona sem internet dentro do mercado** (`js/offline.js`, `sw.js`): o catálogo, os descontos e as configurações ficam salvos no aparelho a cada abertura; sem sinal, o site abre com os preços salvos e mostra uma faixa "Sem internet… preços salvos em 15/10, 18:32". Preços informados, fotos de etiqueta, códigos ensinados e eventos de uso ficam numa fila (IndexedDB) e são enviados sozinhos quando a internet volta. As bibliotecas de CDN (Supabase, leitor de código, mapa) também ficam guardadas.
+- **🧾 Conferir a nota do caixa** (`js/cupom.js` + função `supabase/functions/nfce`): depois de pagar, a pessoa lê o QR da NFC-e (Carrinho › Conferir a nota, no fim da compra ou na Fila do caixa). O app busca os itens na Sefaz e compara com o preço da etiqueta anotado no carrinho: 😀 "O caixa cobrou certinho!" ou 😬 "1 item passou mais caro: R$ 0,50 a mais", com o aviso de que vale o menor preço (Lei 10.962/2004). Mostra itens do carrinho que não aparecem na nota e permite mandar os preços reais da nota para o site (com pontos).
+- **💳 Dias de desconto** (`js/deals.js`, tabela `market_deals`): os mercados cadastram no portal (aba Descontos) descontos que se repetem, por dia da semana, seção da loja e forma de pagamento ("Terça do Hortifrúti", "5% no Pix"). O site mostra a semana na página inicial, avisa no detalhe do produto ("terça no Nova Era: 15% off, R$ 4,94") e o relatório do Rancho calcula o **melhor dia para ir**.
 - **Página Você**: quanto a pessoa já economizou (total, por mês e projeção), o supermercado onde mais compra, histórico dos ranchos, conquistas, fiscal do preço e dados da conta. Funciona até sem conta (guarda no aparelho).
 - **Área do supermercado** (`parceiros.html`): cada mercado cadastra, edita e remove produtos, envia fotos reais, cria promoções **exclusivas do site** (com código para o caixa) ou **gerais da loja**, importa produtos em massa pela planilha [`assets/modelo-importacao-tabaratomesmo.xlsx`](assets/modelo-importacao-tabaratomesmo.xlsx) e acompanha métricas: buscas, buscas sem resultado, produtos e marcas mais vistos, ranking de preferência de compra (dia/semana/mês), regiões e bairros, sexo e faixa etária de quem faz o rancho, horários de pico, produtos em que está perdendo clientes e desempenho das promoções.
 - **Cadastro em duas etapas**: o cadastro rápido (nome, e-mail, senha) libera 15 comparações; o cadastro completo (celular, nascimento, bairro, mercados preferidos) libera uso sem limite. Sem cadastro: 3 comparações.
@@ -66,6 +69,14 @@ O e-mail `haydenfernandes.ti@gmail.com` já vem cadastrado como administrador ma
    Cada código vale 5 acessos por 30 dias (colunas `uses_left` e `expires_at`).
 
 As métricas vêm da tabela `events` (buscas, produtos vistos, itens no rancho, rotas abertas, ranchos concluídos e compras confirmadas), gravada pela função `track()`. Ninguém lê essa tabela direto: o portal recebe só números agregados pela `market_dashboard()`, e dados de bairro, sexo e idade só aparecem em grupos com 5 pessoas ou mais. "Quem está vendendo mais" é uma estimativa de preferência pelo site (compras confirmadas pelos clientes, ranchos que saem mais baratos em cada mercado e rotas abertas), não o faturamento das lojas.
+
+### 1c. Função que lê a nota fiscal (NFC-e)
+O navegador não consegue abrir a página da Sefaz direto, então a leitura da nota passa por uma Edge Function do Supabase:
+1. No painel do Supabase, abra **Edge Functions › Deploy a new function › Via Editor**.
+2. Dê o nome **`nfce`**, apague o exemplo e cole o conteúdo de [`supabase/functions/nfce/index.ts`](supabase/functions/nfce/index.ts).
+3. Clique em **Deploy**. Pode deixar "Verify JWT" ligado (o site manda a chave pública).
+
+Pela linha de comando: `supabase functions deploy nfce`. Enquanto a função não existir, o app mostra "Função ainda não instalada" ao ler uma nota; no modo demonstração há uma nota de exemplo.
 
 ### 2. Logomarcas oficiais
 Coloque os arquivos em `assets/logos/` com estes nomes (PNG ou troque a extensão na coluna `logo_url`):
@@ -121,6 +132,10 @@ js/fila.js            modo fila do caixa e o jogo "Tá barato ou tá caro?"
 js/ajudantes.js       ajudantes do mercado: central, "qual compensa?" e "promoção vale?"
 js/scanner.js         leitor de código de barras
 js/unitprice.js       preço por kg/L/unidade e comparação de tamanhos
+js/offline.js         cópia do catálogo no aparelho e fila de envios sem internet
+js/deals.js           dias e formas de pagamento com desconto
+js/cupom.js           conferir a nota do caixa (NFC-e)
+supabase/functions/nfce/index.ts   função que lê a página da NFC-e na Sefaz
 js/ads.js             anúncios de curiosidade nos espaços do site
 js/portal.js          portal: painel, produtos, promoções, importação
 js/portal-api.js      dados do portal (Supabase ou demonstração)

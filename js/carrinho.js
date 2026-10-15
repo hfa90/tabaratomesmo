@@ -76,6 +76,7 @@ export function render() {
         <div class="row-actions ck-actions">
           <button class="btn btn--ghost btn--sm" data-ck="compare">Comparar com outros mercados</button>
           <a class="btn btn--ghost btn--sm" href="#fila">Estou na fila do caixa</a>
+          <button class="btn btn--ghost btn--sm" data-cupom="open">🧾 Conferir a nota</button>
           <button class="btn btn--primary btn--sm" data-ck="finish">Finalizar compra</button>
           <button class="btn btn--text btn--sm" data-ck="clear">Esvaziar</button>
         </div>`
@@ -218,9 +219,10 @@ async function sendPhoto(id, file) {
   $('#cartSheetBody').innerHTML = '<div class="skeleton" style="height:160px"></div><p class="center small muted">Enviando a foto…</p>';
   try {
     const blob = await compress(file);
-    await api.sendShelfPhoto(blob, { supermarket_id: currentMarket(), product_id: item.product_id || item.guess_id || null, spoken: item.spoken, name: item.name,
+    const sent = await api.sendShelfPhoto(blob, { supermarket_id: currentMarket(), product_id: item.product_id || item.guess_id || null, spoken: item.spoken, name: item.name,
       size: item.size, price: item.price, site_price: item.site_price, lat: S.pos?.gps ? S.pos.lat : null, lng: S.pos?.gps ? S.pos.lng : null });
     item.photo = true; save(); render();
+    if (sent?.queued) { $('#cartSheetBody').innerHTML = `<div class="fx-done"><p class="fx-done__pts">📴</p><h2 class="sheet__title">Foto guardada</h2><p>Você está sem internet. A foto fica no celular e é enviada sozinha quando o sinal voltar.</p><button class="btn btn--primary btn--block" data-close>Voltar ao carrinho</button></div>`; return; }
     $('#cartSheetBody').innerHTML = `<div class="fx-done"><p class="fx-done__pts">✓</p><h2 class="sheet__title">Foto enviada</h2><p>A equipe confere a etiqueta e, se estiver certo, o preço entra no site. Obrigado!</p><button class="btn btn--primary btn--block" data-close>Voltar ao carrinho</button></div>`;
   } catch (e) {
     $('#cartSheetBody').innerHTML = `<p class="note">${esc(e.message)}</p><button class="btn btn--ghost btn--block" data-close style="margin-top:12px">Fechar</button>`;
@@ -267,9 +269,12 @@ function finish() {
   list.unshift({ at: new Date().toISOString(), market: mid, total: Math.round(t * 100) / 100, items: c.items.length, budget: c.budget });
   api.store.set('tb.purchases', list.slice(0, 100));
   track('bought', { market_id: mid, value: Math.round(t * 100) / 100 });
+  api.store.set('tb.lastCart', { at: new Date().toISOString(), market: mid, items: c.items, total: t });
   sheet(`<div class="fx-done"><p class="fx-done__pts">${brl(t)}</p><h2 class="sheet__title">Compra registrada</h2>
     <p>${c.items.length} itens no ${esc(S.markets.get(mid)?.name || '')}${c.budget ? `, ${t <= c.budget ? `${brl(c.budget - t)} abaixo do orçamento` : `${brl(t - c.budget)} acima do orçamento`}` : ''}.</p>
-    <button class="btn btn--primary btn--block" data-close>Fechar</button></div>`);
+    <button class="btn btn--primary btn--block" data-cupom="open">🧾 Conferir a nota do caixa</button>
+    <p class="muted small center">Leia o QR da nota e veja se o caixa cobrou o preço da etiqueta.</p>
+    <button class="btn btn--text btn--block" data-close>Fechar</button></div>`);
   S.cart = { market: c.market, budget: c.budget, items: [], startedAt: null }; save(); render();
 }
 

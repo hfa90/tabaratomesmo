@@ -45,28 +45,45 @@ const HOW = `<ol class="how" aria-label="Como usar">
   <li><span class="how__i" aria-hidden="true">💰</span><span>Veja o <b>preço</b></span></li>
 </ol>`;
 
-/** abre o leitor. mode: 'preco' (só olhar) ou 'carrinho' (já pôr no carrinho) */
+const HOW_QR = `<ol class="how" aria-label="Como usar">
+  <li><span class="how__i" aria-hidden="true">🧾</span><span>Pegue a <b>nota</b> do caixa</span></li>
+  <li><span class="how__i" aria-hidden="true">🔳</span><span>Aponte para o <b>quadradinho</b></span></li>
+  <li><span class="how__i" aria-hidden="true">✅</span><span>Veja se <b>cobrou certo</b></span></li>
+</ol>`;
+const isQr = () => opts.kind === 'qr';
+const valid = (t) => (isQr() ? /^https?:\/\/\S+/i.test(String(t).trim()) : validEan(t));
+
+/** abre o leitor. mode: 'preco' (só olhar) ou 'carrinho' (já pôr no carrinho).
+ *  kind: 'qr' lê o QR da nota fiscal e chama onCode(texto) */
 export function open(o = {}) {
   opts = o;
-  $('#toolSheet').dataset.tool = 'scan';
+  $('#toolSheet').dataset.tool = isQr() ? 'cupom' : 'scan';
   body().innerHTML = `
     <div class="tool tool--scan">
-      <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">📷</span> Ler o código de barras</h2>
-      ${HOW}
-      <div class="scan" id="scanBox">
+      <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${isQr() ? '🧾' : '📷'}</span> ${isQr() ? 'Conferir a nota do caixa' : 'Ler o código de barras'}</h2>
+      ${isQr() ? HOW_QR : HOW}
+      <div class="scan ${isQr() ? 'scan--qr' : ''}" id="scanBox">
         <video id="scanVideo" playsinline muted autoplay></video>
         <div class="scan__frame" aria-hidden="true"><i></i><i></i><i></i><i></i><span class="scan__laser"></span></div>
         <div class="scan__msg" id="scanMsg"><span class="spin" aria-hidden="true"></span> Ligando a câmera…</div>
         <button class="scan__torch" id="scanTorch" type="button" hidden aria-pressed="false">🔦 Lanterna</button>
       </div>
-      <details class="scan__type" id="scanType">
+      ${isQr() ? `<details class="scan__type" id="scanType">
+        <summary>🔗 Não está lendo? Cole o link da nota</summary>
+        <form id="scanForm" class="scan__form" autocomplete="off">
+          <input name="code" inputmode="url" placeholder="https://sistemas.sefaz.am.gov.br/…" aria-label="Link do QR da nota" />
+          <button class="btn btn--primary">Conferir</button>
+        </form>
+        <p class="muted small">Outro app de câmera lê o QR e mostra o link: copie e cole aqui.</p>
+      </details>${opts.demo ? '<button class="btn btn--ghost btn--block" data-scan="demo">👀 Ver com uma nota de exemplo</button>' : ''}`
+      : `<details class="scan__type" id="scanType">
         <summary>⌨️ Não está lendo? Digite os números</summary>
         <form id="scanForm" class="scan__form" autocomplete="off">
           <input name="code" inputmode="numeric" pattern="[0-9]*" maxlength="14" placeholder="7891234567895" aria-label="Números do código de barras" />
           <button class="btn btn--primary">Ver preço</button>
         </form>
         <p class="muted small">São os números embaixo das listrinhas.</p>
-      </details>
+      </details>`}
     </div>`;
   if ($('#toolSheet').hidden) hooks.openSheet('#toolSheet');
   start();
@@ -76,28 +93,30 @@ async function start() {
   stop();
   busy = false;
   const msg = $('#scanMsg');
-  if (!navigator.mediaDevices?.getUserMedia) return camFail('Este navegador não abre a câmera. Digite os números do código abaixo.');
+  if (!navigator.mediaDevices?.getUserMedia) return camFail(`Este navegador não abre a câmera. ${isQr() ? 'Cole o link da nota abaixo.' : 'Digite os números do código abaixo.'}`);
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
   } catch (e) {
     return camFail(e.name === 'NotAllowedError'
       ? 'Precisamos da câmera para ler o código. Toque no cadeado ao lado do endereço do site e permita a câmera.'
-      : 'Não consegui abrir a câmera. Digite os números do código abaixo.');
+      : `Não consegui abrir a câmera. ${isQr() ? 'Cole o link da nota abaixo.' : 'Digite os números do código abaixo.'}`);
   }
   const v = $('#scanVideo'); if (!v) return stop();
   v.srcObject = stream;
   try { await v.play(); } catch {}
-  if (msg) msg.innerHTML = 'Aponte para as listrinhas ▮▯▮▮▯▮';
+  if (msg) msg.innerHTML = isQr() ? 'Aponte para o quadradinho da nota 🔳' : 'Aponte para as listrinhas ▮▯▮▮▯▮';
   torchSetup();
 
   if ('BarcodeDetector' in window) {
     try {
       const ok = (await window.BarcodeDetector.getSupportedFormats?.()) || FORMATS;
-      const det = new window.BarcodeDetector({ formats: FORMATS.filter((f) => ok.includes(f)) });
+      const want = isQr() ? ['qr_code'] : FORMATS;
+      if (!want.some((f) => ok.includes(f))) throw new Error('formato não suportado');
+      const det = new window.BarcodeDetector({ formats: want.filter((f) => ok.includes(f)) });
       const tick = async () => {
         if (!stream) return;
         if (v.readyState >= 2 && !busy) {
-          try { const r = await det.detect(v); const c = r.find((x) => validEan(x.rawValue)); if (c) return found(c.rawValue); } catch {}
+          try { const r = await det.detect(v); const c = r.find((x) => valid(x.rawValue)); if (c) return found(c.rawValue); } catch {}
         }
         loopId = setTimeout(tick, 120);
       };
@@ -107,11 +126,11 @@ async function start() {
   try {
     const { BrowserMultiFormatReader } = await import(ZXING);
     const reader = new BrowserMultiFormatReader();
-    const cb = (res) => { if (res && !busy && validEan(res.getText())) found(res.getText()); };
+    const cb = (res) => { if (res && !busy && valid(res.getText())) found(res.getText()); };
     zx = reader.decodeFromStream ? await reader.decodeFromStream(stream, v, cb) : await reader.decodeFromVideoElement(v, cb);
   } catch (e) {
     console.warn('leitor de código', e);
-    if (msg) msg.textContent = 'A leitura automática não funciona aqui. Digite os números abaixo.';
+    if (msg) msg.textContent = `A leitura automática não funciona aqui. ${isQr() ? 'Cole o link da nota abaixo.' : 'Digite os números abaixo.'}`;
     $('#scanType')?.setAttribute('open', '');
   }
 }
@@ -156,6 +175,7 @@ function beep() {
 function found(code) {
   if (busy) return; busy = true;
   beep(); stop();
+  if (isQr()) return opts.onCode?.(String(code).trim());
   const p = findByEan(code);
   track('scan', { product_id: p?.id || null, market_id: currentMarket(), query: digits(code) });
   if (p) showProduct(p, code); else showUnknown(code);
@@ -184,9 +204,9 @@ export function showProduct(p, code = '') {
         <b class="verdict__t">${title}</b>
         <span class="verdict__l">${line}</span>
       </div>
-      ${best ? `<div class="vs">
-        <div class="vs__c ${hx && hx === best ? 'is-win' : ''}"><small>Aqui ${here ? `(${esc(here.name)})` : ''}</small><b>${hx ? brl(hx.price) : '?'}</b></div>
-        ${hx !== best ? `<div class="vs__c is-win"><small>${logo(bm, 'xs')} ${esc(bm.name)}</small><b>${brl(best.price)}</b></div>` : ''}
+      ${best ? `<div class="cmp">
+        <div class="cmp__c ${hx && hx === best ? 'is-win' : ''}"><small>Aqui ${here ? `(${esc(here.name)})` : ''}</small><b>${hx ? brl(hx.price) : '?'}</b></div>
+        ${hx !== best ? `<div class="cmp__c is-win"><small>${logo(bm, 'xs')} ${esc(bm.name)}</small><b>${brl(best.price)}</b></div>` : ''}
       </div>` : ''}
       ${pu && Math.abs(pu.qty - 1) > 1e-9 ? `<p class="res-ppu">⚖️ Isso dá <b>${pu.text}</b></p>` : ''}
       ${prices.length > 1 ? `<details class="res-all"><summary>Ver todos os mercados (${prices.length})</summary><ol>${prices.map((x) => `<li>${logo(S.markets.get(x.market_id), 'xs')}<span>${esc(S.markets.get(x.market_id).name)}${x.market_id === mid ? ' (aqui)' : ''}</span><b>${brl(x.price)}</b></li>`).join('')}</ol></details>` : ''}
@@ -257,6 +277,7 @@ document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-scan]'); if (!t) return;
   const a = t.dataset.scan;
   if (a === 'retry' || a === 'again') return open(opts);
+  if (a === 'demo') { stop(); busy = true; return opts.onCode?.('demo'); }
   if (a === 'cart') {
     const p = S.products.find((x) => x.id === Number(t.dataset.pid)); if (!p) return;
     addProduct(p); hooks.closeSheet('#toolSheet');
@@ -274,6 +295,11 @@ document.addEventListener('click', (e) => {
 document.addEventListener('submit', (e) => {
   if (e.target.id !== 'scanForm') return;
   e.preventDefault();
+  if (isQr()) {
+    const t = e.target.code.value.trim();
+    if (!/^https?:\/\//i.test(t)) { hooks.toast?.('Cole o link que começa com https://', 'warn'); return; }
+    busy = false; return found(t);
+  }
   const code = digits(e.target.code.value);
   if (!validEan(code)) { hooks.toast?.('Esse código não parece certo. Confira os números embaixo das listrinhas.', 'warn'); return; }
   busy = false; found(code);

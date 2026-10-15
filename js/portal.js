@@ -136,9 +136,9 @@ function renderPicker() {
 function route() {
   if (!st.mid) return;
   const v = (location.hash || '#painel').slice(1);
-  const view = ['painel', 'produtos', 'promocoes', 'importar', 'publicidade'].includes(v) ? v : 'painel';
+  const view = ['painel', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos'].includes(v) ? v : 'painel';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
-  ({ painel: renderDashboard, produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds })[view]();
+  ({ painel: renderDashboard, produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals })[view]();
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
@@ -418,6 +418,76 @@ async function renderPromos() {
       <td class="r nowrap">${t !== 'Encerradas' ? `<button class="btn btn--ghost btn--sm" data-editpromo="${p.id}">Editar</button> <button class="btn btn--text btn--sm" data-endpromo="${p.id}">Encerrar</button>` : ''}</td></tr>`; }).join('')}
     </tbody></table></div>` : '<p class="muted small">Nada por aqui.</p>'}</section>`).join('');
 }
+
+// ================================================================ DIAS DE DESCONTO
+const PAYS = [['', 'Qualquer forma'], ['pix', 'Pix'], ['debito', 'Cartão de débito'], ['credito', 'Cartão de crédito'], ['cartao_loja', 'Cartão da loja'], ['dinheiro', 'Dinheiro'], ['vale', 'Vale-alimentação'], ['app_loja', 'App da loja']];
+const WD = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const dealWhen = (x) => (!x.weekdays?.length ? 'Todos os dias' : x.weekdays.slice().sort().map((d) => WD[d]).join(', '));
+const dealWhat = (x) => (x.category_slug ? (st.categories.find((c) => c.slug === x.category_slug)?.name || x.category_slug) : 'Loja toda');
+const dealPay = (x) => PAYS.find(([k]) => k === (x.payment || ''))?.[1] || x.payment;
+
+async function renderDeals() {
+  const main = $('#ptMain');
+  main.innerHTML = `${banner()}<header class="pt-head"><div><h1>Dias de desconto</h1><p class="muted">Descontos que se repetem: “Terça do Hortifrúti”, “5% no Pix”. Aparecem no site no dia certo, no detalhe dos produtos e no cálculo do melhor dia para o rancho.</p></div>
+    <button class="btn btn--primary" data-newdeal>+ Novo desconto</button></header><div id="dealWrap"><div class="skeleton" style="height:200px"></div></div>`;
+  try { await loadCatalog().catch(() => {}); st.deals = await P.deals(st.mid); } catch (e) { $('#dealWrap').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const on = st.deals.filter((x) => x.active && (!x.ends_on || x.ends_on >= today));
+  const old = st.deals.filter((x) => !on.includes(x)).slice(0, 20);
+  const table = (arr, live) => arr.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Desconto</th><th>Dias</th><th>Em quê</th><th>Pagamento</th><th>Período</th><th></th></tr></thead><tbody>
+    ${arr.map((x) => `<tr><td><b>${String(x.discount_pct).replace('.', ',')}%</b>${x.title ? ` <span class="muted small">${esc(x.title)}</span>` : ''}</td><td>${dealWhen(x)}</td><td>${esc(dealWhat(x))}</td><td>${esc(dealPay(x))}</td>
+      <td class="nowrap">${dateBR(x.starts_on + 'T12:00')}${x.ends_on ? ` – ${dateBR(x.ends_on + 'T12:00')}` : ' em diante'}</td>
+      <td class="r nowrap">${live ? `<button class="btn btn--ghost btn--sm" data-editdeal="${x.id}">Editar</button> <button class="btn btn--text btn--sm" data-enddeal="${x.id}">Encerrar</button>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>` : '<p class="muted small">Nada por aqui.</p>';
+  $('#dealWrap').innerHTML = `<section class="panel" style="margin-bottom:14px"><div class="panel__head"><h2>Valendo</h2><span class="muted small">${on.length}</span></div>${table(on, true)}</section>
+    ${old.length ? `<section class="panel"><div class="panel__head"><h2>Encerrados</h2></div>${table(old, false)}</section>` : ''}`;
+}
+
+function dealForm(x = {}) {
+  const today = new Date().toISOString().slice(0, 10);
+  openSheet(`<h2 class="sheet__title" id="ptSheetTitle">${x.id ? 'Editar desconto' : 'Novo dia de desconto'}</h2>
+    <form class="form" id="dealForm">
+      <input type="hidden" name="deal_id" value="${x.id || ''}" />
+      <label>Nome (aparece no site)<input name="title" maxlength="60" value="${esc(x.title || '')}" placeholder="Ex.: Terça do Hortifrúti" /></label>
+      <div class="form__row">
+        <label>Desconto (%)<input name="pct" inputmode="decimal" required value="${x.discount_pct ? String(x.discount_pct).replace('.', ',') : ''}" placeholder="10" /></label>
+        <label>Em quê<select name="category"><option value="">Loja toda</option>${st.categories.map((c) => `<option value="${c.slug}" ${x.category_slug === c.slug ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+      </div>
+      <fieldset class="pick"><legend>Dias da semana <span class="muted">(nenhum marcado = todos os dias)</span></legend>
+        <div class="radios">${WD.map((d, i) => `<label><input type="checkbox" name="wd" value="${i}" ${(x.weekdays || []).includes(i) ? 'checked' : ''} />${d}</label>`).join('')}</div>
+      </fieldset>
+      <label>Só pagando com<select name="payment">${PAYS.map(([k, l]) => `<option value="${k}" ${(x.payment || '') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <div class="form__row">
+        <label>Começa em<input name="starts_on" type="date" required value="${x.starts_on || today}" /></label>
+        <label>Termina em <span class="muted">(opcional)</span><input name="ends_on" type="date" value="${x.ends_on || ''}" /></label>
+      </div>
+      <label>Observação (opcional)<input name="note" maxlength="120" value="${esc(x.note || '')}" placeholder="Ex.: exceto itens já em oferta" /></label>
+      <p class="form__err" role="alert"></p>
+      <button class="btn btn--primary btn--block">${x.id ? 'Salvar' : 'Publicar desconto'}</button>
+    </form>`);
+}
+
+document.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'dealForm') return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const f = e.target; const err = (m) => { $('.form__err', f).textContent = m; };
+  const pct = parseMoney(f.pct.value);
+  if (!(pct > 0 && pct <= 90)) return err('Informe um desconto entre 1% e 90%.');
+  if (f.ends_on.value && f.ends_on.value < f.starts_on.value) return err('A data de fim é antes do início.');
+  const btn = $('button', f); btn.disabled = true;
+  try {
+    await P.saveDeal({ id: Number(f.deal_id.value) || null, supermarket_id: st.mid, title: f.title.value.trim(), discount_pct: pct,
+      category_slug: f.category.value, payment: f.payment.value, weekdays: $$('input[name=wd]:checked', f).map((i) => Number(i.value)),
+      starts_on: f.starts_on.value, ends_on: f.ends_on.value || null, note: f.note.value.trim() });
+    closeSheet(); toast('Desconto publicado.'); renderDeals();
+  } catch (ex) { err(ex.message); } finally { btn.disabled = false; }
+}, true);
+document.addEventListener('click', async (e) => {
+  const t = e.target.closest('[data-newdeal], [data-editdeal], [data-enddeal]'); if (!t) return;
+  if (t.dataset.newdeal !== undefined) { await loadCatalog().catch(() => {}); return dealForm(); }
+  if (t.dataset.editdeal) return dealForm(st.deals.find((x) => x.id === Number(t.dataset.editdeal)));
+  if (t.dataset.enddeal) { try { await P.endDeal(Number(t.dataset.enddeal)); toast('Desconto encerrado.'); renderDeals(); } catch (ex) { toast(ex.message, 'warn'); } }
+});
 
 // ================================================================ IMPORTAÇÃO
 const COLS = { // cabeçalho da planilha (normalizado) → campo

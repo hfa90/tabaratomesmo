@@ -53,6 +53,8 @@ export function render() {
         <em>${c.items.length ? 'Confira antes de passar no caixa' : 'Anote os itens para conferir o total'}</em>
       </a>
 
+      <button class="fila-nota" data-cupom="open"><span aria-hidden="true">🧾</span><span><b>Depois de pagar: confira a nota</b><small>Leia o QR da nota e veja se o caixa cobrou o preço da etiqueta</small></span><em>›</em></button>
+
       <section class="panel game" id="game">${gameHTML()}</section>
 
       <section class="panel fila-fact"><p class="pd__h" style="margin:0">Você sabia?</p><p>${fact()}</p></section>

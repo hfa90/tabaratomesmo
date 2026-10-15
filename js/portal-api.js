@@ -224,6 +224,34 @@ export async function endPromo(id) {
   if (error) throw new Error(error.message);
 }
 
+// ---------------------------------------------------------------- dias de desconto (market_deals)
+export async function deals(mid) {
+  if (MODE === 'demo') return (demoState().deals || []).filter((x) => x.supermarket_id === mid);
+  const c = await api.sbClient();
+  const { data, error } = await c.from('market_deals').select('*').eq('supermarket_id', mid).order('created_at', { ascending: false }).limit(100);
+  if (error) throw new Error(/market_deals|does not exist|PGRST205/i.test(error.message + error.code) ? 'Rode de novo o supabase/schema.sql para ativar os dias de desconto.' : error.message);
+  return data.map((x) => ({ ...x, discount_pct: Number(x.discount_pct) }));
+}
+export async function saveDeal(x) {
+  const row = { supermarket_id: x.supermarket_id, title: x.title || null, weekdays: x.weekdays, category_slug: x.category_slug || null,
+    payment: x.payment || null, discount_pct: x.discount_pct, note: x.note || null, starts_on: x.starts_on, ends_on: x.ends_on || null, active: x.active ?? true };
+  if (MODE === 'demo') {
+    const d = demoState(); d.deals ||= []; d.nextDeal ||= 1;
+    if (x.id) Object.assign(d.deals.find((y) => y.id === x.id) || {}, row);
+    else d.deals.push({ ...row, id: 1000 + d.nextDeal++, created_at: new Date().toISOString() });
+    saveDemo(d); return;
+  }
+  const c = await api.sbClient();
+  const { error } = x.id ? await c.from('market_deals').update(row).eq('id', x.id) : await c.from('market_deals').insert(row);
+  if (error) throw new Error(error.message);
+}
+export async function endDeal(id) {
+  if (MODE === 'demo') { const d = demoState(); const y = (d.deals || []).find((z) => z.id === id); if (y) y.active = false; saveDemo(d); return; }
+  const c = await api.sbClient();
+  const { error } = await c.from('market_deals').update({ active: false }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 // ---------------------------------------------------------------- métricas
 export async function dashboard(mid, days) {
   if (MODE === 'demo') return demoDashboard(mid, days);

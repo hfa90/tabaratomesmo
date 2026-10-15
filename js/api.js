@@ -1,8 +1,9 @@
 // Camada de dados: Supabase (produção) com fallback para dados de demonstração.
 import { CONFIG } from './config.js';
+import * as off from './offline.js';
 
 let sb = null;
-export let MODE = 'live'; // 'live' | 'demo'
+export let MODE = 'live'; // 'live' | 'demo' | 'offline' (sem internet, usando a cópia salva no aparelho)
 
 async function client() {
   if (sb) return sb;
@@ -18,6 +19,8 @@ const withTimeout = (p, ms = 8000) =>
 
 // ---------------------------------------------------------------- catálogo
 export async function loadCatalog() {
+  // sem internet: usa na hora a última cópia salva, sem esperar o tempo limite
+  if (!navigator.onLine) { const saved = await fromSaved(); if (saved) return saved; }
   try {
     const c = await withTimeout(client());
     const [m, s, cat, p] = await withTimeout(Promise.all([
@@ -31,14 +34,25 @@ export async function loadCatalog() {
     if (!p.data.length) throw new Error('sem produtos');
     MODE = 'live';
     const active = new Set(m.data.map((x) => x.id));
-    return { supermarkets: m.data, stores: s.data.filter((x) => active.has(x.supermarket_id)), categories: cat.data, products: p.data.map(normalize) };
+    const out = { supermarkets: m.data, stores: s.data.filter((x) => active.has(x.supermarket_id)), categories: cat.data, products: p.data.map(normalize) };
+    off.save('catalog', out); off.setSavedAt(new Date().toISOString());
+    return out;
   } catch (e) {
+    const saved = await fromSaved(); if (saved) return saved;
     if (!CONFIG.DEMO_FALLBACK) throw e;
     console.warn('[TáBarato] usando dados de demonstração:', e.message || e);
     MODE = 'demo';
     const { DEMO } = await import('./demo-data.js');
     return { ...DEMO, products: applyPortalDemo(buildDemoProducts(DEMO)) };
   }
+}
+
+async function fromSaved() {
+  const r = await off.read('catalog');
+  if (!r?.value?.products?.length) return null;
+  MODE = 'offline'; off.setSavedAt(r.at, true);
+  console.warn('[TáBarato] sem conexão: usando os preços salvos em', r.at);
+  return r.value;
 }
 
 function normalize(p) {
@@ -153,10 +167,12 @@ const emitAuth = (u) => authListeners.forEach((cb) => cb(u));
 
 export async function initAuth() {
   if (MODE === 'demo') { emitAuth(ls.get(DEMO_KEY)); return; }
-  const c = await client();
-  const { data } = await c.auth.getSession();
-  emitAuth(data.session?.user ?? null);
-  c.auth.onAuthStateChange((_e, session) => emitAuth(session?.user ?? null));
+  try {
+    const c = await client();
+    const { data } = await c.auth.getSession();
+    emitAuth(data.session?.user ?? null);
+    c.auth.onAuthStateChange((_e, session) => emitAuth(session?.user ?? null));
+  } catch (e) { console.warn('[TáBarato] conta indisponível agora', e); emitAuth(null); }
 }
 
 export async function signUp({ name, email, password }) {
@@ -254,10 +270,15 @@ export async function reportPrice({ product_id, supermarket_id, price, note, lat
     reps.push(row); ls.set('tb.demoReports', reps);
     return row;
   }
+  const row = { product_id, supermarket_id, price, note: note || null, lat: lat ?? null, lng: lng ?? null };
+  const queued = { status: 'fila', points: 0, at_store: false, queued: true };
+  if (MODE === 'offline' || !navigator.onLine) { await off.queue('report', row); return queued; }
+  try { return await reportLive(row); }
+  catch (e) { if (off.isNetworkError(e)) { await off.queue('report', row); return queued; } throw e; }
+}
+async function reportLive(row) {
   const c = await client();
-  const { data, error } = await c.from('price_reports')
-    .insert({ product_id, supermarket_id, price, note: note || null, lat: lat ?? null, lng: lng ?? null })
-    .select('status, points, at_store').single();
+  const { data, error } = await c.from('price_reports').insert(row).select('status, points, at_store').single();
   if (error) throw error;
   return data;
 }
@@ -407,8 +428,13 @@ export async function toggleFavorite(userId, productId, on) {
 // ---------------------------------------------------------------- métricas de uso (anônimas)
 export async function track(events) {
   if (MODE === 'demo' || !events.length) return;
+  if (MODE === 'offline' || !navigator.onLine) { off.queue('track', events); return; }
+  try { await trackLive(events); } catch (e) { if (off.isNetworkError(e)) off.queue('track', events); }
+}
+async function trackLive(events) {
   const c = await client();
-  await c.rpc('track', { p_events: events });
+  const { error } = await c.rpc('track', { p_events: events });
+  if (error) throw error;
 }
 
 // histórico de ranchos do usuário (para a página "Você")
@@ -434,12 +460,15 @@ export const sbClient = client;
 // ---------------------------------------------------------------- configurações do administrador
 export async function loadSettings() {
   if (MODE === 'demo') return ls.get('tb.adminDemo', null)?.settings || {};
+  if (MODE === 'offline') return (await off.read('settings'))?.value || {};
   try {
     const c = await client();
     const { data, error } = await c.from('app_settings').select('key, value');
     if (error) return {};
-    return Object.fromEntries(data.map((r) => [r.key, r.value]));
-  } catch { return {}; }
+    const out = Object.fromEntries(data.map((r) => [r.key, r.value]));
+    off.save('settings', out);
+    return out;
+  } catch { return (await off.read('settings'))?.value || {}; }
 }
 
 export async function amIMaster() {
@@ -469,9 +498,37 @@ export async function adsLive() {
   } catch { return []; }
 }
 
+// ---------------------------------------------------------------- dias de desconto (market_deals)
+// Exemplos só do modo demonstração, para a tela não ficar vazia.
+const DEMO_DEALS = [
+  { id: -1, supermarket_id: 1, title: 'Terça do Hortifrúti', weekdays: [2], category_slug: 'hortifruti', payment: null, discount_pct: 15 },
+  { id: -2, supermarket_id: 4, title: 'Quinta da Carne', weekdays: [4], category_slug: 'carnes', payment: null, discount_pct: 10 },
+  { id: -3, supermarket_id: 5, title: 'Quarta Verde', weekdays: [3], category_slug: 'hortifruti', payment: null, discount_pct: 12 },
+  { id: -4, supermarket_id: 5, title: '5% no Pix', weekdays: [], category_slug: null, payment: 'pix', discount_pct: 5 },
+  { id: -5, supermarket_id: 2, title: 'Sábado do cartão DB', weekdays: [6], category_slug: null, payment: 'cartao_loja', discount_pct: 8 },
+  { id: -6, supermarket_id: 3, title: 'Segunda da Limpeza', weekdays: [1], category_slug: 'limpeza', payment: null, discount_pct: 10 },
+];
+const normDeal = (d) => ({ ...d, discount_pct: Number(d.discount_pct), weekdays: (d.weekdays || []).map(Number) });
+export async function loadDeals() {
+  if (MODE === 'offline') return ((await off.read('deals'))?.value || []).map(normDeal);
+  if (MODE !== 'live') {
+    const mine = ls.get('tb.portalDemo', null)?.deals || [];
+    return [...DEMO_DEALS, ...mine].filter((d) => d.active !== false).map(normDeal);
+  }
+  const c = await client();
+  const { data, error } = await c.from('market_deals').select('*').eq('active', true);
+  if (error) { if (/market_deals|does not exist|PGRST205/i.test(error.message + error.code)) return []; throw error; }
+  off.save('deals', data);
+  return data.map(normDeal);
+}
+
 // ---------------------------------------------------------------- leitor de código: código ensinado pelo usuário
 export async function suggestEan(ean, product_id) {
   if (MODE === 'demo') return;
+  if (MODE === 'offline' || !navigator.onLine) { off.queue('ean', { ean, product_id }); return; }
+  return eanLive({ ean, product_id });
+}
+async function eanLive({ ean, product_id }) {
   const c = await client();
   const { data: u } = await c.auth.getUser();
   if (!u.user) return; // sem conta, fica só no aparelho
@@ -482,6 +539,11 @@ export async function suggestEan(ean, product_id) {
 // ---------------------------------------------------------------- carrinho: foto da etiqueta
 export async function sendShelfPhoto(blob, row) {
   if (MODE === 'demo') { const l = ls.get('tb.demoPhotos', []); l.push({ ...row, at: new Date().toISOString() }); ls.set('tb.demoPhotos', l); return; }
+  if (MODE === 'offline' || !navigator.onLine) { await off.queue('photo', { blob, row }); return { queued: true }; }
+  try { return await photoLive({ blob, row }); }
+  catch (e) { if (off.isNetworkError(e)) { await off.queue('photo', { blob, row }); return { queued: true }; } throw e; }
+}
+async function photoLive({ blob, row }) {
   const c = await client();
   const { data: u } = await c.auth.getUser();
   if (!u.user) throw new Error('Entre na sua conta para enviar a foto.');
@@ -492,3 +554,24 @@ export async function sendShelfPhoto(blob, row) {
   const { error } = await c.from('shelf_photos').insert({ ...row, photo_url });
   if (error) throw new Error(error.message);
 }
+
+// ---------------------------------------------------------------- cupom fiscal (NFC-e)
+// O navegador não pode ler a página da Sefaz direto; a função "nfce" do Supabase busca e devolve os itens.
+export async function readNfce(url) {
+  if (!navigator.onLine) { const e = new Error('offline'); e.code = 'offline'; throw e; }
+  const c = await client();
+  const { data, error } = await c.functions.invoke('nfce', { body: { url } });
+  if (error) {
+    let msg = error.message; let code = 'erro';
+    try { const j = await error.context?.json?.(); if (j?.error) msg = j.error; if (j?.code) code = j.code; } catch {}
+    if (error.context?.status === 404) code = 'sem_funcao';
+    const e = new Error(msg); e.code = code; throw e;
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------- fila offline: como reenviar cada coisa
+off.handle('report', reportLive);
+off.handle('track', trackLive);
+off.handle('ean', eanLive);
+off.handle('photo', photoLive);

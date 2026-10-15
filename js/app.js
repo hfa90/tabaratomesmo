@@ -15,6 +15,9 @@ import * as ads from './ads.js';
 import * as presence from './presence.js';
 import { perUnit, perUnitBadge, sizeSiblings } from './unitprice.js';
 import * as ajudantes from './ajudantes.js';
+import * as deals from './deals.js';
+import * as off from './offline.js';
+import './cupom.js';
 
 
 function card(p, i) {
@@ -328,6 +331,7 @@ async function openProduct(pid) {
       </div>
 
       ${sizesBox(p)}
+      ${deals.productNote(p)}
 
       ${unknown.length ? `<div class="ask-row"><span>Sem preço em ${esc(unknown.map((m) => m.name).join(', '))}.</span><button class="btn btn--sm btn--ghost" data-fiscal-one="${p.id}" data-fiscal-m="${unknown[0].id}">Eu sei o preço</button></div>` : ''}
 
@@ -713,7 +717,7 @@ document.addEventListener('change', (e) => {
   } else S.enabled.add(id);
   if (S.enabled.size === S.markets.size) S.enabled.clear();
   api.store.set('tb.enabled', [...S.enabled]);
-  renderNearby(); renderDeals(); renderGrid();
+  renderNearby(); renderDeals(); renderGrid(); deals.renderHome();
 });
 // borda na barra de filtros quando ela gruda no topo
 {
@@ -758,6 +762,7 @@ function applySettings() {
 async function refreshCatalog() {
   const data = await api.loadCatalog();
   S.products = data.products; renderGrid();
+  document.body.classList.toggle('is-saved', api.MODE === 'offline');
   if (location.hash === '#lista') renderList();
 }
 Object.assign(hooks, {
@@ -787,6 +792,13 @@ async function boot() {
   renderChips(); renderNearby(); renderDeals(); renderGrid(); route();
   fiscal.renderHome(); fiscal.checkAtStore();
   ajudantes.renderHub();
+  deals.load().then(() => { deals.renderHome(); if (location.hash === '#lista') renderList(); });
+  off.status(); off.flush();
+  off.onFlush((n) => toast(`📤 ${n} ${n > 1 ? 'envios que estavam guardados foram feitos' : 'envio que estava guardado foi feito'}.`));
+  // de volta à internet: busca os preços novos
+  addEventListener('online', () => { refreshCatalog().catch(() => {}); });
+  // deixa a biblioteca do leitor de código guardada para usar sem sinal (iPhone)
+  if (navigator.onLine && !('BarcodeDetector' in window)) setTimeout(() => (window.requestIdleCallback || ((f) => f()))(() => import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm').catch(() => {})), 4000);
 
   // Se o usuário já autorizou a localização antes, atualiza em silêncio
   try {
@@ -824,6 +836,7 @@ async function boot() {
   });
 
   if (api.MODE === 'demo') document.body.classList.add('is-demo');
+  document.body.classList.toggle('is-saved', api.MODE === 'offline');
 }
 
 boot().catch((e) => {
