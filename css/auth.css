@@ -63,3 +63,4 @@ body.auth-page {
 @keyframes au-pop { from { transform: scale(.3); opacity: 0; } }
 @keyframes au-swing { 0%, 100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
 @media (prefers-reduced-motion: reduce) { .au-card, .au-burst, .au-tag--spin { animation: none; } }
+.au-code { font: 700 1.6rem/1 ui-monospace, Menlo, monospace !important; letter-spacing: .35em; text-align: center; }

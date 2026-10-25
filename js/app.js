@@ -581,8 +581,22 @@ function bindAuthForms() {
   const fg = $('#forgotForm');
   fg?.addEventListener('submit', async (e) => {
     e.preventDefault(); busy(fg, true, 'Enviando…');
-    try { await api.resetPassword(fg.email.value.trim()); fg.outerHTML = `<p class="ok-box">Se houver conta com esse e-mail, o link chega em instantes.</p>`; }
-    catch (err) { formError(fg, authMsg(err)); busy(fg, false); }
+    const email = fg.email.value.trim();
+    try {
+      await api.resetPassword(email);
+      fg.outerHTML = `<p class="ok-box">📬 Se houver conta com esse e-mail, chega em instantes um e-mail com um <b>link</b> e um <b>código de 8 números</b>. Use o mais recente.</p>
+        <form class="form" id="codeForm" novalidate><label>Código do e-mail<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="00000000" style="font:700 1.4rem/1 ui-monospace,monospace;letter-spacing:.3em;text-align:center" /></label>
+        <p class="form__err" role="alert"></p><button class="btn btn--primary btn--block">Criar nova senha</button></form>`;
+      const cf2 = $('#codeForm');
+      cf2.code.addEventListener('input', () => { cf2.code.value = cf2.code.value.replace(/\D/g, '').slice(0, 10); });
+      cf2.addEventListener('submit', async (ev) => {
+        ev.preventDefault(); formError(cf2, '');
+        if (cf2.code.value.length < 6) return formError(cf2, 'O código tem 8 números.');
+        busy(cf2, true, 'Conferindo…');
+        try { await api.verifyRecoveryCode(email, cf2.code.value); location.href = api.authPage('recovery'); }
+        catch (err2) { formError(cf2, /expired|invalid|otp/i.test(err2.message) ? 'Código errado ou vencido. Confira os números ou peça outro.' : authMsg(err2)); busy(cf2, false); }
+      });
+    } catch (err) { formError(fg, authMsg(err)); busy(fg, false); }
   });
   const cf = $('#completeForm');
   cf?.addEventListener('submit', async (e) => {

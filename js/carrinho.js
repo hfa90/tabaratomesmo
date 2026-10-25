@@ -5,6 +5,7 @@ import { S, $, $$, esc, brl, logo, hooks, haversine, isOn, media } from './core.
 import { parse, match, verdict, promoEffective } from './voice.js';
 import { track } from './track.js';
 import * as ads from './ads.js';
+import * as calc from './calc.js';
 
 const KEY = 'tb.cart';
 const st = () => (S.cart ||= api.store.get(KEY, null) || { market: null, budget: null, items: [], startedAt: null });
@@ -13,6 +14,7 @@ const total = () => st().items.reduce((s, i) => s + (i.price || 0) * i.qty, 0);
 const uid = () => Math.random().toString(36).slice(2, 9);
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, listening = false, lastAdded = null;
+const mode = () => api.store.get('tb.cartMode', 'voz'); // 'voz' (falar) | 'calc' (digitar preços)
 
 export function badge() {
   const n = (S.cart || api.store.get(KEY, null))?.items?.length || 0;
@@ -44,7 +46,12 @@ export function render() {
         <button class="ck-market" data-ck="market" aria-label="Trocar o mercado">${m ? logo(m, 'sm') : ''}<span><small>Você está no</small><b>${esc(m?.name || 'mercado')}</b></span><em>Trocar</em></button>
       </header>
 
-      <section class="ck-total ${state}" aria-live="polite">
+      <div class="ck-mode" role="tablist" aria-label="Como anotar">
+        <button role="tab" aria-selected="${mode() === 'voz'}" data-ck-mode="voz">🎤 Falar o item</button>
+        <button role="tab" aria-selected="${mode() === 'calc'}" data-ck-mode="calc">🧮 Digitar preços</button>
+      </div>
+
+      ${mode() === 'calc' ? calc.html() : `<section class="ck-total ${state}" aria-live="polite">
         <div class="ck-total__row">
           <div><span class="ck-total__k">Total no carrinho</span><b class="ck-total__v">${brl(t)}</b>
             <small>${c.items.length} ${c.items.length === 1 ? 'item' : 'itens'}${c.items.reduce((s, i) => s + i.qty, 0) > c.items.length ? `, ${c.items.reduce((s, i) => s + i.qty, 0)} unidades` : ''}</small></div>
@@ -70,9 +77,9 @@ export function render() {
           <input name="q" placeholder="ou digite: leite 1 litro 5,49" enterkeyhint="done" aria-label="Digite o item com o preço" />
           <button class="btn btn--ghost btn--sm">Adicionar</button>
         </form>
-      </section>
+      </section>`}
 
-      ${c.items.length ? `<ul class="ck-list">${c.items.map(row).join('')}</ul>
+      ${c.items.length ? `${mode() === 'calc' ? '' : `<ul class="ck-list">${c.items.map(row).join('')}</ul>`}
         <div class="row-actions ck-actions">
           <button class="btn btn--ghost btn--sm" data-ck="compare">Comparar com outros mercados</button>
           <a class="btn btn--ghost btn--sm" href="#fila">Estou na fila do caixa</a>
@@ -80,7 +87,7 @@ export function render() {
           <button class="btn btn--primary btn--sm" data-ck="finish">Finalizar compra</button>
           <button class="btn btn--text btn--sm" data-ck="clear">Esvaziar</button>
         </div>`
-      : `<div class="rx-empty"><span class="big" aria-hidden="true">🛒</span><b>Seu carrinho está vazio</b><p class="muted small">Toque no microfone e fale o nome, o tamanho e o preço da etiqueta. A gente soma e confere com o site.</p></div>`}
+      : mode() === 'calc' ? '' : `<div class="rx-empty"><span class="big" aria-hidden="true">🛒</span><b>Seu carrinho está vazio</b><p class="muted small">Toque no microfone e fale o nome, o tamanho e o preço da etiqueta. A gente soma e confere com o site.</p></div>`}
       <div id="adCarrinho"></div>
     </div>`;
   ads.render('carrinho', $('#adCarrinho'));
@@ -256,9 +263,9 @@ function marketSheet() {
 
 function budgetSheet() {
   const b = st().budget;
-  sheet(`<h2 class="sheet__title" id="cartSheetTitle">Orçamento desta compra</h2>
-    <form class="form" id="ckBudget"><label>Quanto você quer gastar no máximo?<input name="v" inputmode="decimal" placeholder="Ex.: 300" value="${b ? String(b).replace('.', ',') : ''}" /></label>
-    <div class="chips">${[100, 200, 300, 500, 800].map((v) => `<button type="button" class="chip" data-ck-bset="${v}">${brl(v)}</button>`).join('')}</div>
+  sheet(`<h2 class="sheet__title" id="cartSheetTitle">Quanto você tem para gastar?</h2>
+    <form class="form" id="ckBudget"><label>O dinheiro da carteira ou o limite que quer usar no cartão<input name="v" inputmode="decimal" placeholder="Ex.: 300" value="${b ? String(b).replace('.', ',') : ''}" /></label>
+    <div class="chips">${[50, 100, 200, 300, 500].map((v) => `<button type="button" class="chip" data-ck-bset="${v}">${brl(v)}</button>`).join('')}</div>
     <button class="btn btn--primary btn--block">Salvar</button>${b ? '<button class="btn btn--text btn--block" type="button" data-ck-bset="0">Sem orçamento</button>' : ''}</form>`);
 }
 
@@ -275,7 +282,7 @@ function finish() {
     <button class="btn btn--primary btn--block" data-cupom="open">🧾 Conferir a nota do caixa</button>
     <p class="muted small center">Leia o QR da nota e veja se o caixa cobrou o preço da etiqueta.</p>
     <button class="btn btn--text btn--block" data-close>Fechar</button></div>`);
-  S.cart = { market: c.market, budget: c.budget, items: [], startedAt: null }; save(); render();
+  S.cart = { market: c.market, budget: c.budget, items: [], log: [], startedAt: null }; calc.reset(); save(); render();
 }
 
 // ---------------------------------------------------------------- reconhecimento de fala
@@ -311,7 +318,8 @@ document.addEventListener('click', (e) => {
   if (d.ck === 'budget') return budgetSheet();
   if (d.ck === 'compare') return compareSheet();
   if (d.ck === 'finish') return finish();
-  if (d.ck === 'clear') { if (confirm('Esvaziar o carrinho?')) { c.items = []; c.startedAt = null; save(); render(); } return; }
+  if (d.ck === 'clear') { if (confirm('Esvaziar o carrinho?')) { c.items = []; c.log = []; c.startedAt = null; calc.reset(); save(); render(); } return; }
+  if (d.ckMode) { api.store.set('tb.cartMode', d.ckMode); calc.reset(); return render(); }
   if (d.ckMarket) {
     c.market = Number(d.ckMarket);
     for (const i of c.items) { // reconfere os preços no novo mercado
@@ -363,3 +371,4 @@ document.addEventListener('submit', (e) => {
 });
 
 export { total, currentMarket };
+calc.bind({ st, save, total, rerender: () => render() });

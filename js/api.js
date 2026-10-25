@@ -214,6 +214,13 @@ export async function resetPassword(email) {
   if (error) throw error;
 }
 
+/** código de 8 números do e-mail de redefinição: abre a conta e manda para a tela de nova senha */
+export async function verifyRecoveryCode(email, code) {
+  const c = await client();
+  const { error } = await c.auth.verifyOtp({ email, token: code, type: 'recovery' });
+  if (error) throw error;
+}
+
 export async function signOut() {
   if (MODE === 'demo') { ls.del(DEMO_KEY); ls.del('tb.demoProfile'); emitAuth(null); return; }
   const c = await client();

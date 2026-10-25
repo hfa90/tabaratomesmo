@@ -156,7 +156,9 @@ function screenExpired(kind, why = '') {
       <p class="form__err" role="alert"></p>
       <button class="btn btn--primary btn--block btn--xl" type="submit">Enviar novo link</button>
     </form>
+    <button class="btn btn--ghost btn--block" id="haveCode">🔢 Já tenho o código do e-mail</button>
     <a class="btn btn--text btn--block" href="${home}">Voltar para o site</a>`, 'warn');
+  document.getElementById('haveCode').addEventListener('click', () => screenCode(isSignup ? 'signup' : 'recovery'));
   const f = document.getElementById('reForm');
   f.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -174,8 +176,10 @@ function screenExpired(kind, why = '') {
         <span class="au-tag" aria-hidden="true">📬</span>
         <h1 class="au-h">Confira seu e-mail</h1>
         <p>Se houver uma conta com <b>${esc(email)}</b>, o novo link chega em instantes.</p>
-        <p class="muted small">Não achou? Olhe também em <b>Spam</b> e <b>Promoções</b>.</p>
+        <p class="muted small">Não achou? Olhe também em <b>Spam</b> e <b>Promoções</b>. Abra só o e-mail <b>mais recente</b>: cada pedido novo cancela o anterior.</p>
+        <button class="btn btn--primary btn--block btn--xl" id="toCode">🔢 Digitar o código do e-mail</button>
         <a class="btn btn--ghost btn--block" href="${home}">Voltar para o site</a>`);
+      document.getElementById('toCode').addEventListener('click', () => screenCode(k === 'signup' ? 'signup' : 'recovery', email));
     } catch (ex) { err.textContent = ptError(ex); btn.disabled = false; btn.textContent = 'Enviar novo link'; }
   });
 }
@@ -198,47 +202,100 @@ function countdown(url, s = 6) {
   card.addEventListener('click', () => { n = 1e9; el.textContent = ''; }, { once: true });
 }
 
+// ---------------------------------------------------------------- código do e-mail (funciona em qualquer aparelho)
+function screenCode(kind = 'recovery', email = '') {
+  const isSignup = kind === 'signup';
+  show(`
+    <span class="au-tag" aria-hidden="true">🔢</span>
+    <h1 class="au-h">Digite o código do e-mail</h1>
+    <p class="muted">O e-mail ${isSignup ? 'de confirmação' : 'de redefinição de senha'} traz um código de 8 números. Ele funciona mesmo que o link não abra.</p>
+    <form class="form au-form" id="codeForm" novalidate>
+      <label>Seu e-mail<input name="email" type="email" autocomplete="email" inputmode="email" required value="${esc(email)}" placeholder="voce@email.com" /></label>
+      <label>Código<input name="code" class="au-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required placeholder="00000000" /></label>
+      <p class="form__err" role="alert"></p>
+      <button class="btn btn--primary btn--block btn--xl" type="submit">Continuar</button>
+    </form>
+    <button class="btn btn--text btn--block" id="needLink">Não chegou? Pedir outro e-mail</button>`);
+  const f = document.getElementById('codeForm');
+  if (email) f.code.focus();
+  f.code.addEventListener('input', () => { f.code.value = f.code.value.replace(/\D/g, '').slice(0, 10); });
+  document.getElementById('needLink').addEventListener('click', () => screenExpired(kind, 'Vamos mandar um e-mail novinho.'));
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = f.querySelector('.form__err'); err.textContent = '';
+    const em = f.email.value.trim(), code = f.code.value.trim();
+    if (!/^\S+@\S+\.\S+$/.test(em)) return (err.textContent = 'Informe o e-mail que recebeu o código.');
+    if (code.length < 6) return (err.textContent = 'O código tem 8 números.');
+    const btn = f.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Conferindo…';
+    try {
+      const c = await client();
+      const { data, error } = await c.auth.verifyOtp({ email: em, token: code, type: isSignup ? 'email' : 'recovery' });
+      if (error) throw error;
+      const user = data.user || data.session?.user;
+      isSignup ? screenConfirmed(user, 'signup') : screenPassword(user);
+    } catch (ex) {
+      err.textContent = /expired|invalid|otp/i.test(`${ex.code} ${ex.message}`) ? 'Código errado ou vencido. Confira os números ou peça outro e-mail.' : ptError(ex);
+      btn.disabled = false; btn.textContent = 'Continuar';
+    }
+  });
+}
+
+/** antes de usar o link: um toque. Assim, antivírus e pré-visualizações de e-mail que abrem a página sozinhos não "gastam" o link */
+function screenTap(type, go) {
+  const rec = type === 'recovery', inv = type === 'invite';
+  show(`
+    <span class="au-tag" aria-hidden="true">${rec ? '🔑' : inv ? '🎉' : '✉️'}</span>
+    <h1 class="au-h">${rec ? 'Vamos criar sua nova senha' : inv ? 'Aceitar o convite' : type === 'email_change' ? 'Confirmar o novo e-mail' : type === 'magiclink' ? 'Entrar na sua conta' : 'Confirmar seu e-mail'}</h1>
+    <p class="muted">Toque no botão para continuar.</p>
+    <button class="btn btn--primary btn--block btn--xl" id="goBtn">${rec ? 'Criar nova senha' : inv ? 'Criar minha senha' : 'Continuar'}</button>`);
+  const b = document.getElementById('goBtn');
+  b.addEventListener('click', () => { b.disabled = true; b.textContent = 'Conferindo…'; go(); });
+}
+
 // ---------------------------------------------------------------- início
 async function run() {
   const type = (get('type') || get('flow') || '').toLowerCase();
   const errCode = get('error_code') || get('error');
-  if (errCode) return screenExpired(type || get('flow'), /expired|otp/i.test(errCode + get('error_description')) ? '' : (get('error_description') || '').replace(/\+/g, ' '));
-
   let c;
   try { c = await client(); } catch { return show(`<span class="au-tag au-tag--sad">📴</span><h1 class="au-h">Sem conexão</h1><p class="muted">Confira a internet e abra o link de novo.</p>`, 'warn'); }
+  const { data: s0 } = await c.auth.getSession();
+  const signed = s0.session?.user || null;
 
-  let user = null;
-  try {
-    const tokenHash = get('token_hash');
-    const code = get('code');
-    const at = H.get('access_token'), rt = H.get('refresh_token');
-    if (tokenHash) {
+  const after = (user) => {
+    if (type === 'recovery') return screenPassword(user);
+    if (type === 'invite') return screenPassword(user, true);
+    if (type === 'email_change') return screenConfirmed(user, 'email_change');
+    if (type === 'magiclink') return screenSignedIn(user);
+    return screenConfirmed(user, 'signup');
+  };
+  // link já usado (aberto duas vezes, ou validado por outro e-mail): se a conta já está aberta aqui, segue sem "expirou"
+  const failed = (e) => {
+    if (signed && (type === 'recovery' || type === 'invite' || type === 'signup' || type === 'email' || type === 'magiclink')) return after(signed);
+    return screenExpired(type, e && !/expired|invalid|otp|used|access_denied/i.test(`${e.code} ${e.message}`) ? ptError(e) : '');
+  };
+
+  if (errCode) return failed({ code: errCode, message: get('error_description') || '' });
+  if (get('entrar') === 'codigo') return screenCode(type === 'signup' ? 'signup' : 'recovery', get('email') || '');
+
+  const tokenHash = get('token_hash'), code = get('code');
+  const at = H.get('access_token'), rt = H.get('refresh_token');
+
+  if (tokenHash) {
+    return screenTap(type, async () => {
       const t = type === 'signup' ? 'email' : (type || 'email');
       let { data, error } = await c.auth.verifyOtp({ token_hash: tokenHash, type: t });
       if (error && type === 'signup') ({ data, error } = await c.auth.verifyOtp({ token_hash: tokenHash, type: 'signup' }));
-      if (error) throw error;
-      user = data.user || data.session?.user;
-    } else if (code) {
-      const { data, error } = await c.auth.exchangeCodeForSession(code);
-      if (error) throw error;
-      user = data.user;
-    } else if (at && rt) {
-      const { data, error } = await c.auth.setSession({ access_token: at, refresh_token: rt });
-      if (error) throw error;
-      user = data.user;
-    } else {
-      const { data } = await c.auth.getSession();
-      return screenNothing(data.session?.user || null);
-    }
-  } catch (e) {
-    return screenExpired(type, /expired|invalid|otp|used/i.test(`${e.code} ${e.message}`) ? '' : ptError(e));
+      if (error) return failed(error);
+      after(data.user || data.session?.user);
+    });
   }
-
-  if (type === 'recovery') return screenPassword(user);
-  if (type === 'invite') return screenPassword(user, true);
-  if (type === 'email_change') return screenConfirmed(user, 'email_change');
-  if (type === 'magiclink') return screenSignedIn(user);
-  return screenConfirmed(user, 'signup');
+  try {
+    if (code) { const { data, error } = await c.auth.exchangeCodeForSession(code); if (error) throw error; return after(data.user); }
+    if (at && rt) { const { data, error } = await c.auth.setSession({ access_token: at, refresh_token: rt }); if (error) throw error; return after(data.user); }
+  } catch (e) { return failed(e); }
+  // veio do "Esqueci a senha" do site já com o código conferido: conta aberta → nova senha
+  if (signed && type === 'recovery') return screenPassword(signed);
+  return screenNothing(signed);
 }
 
 run();

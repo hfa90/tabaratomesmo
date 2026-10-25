@@ -6,6 +6,7 @@ import { $, $$, esc, brl, logo, reduceMotion } from './core.js';
 import { hbars, kpi, heatmap, fmtN, pctTxt, DOW } from './viz.js';
 import * as ads from './ads.js';
 import * as encarte from './encarte.js';
+import * as ff from './fotofinder.js';
 
 const st = {
   user: null, markets: [], mid: null, categories: [],
@@ -358,10 +359,11 @@ function productForm(r = {}) {
       <input type="hidden" name="product_id" value="${r.product_id || ''}" />
       <div class="photo-pick">
         <button type="button" class="thumb thumb--lg" data-pickphoto>${r.image_url ? `<img src="${esc(r.image_url)}" alt="" />` : `<span>${r.emoji || '📷'}</span><i>Adicionar foto</i>`}</button>
-        <p class="muted small">Foto real do produto, fundo claro. JPG, PNG ou WebP. Reduzimos o tamanho automaticamente.</p>
+        <p class="muted small">Escolha uma das fotos encontradas abaixo, arraste uma imagem para cá, cole (Ctrl+V) ou toque na moldura. Reduzimos o tamanho automaticamente.</p>
         <input type="file" name="photo" accept="image/*" hidden />
         <input type="hidden" name="image_url" value="${esc(r.image_url || '')}" />
       </div>
+      <div id="ffBox"></div>
       <label>Nome do produto<input name="name" required value="${esc(r.name || '')}" ${editable ? '' : 'readonly'} placeholder="Ex.: Arroz tipo 1" /></label>
       <div class="form__row">
         <label>Marca<input name="brand" value="${esc(r.brand || '')}" ${editable ? '' : 'readonly'} placeholder="Ex.: Tio João" /></label>
@@ -379,6 +381,55 @@ function productForm(r = {}) {
       <p class="form__err" role="alert"></p>
       <button class="btn btn--primary btn--block">${isNew ? 'Cadastrar produto' : 'Salvar alterações'}</button>
     </form>`);
+  const f = $('#prodForm'); const thumb = $('[data-pickphoto]');
+  const setPhoto = ({ url, file, item }) => {
+    thumb._file = file || null; thumb._url = file ? null : url;
+    thumb.innerHTML = `<img src="${esc(file ? URL.createObjectURL(file) : url)}" alt="" referrerpolicy="no-referrer" />`;
+    thumb.classList.add('is-picked'); setTimeout(() => thumb.classList.remove('is-picked'), 600);
+    // completa o que estiver vazio com os dados da foto escolhida (só produto próprio)
+    if (item && editable) {
+      if (item.ean && !f.ean.value) f.ean.value = item.ean;
+      if (item.brand && !f.brand.value) f.brand.value = item.brand;
+      if (item.qty && !f.unit.value) f.unit.value = item.qty;
+    }
+  };
+  const finder = ff.mount($('#ffBox'), {
+    query: () => ({ name: f.name.value.trim(), brand: f.brand.value.trim(), unit: f.unit.value.trim(), ean: f.ean.value, category: f.category.value }),
+    onPick: setPhoto,
+  });
+  ['name', 'brand', 'unit', 'ean'].forEach((k) => f[k].addEventListener('input', finder.refresh));
+  f.category.addEventListener('change', finder.refresh);
+  // arrastar uma imagem para a moldura
+  const pick = $('.photo-pick', f);
+  pick.addEventListener('dragover', (e) => { e.preventDefault(); pick.classList.add('is-over'); });
+  pick.addEventListener('dragleave', () => pick.classList.remove('is-over'));
+  pick.addEventListener('drop', (e) => { e.preventDefault(); pick.classList.remove('is-over'); const file = [...e.dataTransfer.files].find((x) => x.type.startsWith('image/')); if (file) setPhoto({ file }); });
+}
+
+/** trocar só a foto, direto da tabela: as sugestões já aparecem pelo nome do produto */
+function photoSheet(r) {
+  openSheet(`<h2 class="sheet__title" id="ptSheetTitle">Foto de ${esc(r.name)}</h2>
+    <p class="muted small">${esc([r.brand, r.unit].filter(Boolean).join(' · '))}${r.ean ? ` · EAN ${esc(r.ean)}` : ''}. Toque numa foto para usar.</p>
+    <div id="ffBox"></div><div id="ffSaving"></div>`);
+  ff.mount($('#ffBox'), {
+    query: () => ({ name: r.name, brand: r.brand, unit: r.unit, ean: r.ean, category: r.category }),
+    onPick: async ({ url, file }) => {
+      $('#ffSaving').innerHTML = '<p class="small"><span class="spin"></span> Salvando a foto…</p>';
+      try {
+        const img = await savePhoto(file, url, r.ean || r.sku || r.name);
+        await P.saveProduct(st.mid, { product_id: r.product_id, name: r.name, brand: r.brand, unit: r.unit, category: r.category, price: null, image_url: img });
+        r.image_url = img; renderProductRows(); closeSheet(); toast('Foto atualizada.');
+      } catch (err) { $('#ffSaving').innerHTML = `<p class="note">${esc(err.message)}</p>`; }
+    },
+  });
+}
+
+/** arquivo local → hospeda; foto da internet → baixa e hospeda (se o site de origem não deixar, guarda o endereço) */
+async function savePhoto(file, url, key) {
+  if (file) return P.uploadPhoto(st.mid, file, key);
+  if (!url) return null;
+  const f = await ff.download(url, key);
+  return f ? P.uploadPhoto(st.mid, f, key) : url;
 }
 
 function promoForm(r, existing = null) {
@@ -822,7 +873,7 @@ document.addEventListener('click', async (e) => {
   if (d.pfilter) { st.filter = d.pfilter; $$('[data-pfilter]').forEach((b) => b.classList.toggle('is-on', b === t)); return renderProductRows(); }
   if (d.newprod !== undefined) { e.preventDefault(); await loadCatalog().catch(() => {}); return productForm({}); }
   if (d.edit) { await loadCatalog().catch(() => {}); const r = st.catalog.find((x) => x.product_id === Number(d.edit)); return r && productForm(r); }
-  if (d.photo) { photoTarget = Number(d.photo); return $('#photoInput').click(); }
+  if (d.photo) { await loadCatalog().catch(() => {}); const r = st.catalog.find((x) => x.product_id === Number(d.photo)); return r && photoSheet(r); }
   if (d.pickphoto !== undefined) return $('#prodForm [name=photo]').click();
   if (d.bulkphotos !== undefined) return $('#bulkPhotoInput').click();
   if (d.remove) {
@@ -885,7 +936,7 @@ document.addEventListener('change', async (e) => {
   }
   if (t.name === 'photo' && t.files?.[0]) {
     const f = t.files[0]; const btn = $('[data-pickphoto]');
-    btn.innerHTML = `<img src="${URL.createObjectURL(f)}" alt="" />`; btn._file = f; return;
+    btn.innerHTML = `<img src="${URL.createObjectURL(f)}" alt="" />`; btn._file = f; btn._url = null; return;
   }
   if (t.id === 'sheetInput' && t.files[0]) return handleSheet(t.files[0]);
   if (t.id === 'sheetPhotos' && t.files.length) {
@@ -938,8 +989,8 @@ document.addEventListener('submit', async (e) => {
       if (!(price > 0)) return err('Informe um preço válido.');
       busy(true);
       let image_url = f.image_url.value || null;
-      const file = $('[data-pickphoto]')._file;
-      if (file) image_url = await P.uploadPhoto(st.mid, file, f.ean.value || f.sku.value || f.name.value);
+      const th = $('[data-pickphoto]');
+      if (th._file || th._url) image_url = await savePhoto(th._file, th._url, f.ean.value || f.sku.value || f.name.value);
       await P.saveProduct(st.mid, { product_id: Number(f.product_id.value) || null, name: f.name.value.trim(), brand: f.brand.value.trim(), unit: f.unit.value.trim(),
         category: f.category.value, ean: f.ean.value.replace(/\D/g, ''), sku: f.sku.value.trim(), emoji: f.emoji.value.trim(), price, image_url });
       closeSheet(); st.catalog = null; st.dash = null; toast('Produto salvo e publicado.');
