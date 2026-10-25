@@ -20,6 +20,7 @@ import * as off from './offline.js';
 import './cupom.js';
 import * as notas from './notas.js';
 import * as refeicoes from './refeicoes.js';
+import * as inicio from './inicio.js';
 import './fotopreco.js';
 
 
@@ -643,10 +644,12 @@ function renderAccount() { account.render(); }
 //  Rotas
 // ======================================================================
 function route() {
-  let v = (location.hash || '#ofertas').slice(1).split('?')[0];
+  // sem endereço: quem chega pela primeira vez vê a página inicial; quem já conhece vai direto às ofertas
+  S.firstView ??= api.store.get('tb.seenHome', null) ? '#ofertas' : '#inicio';
+  let v = (location.hash || S.firstView).slice(1).split('?')[0];
   // vindo da confirmação de e-mail: abre "completar cadastro" assim que a conta carregar
   if (v === 'completar') { S.wantComplete = true; history.replaceState(null, '', '#conta'); v = 'conta'; if (S.user) { S.wantComplete = false; setTimeout(() => openAuth('complete'), 300); } }
-  const view = ['ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila', 'notas', 'refeicoes'].includes(v) ? v : 'ofertas';
+  const view = ['inicio', 'ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila', 'notas', 'refeicoes'].includes(v) ? v : 'ofertas';
   $$('.view').forEach((s) => (s.hidden = s.dataset.view !== view));
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === view));
   if (view === 'mapa') drawMap();
@@ -656,6 +659,7 @@ function route() {
   if (view === 'fila') fila.render();
   if (view === 'notas') notas.render();
   if (view === 'refeicoes') refeicoes.render();
+  if (view === 'inicio') inicio.render();
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === (view === 'fila' ? 'carrinho' : view)));
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
 }
@@ -796,6 +800,8 @@ Object.assign(hooks, {
 });
 
 async function boot() {
+  // primeira visita: mostra a página inicial já, sem esperar os preços (o exemplo entra quando eles chegarem)
+  if (!location.hash) route();
   skeleton(); renderBairros(); updateListBadge(); carrinho.badge();
   const data = await api.loadCatalog();
   data.supermarkets.forEach((m) => S.markets.set(m.id, m));
@@ -831,7 +837,7 @@ async function boot() {
       const near = BAIRROS.map((b) => ({ b, d: haversine(p, b) })).sort((a, b) => a.d - b.d)[0];
       setPos({ ...p, label: near.d < 4 ? near.b.name : 'Sua localização', gps: true });
     });
-    else if (!S.pos) setTimeout(() => { if (!S.pos && !$$('.sheet.is-open').length) openLoc('pos'); }, 1400);
+    else if (!S.pos) setTimeout(() => { if (!S.pos && !$$('.sheet.is-open').length && $('#view-inicio').hidden) openLoc('pos'); }, 1400);
   } catch {}
 
   api.onAuth(async (user) => {

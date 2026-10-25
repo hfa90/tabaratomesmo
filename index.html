@@ -32,7 +32,7 @@
   <!-- ===== TOPO ===== -->
   <header class="topbar">
     <div class="topbar__inner">
-      <a class="brand" href="#ofertas" aria-label="Tá Barato Mesmo? início">
+      <a class="brand" href="#inicio" aria-label="Tá Barato Mesmo? página inicial">
         <span class="brand__tag" aria-hidden="true">
           <svg viewBox="0 0 32 32"><path d="M4 6a2 2 0 0 1 2-2h10.6a2 2 0 0 1 1.4.6l9.4 9.4a2 2 0 0 1 0 2.8l-10.6 10.6a2 2 0 0 1-2.8 0L4.6 18a2 2 0 0 1-.6-1.4z" fill="currentColor"/><circle cx="10" cy="10" r="2.4" fill="var(--surface)"/></svg>
         </span>
@@ -40,6 +40,7 @@
       </a>
 
       <nav class="topnav" aria-label="Seções">
+        <a href="#inicio" data-nav="inicio">Início</a>
         <a href="#ofertas" data-nav="ofertas">Ofertas</a>
         <a href="#lista" data-nav="lista">Rancho do mês <b class="badge" data-list-count hidden></b></a>
         <a href="#carrinho" data-nav="carrinho">Carrinho <b class="badge" data-cart-count hidden></b></a>
@@ -72,6 +73,11 @@
 
   <main id="app">
     <p class="note demo-note">Modo demonstração: preços simulados enquanto o banco não responde.</p>
+    <!-- ===== INÍCIO (o que é e como usar) ===== -->
+    <section class="view" id="view-inicio" data-view="inicio" hidden>
+      <div id="inicioView"></div>
+    </section>
+
     <!-- ===== OFERTAS ===== -->
     <section class="view" id="view-ofertas" data-view="ofertas">
       <div class="store-banner" id="storeBanner" hidden></div>
@@ -79,6 +85,7 @@
       <header class="home-head">
         <h1>Onde está mais barato hoje?</h1>
         <p class="muted">Preços de <span id="marketCount">5</span> supermercados de Manaus, sempre do menor para o maior.</p>
+        <a class="home-how" href="#inicio">Primeira vez aqui? Veja como usar</a>
         <label class="search">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 1 0 4.6 13.4l4.7 4.7 1.4-1.4-4.7-4.7A7.5 7.5 0 0 0 10.5 3zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z" fill="currentColor"/></svg>
           <input id="searchInput" type="search" placeholder="Buscar arroz, picanha, Baré…" autocomplete="off" enterkeyhint="search" aria-label="Buscar produto" />
@@ -153,6 +160,7 @@
 
   <footer class="site-foot">
     <span>Tá Barato Mesmo? · Manaus</span>
+    <a href="#inicio">Como usar</a>
     <a href="#refeicoes">Planejar refeições</a>
     <a href="#notas">Minhas notas</a>
     <a href="parceiros.html">Área do supermercado</a>
