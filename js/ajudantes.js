@@ -1,5 +1,5 @@
 // Ajudantes do mercado: ferramentas de toque grande, com figuras e quase sem texto.
-//  📷 Ler código   ⚖️ Qual pacote compensa?   🏷️ Promoção vale?   🗺️ Caminho no mercado
+//  Conferir um preço (código, foto da etiqueta ou nota)   Qual pacote compensa?   Promoção vale?   Caminho no mercado
 import * as api from './api.js';
 import { ic } from './icons.js';
 import { S, $, $$, esc, brl, logo, media, hooks, isOn } from './core.js';
@@ -10,12 +10,10 @@ import * as scanner from './scanner.js';
 import { track } from './track.js';
 
 const TOOLS = [
-  { id: 'scan', icon: ic('camera'), name: 'Ler código', sub: 'Aponte e veja o preço', c: '#2E6BE6' },
+  { id: 'conferir', icon: ic('barcode'), name: 'Conferir um preço', sub: 'Código, foto da etiqueta ou nota', c: '#2E6BE6' },
   { id: 'tamanho', icon: ic('scale'), name: 'Qual compensa?', sub: 'Pacote grande ou pequeno', c: '#0F8A5F' },
   { id: 'promo', icon: ic('tag'), name: 'Promoção vale?', sub: 'Leve 3, pague 2…', c: '#D9480F' },
   { id: 'caminho', icon: ic('map'), name: 'Caminho na loja', sub: 'Lista na ordem dos corredores', c: '#7048E8' },
-  { id: 'fotopreco', icon: ic('camera'), name: 'Foto do preço', sub: 'Fotografe a etiqueta e confira', c: '#C2255C' },
-  { id: 'notas', icon: ic('receipt'), name: 'Mandar nota', sub: 'Ganhe pontos com a sua compra', c: '#0B7285' },
   { id: 'mapa', icon: ic('pin'), name: 'Lojas no mapa', sub: 'A loja mais perto e a rota', c: '#0F5A3E' },
   { id: 'refeicoes', icon: ic('pot'), name: 'Planejar refeições', sub: 'Diga o que vai comer na semana', c: '#E8590C' },
 ];
@@ -45,6 +43,23 @@ function openTool(name, html) {
 const num = (v) => { const n = parseFloat(String(v ?? '').replace(/\s|R\$/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return Number.isFinite(n) ? n : null; };
 const fmt = (v) => (v == null ? '' : String(Math.round(v * 100) / 100).replace('.', ','));
 const herePrice = (p) => { const mid = currentMarket(); return p.prices.find((x) => x.market_id === mid)?.price ?? p.prices.filter((x) => isOn(x.market_id))[0]?.price ?? p.prices[0]?.price ?? null; };
+
+// =====================================================================
+//  Conferir um preço: um botão só para as três formas (antes eram três botões parecidos)
+// =====================================================================
+export function openConferir() {
+  const ia = S.settings?.ia_enabled !== false;
+  const opt = (tool, icon, t, s, tag = '') => `<button class="cf-opt" data-tool="${tool}"><span class="cf-opt__i" aria-hidden="true">${icon}</span>
+    <span class="cf-opt__t"><b>${t}</b><small>${s}</small></span>${tag ? `<em class="pill pill--soft">${tag}</em>` : ''}<span class="cf-opt__go" aria-hidden="true">›</span></button>`;
+  openTool('conferir', `<div class="tool">
+    <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${ic('barcode')}</span> Conferir um preço</h2>
+    <p class="tool__lead">Como você quer conferir?</p>
+    <div class="cf-opts">
+      ${opt('scan', ic('barcode'), 'Ler o código de barras', 'Aponte a câmera e veja se ali é o mais barato.', 'mais rápido')}
+      ${ia ? opt('fotopreco', ic('camera'), 'Fotografar a etiqueta', 'Leio o preço da foto e comparo com os outros mercados.', 'ganha pontos') : ''}
+      ${opt('notas', ic('receipt'), 'Mandar a nota fiscal', 'Depois da compra: confere tudo de uma vez e ajuda o bairro.', 'ganha pontos')}
+    </div></div>`);
+}
 
 // =====================================================================
 //  ⚖️ Qual pacote compensa?
@@ -238,6 +253,7 @@ document.addEventListener('click', (e) => {
   const d = t.dataset;
   if (d.tool) {
     const p = d.toolPid ? S.products.find((x) => x.id === Number(d.toolPid)) : null;
+    if (d.tool === 'conferir') return openConferir();
     if (d.tool === 'scan') return scanner.open({ mode: location.hash === '#carrinho' ? 'carrinho' : 'preco' });
     if (d.tool === 'fotopreco') return import('./fotopreco.js').then((m) => m.open());
     if (d.tool === 'notas') { hooks.closeSheet?.('#toolSheet'); location.hash = '#notas'; return; }

@@ -6,6 +6,7 @@ import { CONFIG } from './config.js';
 import { S, $, $$, esc, brl, logo, hooks, initials } from './core.js';
 import * as rancho from './rancho.js';
 import * as fiscal from './fiscal.js';
+import * as push from './push.js';
 
 let tab = 'resumo';
 let remote = null;        // ranchos salvos na conta
@@ -246,26 +247,50 @@ export async function render() {
   }
 }
 
-/** preferências do aparelho: vibração ao tocar e avisos de preço */
+/** preferências do aparelho: letra grande, vibração, avisos e privacidade */
 function prefsPanel() {
-  let hap = true; try { hap = localStorage.getItem('tb.haptics') !== 'false'; } catch {}
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const hap = lsGet('tb.haptics') !== 'false';
+  const big = lsGet('tb.bigText') === '1';
+  const helpUsage = lsGet('tb.trackOff') !== '1';
   const canN = 'Notification' in window;
   const notif = canN && Notification.permission === 'granted' && api.store.get('tb.notify', true) !== false;
-  const row = (k, t, d, on, dis = false) => `<li><span><b>${t}</b><small class="muted">${d}</small></span>
+  const pp = push.prefs();
+  const row = (k, t, d, on, dis = false, sub = false) => `<li class="${sub ? 'is-sub' : ''}"><span><b>${t}</b><small class="muted">${d}</small></span>
     <span class="switch"><input type="checkbox" data-pref="${k}" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''} aria-label="${t}" /><i></i></span></li>`;
+  const notifTxt = !canN ? 'Este navegador não mostra avisos.'
+    : Notification.permission === 'denied' ? 'Bloqueado no navegador: libere nas permissões do site.'
+    : push.needsInstall() ? 'Avisamos quando o preço do que você acompanha baixar. No iPhone, adicione o site à tela de início para receber com ele fechado.'
+    : push.supported() ? 'Avisamos no celular quando o preço do que você acompanha baixar, mesmo com o site fechado.'
+    : 'Avisamos no celular quando um favorito baixar.';
   return `<section class="panel"><div class="panel__head"><h2>Preferências</h2></div><ul class="pref-list">
+    ${row('bigText', 'Letra grande', 'Textos e botões maiores, mais fáceis de ler.', big)}
     ${row('haptics', 'Vibrar ao tocar', 'Uma vibração curta confirma cada ação (no Android).', hap)}
-    ${row('notify', 'Avisos de preço', canN ? (Notification.permission === 'denied' ? 'Bloqueado no navegador: libere nas permissões do site.' : 'Avisamos no celular quando um favorito baixar.') : 'Este navegador não mostra avisos.', notif, !canN || Notification.permission === 'denied')}
+    ${row('notify', 'Avisos no celular', notifTxt, notif, !canN || Notification.permission === 'denied')}
+    ${notif && push.supported() ? `${row('push:precos', 'Preço baixou', 'Favoritos e o que você já comprou.', pp.precos, false, true)}
+      ${row('push:familia', 'Lista da família', 'Quando alguém da casa marcar ou incluir algo.', pp.familia, false, true)}
+      ${row('push:campanhas', 'Ofertas dos supermercados', 'No máximo um por dia, dos mercados que você prefere ou perto de você.', pp.campanhas, false, true)}` : ''}
+    ${row('usage', 'Ajudar a melhorar o site', 'Contamos quais telas são usadas, sem saber quem é você.', helpUsage)}
   </ul>
+  <div class="pref-priv"><span><b>Seus dados</b><small class="muted">Veja o que guardamos e por quê, baixe uma cópia ou peça a exclusão.</small></span>
+    <span class="row-actions"><a class="btn btn--ghost btn--sm" href="privacidade.html">Política de privacidade</a>
+      <button class="btn btn--ghost btn--sm" data-priv="export">${ic('save')} Baixar meus dados</button>
+      ${S.user ? `<button class="btn btn--text btn--sm pref-del" data-priv="delete">Excluir minha conta</button>` : ''}</span></div>
   <div class="pref-reset"><span><b>Zerar meu histórico</b><small class="muted">Recomeçar do zero, como se fosse a primeira vez.</small></span>
     <button class="btn btn--danger btn--sm" data-zerar="open">Zerar</button></div></section>`;
 }
 document.addEventListener('change', async (e) => {
   const k = e.target.dataset?.pref; if (!k) return;
-  if (k === 'haptics') { try { localStorage.setItem('tb.haptics', String(e.target.checked)); } catch {} if (e.target.checked) navigator.vibrate?.(12); }
+  const on = e.target.checked;
+  const lsSet = (key, v) => { try { v == null ? localStorage.removeItem(key) : localStorage.setItem(key, v); } catch {} };
+  if (k === 'haptics') { lsSet('tb.haptics', String(on)); if (on) navigator.vibrate?.(12); }
+  if (k === 'bigText') { lsSet('tb.bigText', on ? '1' : null); document.documentElement.classList.toggle('big', on); }
+  if (k === 'usage') lsSet('tb.trackOff', on ? null : '1');
+  if (k.startsWith('push:')) push.setPref(k.slice(5), on);
   if (k === 'notify') {
-    if (e.target.checked && Notification.permission !== 'granted') { const ok = await (await import('./alerts.js')).enable(); e.target.checked = ok; }
-    else api.store.set('tb.notify', e.target.checked);
+    if (on && Notification.permission !== 'granted') { const ok = await (await import('./alerts.js')).enable(); e.target.checked = ok; }
+    else { api.store.set('tb.notify', on); if (on) push.subscribe(); else push.unsubscribe(); }
+    render();
   }
 });
 

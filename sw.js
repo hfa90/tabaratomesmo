@@ -2,18 +2,32 @@
 //  - arquivos do site: rede primeiro, cópia salva quando não há sinal
 //  - bibliotecas de CDN e fontes (Supabase, leitor de código, mapa): cópia salva primeiro (endereços com versão fixa)
 //  - API do Supabase: sempre ao vivo (o app guarda o catálogo no aparelho e enfileira os envios)
-const CACHE = 'tb-v21';
+const CACHE = 'tb-v22';
 const CDN = 'tb-cdn-v1';
 const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/api.js', 'js/config.js', 'js/chart.js', 'js/core.js', 'js/rancho.js',
   'js/fiscal.js', 'js/account.js', 'js/track.js', 'js/carrinho.js', 'js/voice.js', 'js/fila.js', 'js/ads.js', 'js/presence.js',
-  'js/ajudantes.js', 'js/scanner.js', 'js/unitprice.js', 'js/offline.js', 'js/deals.js', 'js/cupom.js', 'js/demo-data.js', 'js/notas.js', 'js/fotopreco.js', 'js/ia.js', 'js/calc.js', 'js/refeicoes.js', 'js/receitas-data.js', 'js/inicio.js', 'js/icons.js', 'js/fx.js', 'js/alerts.js', 'js/resumo.js', 'js/familia.js', 'js/zerar.js', 'js/sync.js', 'js/campanhas.js', 'js/temas.js', 'js/especial.js',
+  'js/ajudantes.js', 'js/scanner.js', 'js/unitprice.js', 'js/offline.js', 'js/deals.js', 'js/cupom.js', 'js/demo-data.js', 'js/notas.js', 'js/fotopreco.js', 'js/ia.js', 'js/calc.js', 'js/refeicoes.js', 'js/receitas-data.js', 'js/inicio.js', 'js/icons.js', 'js/fx.js', 'js/alerts.js', 'js/resumo.js', 'js/familia.js', 'js/zerar.js', 'js/sync.js', 'js/campanhas.js', 'js/temas.js', 'js/especial.js', 'js/push.js', 'js/interrupt.js', 'js/privacidade.js',
   'assets/icon.svg', 'assets/icon-192.png', 'assets/apple-touch-icon.png', 'manifest.webmanifest'];
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
-// toque na notificação de preço: abre (ou traz para frente) o site nas ofertas
+// aviso que chegou com o site fechado (função "notificar" do Supabase)
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data?.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Tá Barato Mesmo?', {
+    body: d.body || '', icon: 'assets/icon-192.png', badge: 'assets/icon-192.png', tag: d.tag || 'tb', renotify: true,
+    data: { url: d.url || './#ofertas', tag: d.tag || 'tb', campaign_id: d.campaign_id || null, push: true },
+  }));
+});
+
+// toque na notificação: abre (ou traz para frente) o site no lugar certo
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const url = new URL(e.notification.data?.url || './#ofertas', self.registration.scope).href;
+  const d = e.notification.data || {};
+  const u = new URL(d.url || './#ofertas', self.registration.scope);
+  if (d.tag) u.searchParams.set('aviso', d.tag);
+  if (d.campaign_id) u.searchParams.set('camp', d.campaign_id);
+  const url = u.href;
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
     const c = list.find((w) => w.url.startsWith(self.registration.scope));
     if (c) { c.navigate?.(url); return c.focus(); }

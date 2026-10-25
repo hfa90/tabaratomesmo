@@ -11,6 +11,7 @@ import { S, $, $$, esc, brl, hooks, haversine, logo, visiblePrices } from './cor
 import { ic } from './icons.js';
 import { track } from './track.js';
 import { notifyOn } from './alerts.js';
+import * as interrupt from './interrupt.js';
 
 let list = [];
 let shownThisSession = new Set();
@@ -107,6 +108,7 @@ function schedulePopup() {
   popupTimer = setTimeout(() => {
     if (!canPopup()) return;
     const c = pick('janela')[0]; if (!c) return;
+    if (!interrupt.claim('campanha')) return; // já houve uma interrupção nesta visita
     showPopup(c);
   }, 7000);
 }
@@ -141,7 +143,7 @@ async function notify(c) {
       const reg = await navigator.serviceWorker.ready;
       await reg.showNotification(c.title, { body, icon: m.logo_url || 'assets/icon-192.png', badge: 'assets/icon-192.png', tag: `camp-${c.id}`, data: { url: `./#ofertas?camp=${c.id}` } });
     } catch { return; }
-  } else if (!document.hidden && sessions >= 2) {
+  } else if (!document.hidden && sessions >= 2 && interrupt.claim('aviso')) {
     const el = document.createElement('button');
     el.className = 'camp-toast'; el.dataset.campGo = c.id;
     el.innerHTML = `<span class="camp-toast__i">${logo(m, 'sm')}</span><span><small>${esc(m.name)} · agora</small><b>${esc(c.title)}</b><em>${esc(body)}</em></span>`;

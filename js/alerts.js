@@ -3,11 +3,13 @@
 // Quando o catálogo carrega, ou chega um preço novo ao vivo, compara:
 //   baixou → quadro "Baixou!" no topo das ofertas + notificação do celular (se a pessoa ativou);
 //   subiu  → só atualiza a referência, para o próximo aviso ser justo.
-// A notificação usa o service worker (funciona com o site aberto ou em segundo plano;
-// avisar com o site fechado precisaria de um servidor de push).
+// A notificação usa o service worker com o site aberto ou em segundo plano. Com o site FECHADO,
+// quem avisa é a função "notificar" do Supabase (js/push.js); aqui o aparelho só mantém a inscrição em dia.
 import * as api from './api.js';
 import { S, $, esc, brl, visiblePrices, hooks, logo } from './core.js';
 import { ic } from './icons.js';
+import * as interrupt from './interrupt.js';
+import * as push from './push.js';
 
 const MIN_DROP = 0.05; // ignora diferenças de centavos
 const watch = () => api.store.get('tb.watch', {});
@@ -99,6 +101,7 @@ export function watchProduct(pid, on) {
   if (on) { const p = S.products.find((x) => x.id === pid); const m = p && minOf(p); if (m) w[pid] = m.price; }
   else delete w[pid];
   api.store.set('tb.watch', w);
+  push.refresh();
   if (on && canNotify() && Notification.permission === 'default' && !api.store.get('tb.notifyAsked')) askLater();
 }
 
@@ -117,6 +120,7 @@ async function notify(list) {
 // ---------------------------------------------------------------- pedir permissão no momento certo
 function askLater() {
   setTimeout(() => {
+    if (!interrupt.claim('pedir-avisos')) return; // já houve uma interrupção nesta visita: pergunta na próxima
     const el = document.createElement('div');
     el.className = 'notify-ask';
     el.innerHTML = `<span class="notify-ask__i">${ic('bell')}</span><span><b>Quer saber quando baixar?</b><small>Avisamos no celular quando um favorito ficar mais barato.</small></span>
@@ -130,7 +134,8 @@ export async function enable() {
   if (!canNotify()) { hooks.toast?.('Este navegador não mostra avisos. Os preços que baixarem aparecem no topo das Ofertas.'); return false; }
   const r = await Notification.requestPermission();
   api.store.set('tb.notify', r === 'granted');
-  hooks.toast?.(r === 'granted' ? 'Pronto! Avisamos quando um favorito baixar.' : 'Tudo bem. Os preços que baixarem aparecem no topo das Ofertas.');
+  const closed = r === 'granted' && await push.subscribe();
+  hooks.toast?.(r === 'granted' ? (closed ? 'Pronto! Avisamos no celular, mesmo com o site fechado.' : 'Pronto! Avisamos quando um favorito baixar.') : 'Tudo bem. Os preços que baixarem aparecem no topo das Ofertas.');
   render();
   return r === 'granted';
 }

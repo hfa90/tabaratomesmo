@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0F5A3E" />
+  <meta name="description" content="Como o Tá Barato Mesmo? cuida dos seus dados: o que guardamos, por quê, quem vê e como baixar ou apagar tudo (LGPD)." />
+  <title>Privacidade | Tá Barato Mesmo?</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/paginas.css" />
+  <script>
+    try { if (localStorage.getItem('tb.theme') === '"dark"') document.documentElement.dataset.theme = 'dark'; if (localStorage.getItem('tb.bigText') === '1') document.documentElement.classList.add('big'); } catch (e) {}
+  </script>
+</head>
+<body class="pg">
+  <header class="pg-top">
+    <a class="brand" href="./" aria-label="Tá Barato Mesmo? início">
+      <span class="brand__mark" aria-hidden="true"><svg viewBox="0 0 48 48"><defs><linearGradient id="bmg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16805A"/><stop offset="1" stop-color="#0B4A33"/></linearGradient></defs><rect width="48" height="48" rx="13" fill="url(#bmg)"/><g transform="rotate(-14 24 24)"><path d="M11 24 L18.5 15.5 H35 a4 4 0 0 1 4 4 V28.5 a4 4 0 0 1 -4 4 H18.5 Z" fill="#FFD43B" stroke="#FFD43B" stroke-width="2.6" stroke-linejoin="round"/><circle cx="18" cy="24" r="2.1" fill="#0F5A3E"/><path class="brand__check" d="M24 24.3l3.6 3.6 7-7.8" fill="none" stroke="#0F5A3E" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></g></svg></span>
+      <span class="brand__name">Tá Barato <em>Mesmo?</em></span>
+    </a>
+    <a class="btn btn--ghost btn--sm" href="./#conta">Voltar ao site</a>
+  </header>
+
+  <main class="pg-main">
+    <header class="pg-hero">
+      <p class="pg-kicker">Política de privacidade</p>
+      <h1>Seus dados, explicados sem letra miúda</h1>
+      <p class="pg-lead">O Tá Barato Mesmo? compara preços de supermercados em Manaus. Para isso, guardamos o mínimo possível sobre você e nunca vendemos seus dados. Aqui está tudo o que guardamos, por quê e como você controla.</p>
+      <p class="muted small">Última atualização: 25 de outubro de 2026 · Segue a Lei Geral de Proteção de Dados (Lei 13.709/2018, LGPD).</p>
+    </header>
+
+    <nav class="pg-toc" aria-label="Nesta página">
+      <a href="#resumo">Resumo</a><a href="#o-que">O que guardamos</a><a href="#mercados">O que os mercados veem</a>
+      <a href="#avisos">Avisos no celular</a><a href="#direitos">Seus direitos</a><a href="#contato">Contato</a>
+    </nav>
+
+    <section class="pg-sec" id="resumo">
+      <h2>Resumo em 5 pontos</h2>
+      <ol class="pg-five">
+        <li><b>Sem conta, quase nada sai do seu celular.</b> Lista, carrinho e favoritos ficam guardados no próprio aparelho.</li>
+        <li><b>Com conta, guardamos para você não perder nada</b> e usar no celular e no computador.</li>
+        <li><b>Os supermercados só veem números de grupos</b> (por exemplo, "40 pessoas da Zona Norte"), nunca o seu nome, e-mail ou telefone.</li>
+        <li><b>Sua localização exata não vai para o servidor.</b> Ela fica no aparelho para achar a loja mais perto.</li>
+        <li><b>Você baixa ou apaga tudo quando quiser</b>, sozinho, em Você › Conta.</li>
+      </ol>
+    </section>
+
+    <section class="pg-sec" id="o-que">
+      <h2>O que guardamos e por quê</h2>
+      <div class="pg-tbl" role="table" aria-label="Dados guardados">
+        <div class="pg-row pg-row--h" role="row"><span role="columnheader">Dado</span><span role="columnheader">Para quê</span><span role="columnheader">Onde fica</span></div>
+        <div class="pg-row" role="row"><span role="cell"><b>Nome, e-mail e senha</b></span><span role="cell">Criar e proteger a sua conta. A senha é guardada embaralhada (ninguém consegue ler).</span><span role="cell">Servidor (Supabase)</span></div>
+        <div class="pg-row" role="row"><span role="cell"><b>Celular, data de nascimento, bairro, CEP e mercados preferidos</b></span><span role="cell">Só no cadastro completo. Bairro e mercados mostram as lojas certas; idade e bairro entram nos números de grupo que os mercados veem.</span><span role="cell">Servidor</span></div>
+        <div class="pg-row" role="row"><span role="cell"><b>Endereço de casa (opcional)</b></span><span role="cell">Calcular se vale a pena ir a um mercado mais longe.</span><span role="cell">Aparelho; na conta, se você salvou</span></div>
+        <div class="pg-row" role="row"><span role="cell"><b>Lista do mês, carrinho, ranchos, favoritos e notas fiscais</b></span><span role="cell">Fazer o site funcionar e mostrar a sua economia. Os preços das notas também ajudam a manter os preços certos para todo mundo.</span><span role="cell">Aparelho; na conta, para usar em vários aparelhos</span></div>
+        <div class="pg-row" role="row"><span role="cell"><b>Localização do GPS</b></span><span role="cell">Achar a loja mais perto e dar boas-vindas quando você chega numa loja. Só se você permitir.</span><span role="cell">Só no aparelho</span></div>
+        <div class="pg-row" role="row"><span role="cell"><b>Uso do site</b> (telas abertas, buscas, produtos vistos)</span><span role="cell">Saber o que funciona e o que melhorar, e mostrar aos mercados o que as pessoas procuram. Usamos um número aleatório do aparelho, sem nome. Dá para desligar.</span><span role="cell">Servidor, sem identificar você</span></div>
+        <div class="pg-row" role="row"><span role="cell"><b>Preços que você informa</b></span><span role="cell">Atualizar os preços para o bairro todo. O preço fica; quem informou não aparece para ninguém.</span><span role="cell">Servidor</span></div>
+      </div>
+      <p class="small muted">Base legal (LGPD, art. 7º): execução do serviço que você pediu (conta, listas, notas), legítimo interesse para melhorar o site com números de uso sem identificação, e o seu consentimento para localização e avisos no celular, que você pode retirar a qualquer momento.</p>
+    </section>
+
+    <section class="pg-sec" id="mercados">
+      <h2>O que os supermercados veem</h2>
+      <p>Os supermercados parceiros veem, no painel deles, <b>somente números agregados</b>: quantas pessoas buscaram um produto, de quais zonas da cidade vêm os clientes, dias e horários de mais movimento, quantas pessoas viram uma campanha.</p>
+      <ul class="pg-list">
+        <li>Bairros só aparecem quando há <b>3 pessoas ou mais</b>; idade e sexo, com <b>5 ou mais</b>.</li>
+        <li>Eles <b>nunca</b> recebem o seu nome, e-mail, telefone, endereço ou a sua lista.</li>
+        <li>Promoções e campanhas são mostradas pelo site seguindo as nossas regras (no máximo uma janela e um aviso por dia).</li>
+      </ul>
+    </section>
+
+    <section class="pg-sec" id="avisos">
+      <h2>Avisos no celular</h2>
+      <p>Se você ligar os avisos, o navegador cria um endereço de entrega (fornecido pelo Google, Apple ou Mozilla). Guardamos esse endereço com o que você pediu para acompanhar: favoritos, produtos que você já comprou, mercados preferidos, a lista da família e, se você liberou a localização, uma <b>posição arredondada (cerca de 1 km)</b> para avisos de mercados perto de você.</p>
+      <p>Mandamos no máximo 3 avisos por dia, só entre 8h e 21h. Para parar, desligue em Você › Preferências › Avisos no celular, ou bloqueie as notificações do site no navegador: o endereço é apagado.</p>
+    </section>
+
+    <section class="pg-sec" id="direitos">
+      <h2>Seus direitos (LGPD, art. 18)</h2>
+      <div class="pg-cards">
+        <div class="pg-card"><b>Ver e baixar seus dados</b><p>Em Você › Conta › <i>Baixar meus dados</i>: um arquivo com tudo o que está na sua conta e neste aparelho.</p><button class="btn btn--primary btn--sm" data-priv="export">Baixar meus dados</button></div>
+        <div class="pg-card"><b>Corrigir</b><p>Em Você › Conta você muda nome, celular, bairro e mercados preferidos.</p><a class="btn btn--ghost btn--sm" href="./#conta">Abrir minha conta</a></div>
+        <div class="pg-card"><b>Apagar</b><p><i>Zerar meu histórico</i> recomeça do zero. <i>Excluir minha conta</i> apaga a conta e o que é seu, de vez.</p><a class="btn btn--ghost btn--sm" href="./#conta">Ir para Conta</a></div>
+        <div class="pg-card"><b>Retirar consentimento</b><p>Desligue localização, avisos e "Ajudar a melhorar o site" quando quiser, em Você › Preferências.</p></div>
+      </div>
+      <p class="small muted">Guardamos os dados enquanto a conta existir. Ao excluir a conta, os dados pessoais são apagados na hora; ficam só números de uso sem ligação com você e os preços que você confirmou (que são do mercado, não seus).</p>
+    </section>
+
+    <section class="pg-sec" id="contato">
+      <h2>Contato e segurança</h2>
+      <p>Os dados ficam no Supabase (servidor com acesso protegido e conexão criptografada). Cada pessoa só lê os próprios dados; a equipe do site só acessa o necessário para manter o serviço.</p>
+      <p id="pgContact">Para qualquer pedido sobre dados pessoais, use as opções acima ou fale com a administração do site.</p>
+    </section>
+  </main>
+
+  <footer class="site-foot"><span>Tá Barato Mesmo? · Manaus</span><a href="./">Início</a><a href="mercado.html">Supermercados</a><a href="parceiros.html">Área do supermercado</a></footer>
+  <div class="toast-wrap" id="toasts" aria-live="polite"></div>
+  <div class="sheet sheet--narrow sheet--tool" id="toolSheet" role="dialog" aria-modal="true" aria-labelledby="toolTitle" hidden><div class="sheet__backdrop"></div><div class="sheet__panel"><div id="toolBody"></div></div></div>
+
+  <script type="module" src="js/pagina-privacidade.js"></script>
+</body>
+</html>

@@ -100,7 +100,7 @@ const MOMENTS = {
     items: [
       { icon: I.mic, t: 'Carrinho por voz', s: 'Fale "arroz 5 quilos 24 e 90" e o site anota e soma.', go: '#carrinho' },
       { icon: I.calc, t: 'Calculadora do caixa', s: 'Digite os preços e veja quanto ainda sobra antes de pôr no carrinho.', go: '#carrinho' },
-      { icon: I.barcode, t: 'Ler código de barras', s: 'Aponte a câmera e veja se ali é o mais barato.', tool: 'scan' },
+      { icon: I.barcode, t: 'Conferir um preço', s: 'Leia o código, fotografe a etiqueta ou mande a nota.', tool: 'conferir' },
       { icon: I.scale, t: 'Qual compensa?', s: 'Pacote grande ou pequeno: veja qual sai mais barato por quilo.', tool: 'tamanho' },
       { icon: I.percent, t: 'Promoção vale?', s: '"Leve 3, pague 2" e similares: veja se compensa mesmo.', tool: 'promo' },
       { icon: I.route, t: 'Caminho no mercado', s: 'Sua lista na ordem dos corredores, numa volta só.', tool: 'caminho' },

@@ -1,0 +1,12 @@
+{
+  "name": "tabaratomesmo",
+  "private": true,
+  "description": "Tá Barato Mesmo? — comparador de preços de supermercados em Manaus (site estático, sem build).",
+  "scripts": {
+    "test": "playwright test",
+    "serve": "python3 -m http.server 4173"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.0"
+  }
+}

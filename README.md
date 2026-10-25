@@ -7,15 +7,26 @@ Comparador de preços de supermercados de Manaus: Nova Era, Supermercados DB, Ve
 - **Avisos de preço** (`js/alerts.js`): o aparelho guarda o preço de cada favorito e avisa quando baixar, com o quadro "Baixou!" no topo das ofertas e notificação do celular (com o site aberto ou em segundo plano).
 - **Busca falando e tolerante a erro**: microfone na busca; palavras em qualquer ordem; quando nada bate, mostra os mais parecidos ("nescal" → achocolatado, "detergnte" → detergente).
 - **Meu mês** (`js/resumo.js`, botão em Você): cartão 1080×1350 com economia, mercado mais usado, maior diferença e o que mais subiu/baixou, para compartilhar no WhatsApp.
-- **Lista da família** (`js/familia.js`): a mesma Lista do mês em vários celulares, ao vivo, por código ou link. Precisa rodar uma vez [`supabase/atualizacao-2026-10-lista-familia.sql`](supabase/atualizacao-2026-10-lista-familia.sql) no SQL Editor; sem ele, o botão manda uma cópia da lista por link.
-- **Zerar meu histórico** (Você › Preferências, `js/zerar.js`): a pessoa recomeça como nova (lista, ranchos, economia, notas, pontos, ranking, favoritos e preferências somem para ela). Nada que os supermercados e a administração usam é apagado: o banco só marca a data do recomeço. Precisa rodar uma vez [`supabase/atualizacao-2026-10-zerar-historico.sql`](supabase/atualizacao-2026-10-zerar-historico.sql); sem ele, quem tem conta vê o aviso de que a função ainda não foi ativada. O zerar vale para todos os aparelhos da conta: os outros se limpam sozinhos ao abrir (ou na hora, se estiverem abertos), e o banco recusa dados de aparelhos que ainda não souberam do zerar ([`supabase/atualizacao-2026-10-zerar-todos-aparelhos.sql`](supabase/atualizacao-2026-10-zerar-todos-aparelhos.sql)).
+- **Lista da família** (`js/familia.js`): a mesma Lista do mês em vários celulares, ao vivo, por código ou link. Precisa rodar uma vez [`supabase/atualizacoes/atualizacao-2026-10-lista-familia.sql`](supabase/atualizacoes/atualizacao-2026-10-lista-familia.sql) no SQL Editor; sem ele, o botão manda uma cópia da lista por link.
+- **Zerar meu histórico** (Você › Preferências, `js/zerar.js`): a pessoa recomeça como nova (lista, ranchos, economia, notas, pontos, ranking, favoritos e preferências somem para ela). Nada que os supermercados e a administração usam é apagado: o banco só marca a data do recomeço. Precisa rodar uma vez [`supabase/atualizacoes/atualizacao-2026-10-zerar-historico.sql`](supabase/atualizacoes/atualizacao-2026-10-zerar-historico.sql); sem ele, quem tem conta vê o aviso de que a função ainda não foi ativada. O zerar vale para todos os aparelhos da conta: os outros se limpam sozinhos ao abrir (ou na hora, se estiverem abertos), e o banco recusa dados de aparelhos que ainda não souberam do zerar ([`supabase/atualizacoes/atualizacao-2026-10-zerar-todos-aparelhos.sql`](supabase/atualizacoes/atualizacao-2026-10-zerar-todos-aparelhos.sql)).
 - **Mesma conta em vários aparelhos** (`js/sync.js`): lista, carrinho, ranchos, economia, notas, mercados ligados, casa, tema e avisos acompanham a conta; o que muda num celular aparece nos outros na hora (tabela `user_state` + Realtime).
 - **Portal › Clientes** (`js/portal-clientes.js`): mapa dos bairros de onde vêm os clientes, zonas, se vão à loja mais perto de casa (ou passam por um concorrente), dias da semana, horários e dias do mês, com frases que explicam os números. Bairros só com 3 pessoas ou mais.
 - **Portal › Campanhas** (`js/portal-campanhas.js` + `js/campanhas.js`): aviso no celular, janela na tela e vitrine de produtos, para todos, para quem prefere o mercado ou para quem está a até X km de uma loja (padrão 2 km), com prévia num celular e números (vistas, pessoas, toques). Para não incomodar: 1 janela por dia, nunca na primeira visita, avisos só das 8h às 21h, "agora não" esconde por 3 dias e "não mostrar deste mercado" por 7; no máximo 3 campanhas no ar por mercado. A administração vê todas e pode bloquear (Publicidade).
-- As três partes acima precisam de [`supabase/atualizacao-2026-10-sync-clientes-campanhas.sql`](supabase/atualizacao-2026-10-sync-clientes-campanhas.sql) rodado uma vez no SQL Editor.
+- As três partes acima precisam de [`supabase/atualizacoes/atualizacao-2026-10-sync-clientes-campanhas.sql`](supabase/atualizacoes/atualizacao-2026-10-sync-clientes-campanhas.sql) rodado uma vez no SQL Editor.
 - **Minhas listas** (Lista do mês › Criar lista): a pessoa cria listas com nome ("Rancho da família", "Churrasco"); a lista do mês fica ligada a uma delas e o que muda nela atualiza o modelo. Uma lista pode ser o **padrão**: na virada do mês o rancho novo já começa com ela. Acompanha a conta nos outros aparelhos.
 - **Avisos do que a pessoa compra**: para os produtos dos ranchos concluídos, da última compra, das notas e do que foi marcado "já peguei", o site guarda o preço em cada supermercado e avisa quando sobe ou desce (3% e R$ 0,10 ou mais), no quadro do topo das ofertas e no celular.
-- **Datas especiais em 3D** (`js/especial.js`, `js/temas.js`): Black Friday, Natal, Halloween, Réveillon, Dia das Mães, dos Pais e dos Namorados. A administração liga a data e o período (admin › Datas especiais); os supermercados escolhem até 24 produtos e um preço especial (portal › Datas especiais). O site mostra um banner animado no início e nas ofertas e a página temática com cena 3D (three.js) interativa, contagem regressiva, carrossel 3D e cartões que inclinam. Prévia: `#especial?tema=natal&previa=1`. Precisa de [`supabase/atualizacao-2026-10-datas-especiais.sql`](supabase/atualizacao-2026-10-datas-especiais.sql).
+- **Datas especiais em 3D** (`js/especial.js`, `js/temas.js`): Black Friday, Natal, Halloween, Réveillon, Dia das Mães, dos Pais e dos Namorados. A administração liga a data e o período (admin › Datas especiais); os supermercados escolhem até 24 produtos e um preço especial (portal › Datas especiais). O site mostra um banner animado no início e nas ofertas e a página temática com cena 3D (three.js) interativa, contagem regressiva, carrossel 3D e cartões que inclinam. Prévia: `#especial?tema=natal&previa=1`. Precisa de [`supabase/atualizacoes/atualizacao-2026-10-datas-especiais.sql`](supabase/atualizacoes/atualizacao-2026-10-datas-especiais.sql).
+- **Avisos com o site fechado** (`js/push.js` + função `notificar`): preço que baixou do que a pessoa acompanha (favoritos e o que já comprou), lista da família que alguém mudou e avisos dos mercados (perto, preferidos ou todos) chegam no celular mesmo com o site fechado, pelo Web Push. Regras no banco: 8h às 21h, no máximo 3 por dia e 1 de mercado por dia. A pessoa escolhe o que receber em Você › Preferências. No iPhone, precisa adicionar o site à tela de início.
+- **Uma interrupção por visita** (`js/interrupt.js`): janela de campanha, aviso flutuante, pedido para ligar avisos e boas-vindas na loja disputam um único espaço por visita; o que sobrar fica para a próxima.
+- **Conferir um preço**: um botão só abre as três formas (ler o código, fotografar a etiqueta, mandar a nota). Em "No mercado", a calculadora é o padrão e falar o item é a opção.
+- **Confiança no preço**: cada preço mostra há quanto tempo foi atualizado (bolinha verde até 2 dias, amarela até 1 semana, cinza mais antigo) e de onde veio (nota fiscal, clientes, mercado, encarte, coleta).
+- **Letra grande** (Você › Preferências): textos e botões maiores, para quem lê com dificuldade.
+- **Comprar no site do mercado**: quando o rancho sai mais barato num mercado que tem loja online, o relatório copia a lista e abre a loja. O mercado informa o link em Portal › Campanhas (ou a administração, no cadastro do mercado).
+- **Páginas públicas dos supermercados** (`mercado.html`, `mercado.html?m=coema`): lojas, endereços, horários e os produtos em que ele é o mais barato hoje, com dados estruturados para o Google ([`sitemap.xml`](sitemap.xml)).
+- **Privacidade (LGPD)** ([`privacidade.html`](privacidade.html), `js/privacidade.js`): política em linguagem simples, **Baixar meus dados** (arquivo com a conta e o aparelho), **Excluir minha conta** e "Ajudar a melhorar o site" (desliga a contagem de uso). O contato do responsável fica em admin › Configurações › Privacidade.
+- **Admin › Uso do site**: pessoas por dia/semana/mês, quem volta (por semana de chegada), telas, ferramentas e ações mais usadas, e o que está pouco usado (candidato a juntar ou sair).
+- **Admin › Saúde do banco**: mostra quais atualizações do banco faltam rodar e se os avisos com o site fechado estão agendados.
+- **Testes automáticos** ([`.github/workflows/testes.yml`](.github/workflows/testes.yml)): a cada envio, o GitHub instala o `schema.sql` duas vezes num banco limpo, roda os testes do banco ([`tests/sql/testes.sql`](tests/sql/testes.sql)) e abre o site em celular e computador ([`tests/e2e/site.spec.js`](tests/e2e/site.spec.js)).
 - **Visual calmo**: ícones de traço (`js/icons.js`) no lugar de emojis, um único verde de destaque, uma faixa de aviso por vez no topo, localização pedida só quando a pessoa quer ver a loja mais perto, e a faixa "Você já economizou" no topo das ofertas.
 - Mostra primeiro o **menor preço** de cada produto, com as logomarcas e o preço de todos os mercados no mesmo card.
 - Usa a **localização** do usuário (ou o bairro escolhido) para indicar o mercado mais perto e a distância de cada loja.
@@ -104,7 +115,7 @@ O navegador não consegue abrir a página da Sefaz direto, então a leitura da n
 Pela linha de comando: `supabase functions deploy nfce`. Enquanto a função não existir, o app mostra "Função ainda não instalada" ao ler uma nota; no modo demonstração há uma nota de exemplo.
 
 ### 1d. Atualização de outubro/2026 (notas, IA, encartes, e-mails)
-1. **Banco:** no SQL Editor, rode [`supabase/atualizacao-2026-10-notas-ia.sql`](supabase/atualizacao-2026-10-notas-ia.sql) (pode rodar de novo sem problema; o `schema.sql` já inclui tudo para instalações novas).
+1. **Banco:** no SQL Editor, rode [`supabase/atualizacoes/atualizacao-2026-10-notas-ia.sql`](supabase/atualizacoes/atualizacao-2026-10-notas-ia.sql) (pode rodar de novo sem problema; o `schema.sql` já inclui tudo para instalações novas).
 2. **Funções:** publique de novo a `nfce` (agora grava a nota) e a nova `leitor-ia`:
    ```bash
    supabase functions deploy nfce
@@ -119,6 +130,20 @@ Pela linha de comando: `supabase functions deploy nfce`. Enquanto a função nã
    ```
    Ele define o Site URL (`https://hfa90.github.io/tabaratomesmo`, sem barra no fim), libera os endereços de retorno e troca os 6 e-mails pelos modelos de [`supabase/email-templates/`](supabase/email-templates/). Sem o script: Authentication › URL Configuration (Site URL + Redirect URLs `https://hfa90.github.io/tabaratomesmo/**`) e Authentication › Email Templates (cole cada arquivo `.html`).
 4. **Remetente (recomendado):** o e-mail padrão do Supabase tem limite baixo de envios por hora e pode cair no spam. Em Authentication › SMTP Settings, configure um SMTP próprio (Resend, Brevo, Amazon SES…) com um remetente como `nao-responda@seudominio.com.br`.
+
+### 1e. Avisos com o site fechado, uso do site e privacidade (outubro/2026)
+O `schema.sql` já junta todas as atualizações. Banco antigo: rode só o que faltar (admin › **Saúde do banco** mostra).
+1. **Banco:** SQL Editor › rode [`supabase/atualizacoes/atualizacao-2026-10-push-uso-lgpd.sql`](supabase/atualizacoes/atualizacao-2026-10-push-uso-lgpd.sql).
+2. **Função `notificar`:** a chave pública VAPID já está em `js/config.js`; a privada e a senha do agendamento ficam só com você (não vão para o GitHub).
+   ```bash
+   supabase functions deploy notificar --no-verify-jwt
+   supabase secrets set VAPID_PUBLIC_KEY=<a mesma de js/config.js> VAPID_PRIVATE_KEY=<chave privada> NOTIFICAR_SEGREDO=<senha>
+   ```
+   Pelo painel: Edge Functions › Deploy a new function › nome `notificar` › cole `supabase/functions/notificar/index.ts` › desligue "Verify JWT". Os segredos vão em Edge Functions › Secrets.
+3. **Agendamento:** Database › Extensions › ligue `pg_cron` e `pg_net`. Depois rode [`supabase/agendar-avisos.sql`](supabase/agendar-avisos.sql) trocando `COLE_AQUI_O_SEGREDO` pela mesma senha `NOTIFICAR_SEGREDO`.
+4. Confira em admin › Saúde do banco: tudo "em dia".
+
+Para trocar as chaves VAPID: `npx web-push generate-vapid-keys`, troque a pública em `js/config.js` e as duas nos segredos (quem já tinha ligado os avisos precisa ligar de novo).
 
 ### 2. Logomarcas oficiais
 Coloque os arquivos em `assets/logos/` com estes nomes (PNG ou troque a extensão na coluna `logo_url`):
@@ -150,6 +175,8 @@ python -m http.server 8080
 # abra http://localhost:8080
 ```
 A geolocalização do navegador só funciona em `https://` ou `localhost`.
+
+Testes: `npm install && npx playwright install chromium && npm test` (site, com dados de demonstração). Banco: num Postgres 16 vazio, rode `tests/sql/mock-supabase.sql`, `supabase/schema.sql` e `tests/sql/testes.sql`.
 
 ## Estrutura
 ```
@@ -190,7 +217,14 @@ supabase/functions/nfce/index.ts   função que lê a página da NFC-e na Sefaz 
 supabase/functions/leitor-ia/index.ts   leitor com IA: encarte, etiqueta, nota por foto
 supabase/email-templates/   e-mails de conta com a cara do site
 supabase/configurar-auth.mjs   aplica Site URL, endereços de retorno e e-mails no Supabase
-supabase/atualizacao-2026-10-notas-ia.sql   atualização do banco (notas, IA, encartes)
+supabase/functions/notificar/index.ts   avisos no celular com o site fechado (Web Push, a cada 15 min)
+supabase/atualizacoes/   atualizações do banco para quem já tinha o schema (o schema.sql já inclui todas)
+supabase/agendar-avisos.sql   agenda a função notificar (pg_cron + pg_net)
+js/push.js             inscrição dos avisos com o site fechado
+js/interrupt.js        regra de uma interrupção por visita
+js/privacidade.js      baixar meus dados e excluir a conta
+privacidade.html, mercado.html   política de privacidade e páginas públicas dos supermercados
+tests/                 testes automáticos (site e banco)
 js/ads.js             anúncios de curiosidade nos espaços do site
 js/portal.js          portal: painel, produtos, promoções, importação
 js/portal-api.js      dados do portal (Supabase ou demonstração)
@@ -198,7 +232,7 @@ css/portal.css        estilos do portal
 assets/modelo-importacao-tabaratomesmo.xlsx   planilha modelo de importação
 js/chart.js           gráfico de histórico em SVG
 js/demo-data.js       dados de demonstração (gerados do seed)
-supabase/schema.sql   banco completo
+supabase/schema.sql   banco completo, com todas as atualizações
 sw.js, manifest.webmanifest   PWA
 ```
 

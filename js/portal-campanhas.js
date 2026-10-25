@@ -30,10 +30,13 @@ export async function render(ctx) {
       <button class="btn btn--primary" data-camp="new">${ic('plus')} Nova campanha</button></header>
     <section class="panel camp-rules"><div class="panel__head"><h2>${ic('lock')} Para não incomodar ninguém</h2></div>
       <ul><li>Cada pessoa vê no máximo <b>1 janela por dia</b> (de todos os mercados) e nunca na primeira visita.</li>
-      <li>Avisos no celular: no máximo <b>1 por dia</b>, só entre 8h e 21h, e só para quem ativou os avisos.</li>
+      <li>Avisos no celular: no máximo <b>1 por dia</b>, só entre 8h e 21h, e só para quem ativou os avisos. Chegam até com o site fechado.</li>
       <li>Quem fecha uma campanha não a vê de novo por 3 dias; pode também esconder o seu mercado por 7 dias.</li>
       <li>No máximo <b>3 campanhas no ar</b> por mercado ao mesmo tempo.</li></ul></section>
-    <div id="campList"><div class="skeleton" style="height:200px"></div></div>`;
+    <div id="campList"><div class="skeleton" style="height:200px"></div></div>
+    <section class="panel"><div class="panel__head"><h2>${ic('cart')} Sua loja online</h2></div>
+      <p class="small muted">Quando o rancho de alguém sai mais barato no ${esc(m.name)}, o site mostra "Comprar no site do ${esc(m.name)}": copia a lista e abre a sua loja online ou app.</p>
+      <form class="form form--inline" id="campShop"><label>Endereço da loja online ou do app<input name="url" type="url" value="${esc(m.shop_url || '')}" placeholder="https://" /></label><button class="btn btn--ghost">Salvar</button></form></section>`;
   let list;
   try { list = await P.campaigns(ctx.mid); }
   catch (e) { $('#campList').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
@@ -155,4 +158,13 @@ document.addEventListener('submit', async (e) => {
     await P.saveCampaign({ ...draft, starts_at: new Date(draft.starts_at + 'T00:00').toISOString(), ends_at: new Date(draft.ends_at + 'T23:59').toISOString() });
     C.closeSheet(); C.toast(draft.id ? 'Campanha salva.' : 'Campanha no ar!'); render(C);
   } catch (x) { err.textContent = x.message; btn.disabled = false; }
+});
+
+document.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'campShop' || !C) return;
+  e.preventDefault();
+  const v = e.target.url.value.trim();
+  if (v && !/^https:\/\//.test(v)) { C.toast('O endereço precisa começar com https://', 'warn'); return; }
+  try { await P.setShopUrl(C.mid, v || null); const m = C.market(); if (m) m.shop_url = v || null; C.toast(v ? 'Loja online salva.' : 'Link retirado.'); }
+  catch (err) { C.toast(err.message, 'warn'); }
 });

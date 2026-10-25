@@ -629,6 +629,7 @@ export async function renderReport(scroll = true) {
         </ul>
         <div class="rep__actions">
           ${r.best.store ? `<a class="btn btn--primary" href="https://www.google.com/maps/dir/?api=1&destination=${r.best.store.lat},${r.best.store.lng}" target="_blank" rel="noopener" data-route="${r.best.m.id}">Abrir rota</a>` : ''}
+          ${/^https:\/\//.test(r.best.m.shop_url || '') ? `<button class="btn btn--ghost" data-rancho="shop" data-shop="${r.best.m.id}">${ic('cart')} Comprar no site do ${esc(r.best.m.name)}</button>` : ''}
           <button class="btn btn--ghost" data-rancho="sharereport">Compartilhar</button>
           ${m.status === 'concluida' ? `<button class="btn btn--text" data-rancho="reopen">Editar lista</button>` : ''}
         </div>
@@ -816,6 +817,15 @@ document.addEventListener('click', async (e) => {
       persist(); render(); hooks.toast?.(`Rancho de ${monthName(cur)} criado com os mesmos itens.`); break;
     }
     case 'share': shareText(listText()); break;
+    case 'shop': {
+      // a loja online não recebe a lista pronta: copiamos para colar na busca do site/app do mercado
+      const mk = S.markets.get(Number(e.target.closest('[data-shop]')?.dataset.shop)); if (!mk?.shop_url) return;
+      navigator.clipboard?.writeText(listText()).catch(() => {});
+      window.open(mk.shop_url, '_blank', 'noopener');
+      hooks.toast?.(`Sua lista foi copiada. No site do ${mk.name}, cole na busca ou no carrinho.`);
+      track('tool', { query: 'comprar_online', market_id: mk.id });
+      break;
+    }
     case 'sharereport': {
       const r = computeReport(); if (!r) return;
       shareText(`${meta().name}: ${r.qty} itens.\nMais barato no ${r.best.m.name}: ${brl(r.best.total)}${r.base && r.base !== r.best ? `, ${brl(r.savings)} a menos que no ${r.base.m.name}` : ''}.\n\nCalcule o seu no Tá Barato Mesmo? ${location.origin}${location.pathname}`);

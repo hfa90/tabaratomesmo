@@ -329,3 +329,26 @@ export async function encarteApply(market, rows, starts, ends, file) {
   if (MODE === 'demo') return { total: rows.length, prices: rows.filter((r) => !r.preco_de).length, promos: rows.filter((r) => r.preco_de).length, created: rows.filter((r) => !r.product_id).length, errors: [] };
   return rpc('encarte_apply', { p_market: market, p_rows: rows, p_starts: starts, p_ends: ends, p_file: file });
 }
+
+// ---------------------------------------------------------------- uso do site e saúde do banco (atualizacao-2026-10-push-uso-lgpd.sql)
+export async function usage(days = 30) {
+  if (MODE !== 'demo') return rpc('admin_usage', { p_days: days });
+  // demonstração: números ilustrativos
+  let seed = 7 + days; const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const f = [['ofertas', 0.92], ['lista', 0.61], ['carrinho', 0.38], ['acao:busca', 0.74], ['acao:adicionou', 0.55], ['ferramenta:calc', 0.33], ['inicio', 0.28],
+    ['notas', 0.17], ['ferramenta:fotopreco', 0.09], ['ferramenta:leitor', 0.12], ['conta', 0.21], ['especial', 0.14], ['ferramenta:fila', 0.04], ['mapa', 0.08], ['refeicoes', 0.06],
+    ['acao:rota', 0.11], ['acao:comprou', 0.15], ['acao:ativou_avisos', 0.05]];
+  const base = 1400;
+  const weeks = Array.from({ length: 8 }, (_, i) => { const d = new Date(Date.now() - (7 - i) * 7 * 864e5); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return { week: d.toISOString().slice(0, 10), people: Math.round(base * (0.7 + i * 0.05) * (0.9 + r() * 0.2)), new: Math.round(380 * (0.8 + r() * 0.4)) }; });
+  return {
+    days, active_1: 212, active_7: 1180, active_30: base, new_7: 386, with_account_7: 402, returned: 41, push_subs: 77,
+    features: f.map(([name, p]) => ({ name, people: Math.round(base * p), uses: Math.round(base * p * (1.5 + r() * 3)) })).sort((a, b) => b.people - a.people),
+    weeks,
+    cohorts: weeks.slice(2).map((w, i, arr) => ({ week: w.week, size: w.new, w1: i < arr.length - 1 ? Math.round(w.new * 0.42) : 0, w2: i < arr.length - 2 ? Math.round(w.new * 0.3) : 0, w3: i < arr.length - 3 ? Math.round(w.new * 0.24) : 0 })),
+  };
+}
+export async function dbHealth() {
+  if (MODE === 'demo') return { checks: [{ grp: 'Base (schema.sql)', name: 'demonstração', ok: true }], extensions: { pg_cron: false, pg_net: false }, push_job: null, push_subs: 0, events_30d: 0 };
+  try { return await rpc('db_health'); }
+  catch (e) { if (/db_health|PGRST202|could not find/i.test(e.message)) return null; throw e; }
+}

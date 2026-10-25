@@ -111,3 +111,21 @@ export const ago = (iso) => {
   const d = Math.round(h / 24);
   return d === 1 ? 'ontem' : `há ${d} dias`;
 };
+
+// ---------------------------------------------------------------- confiança no preço: quando e de onde veio
+const SRC = { nota: 'confirmado por nota fiscal', qr: 'confirmado por nota fiscal', comunidade: 'informado por clientes', mercado: 'informado pelo mercado',
+  encarte: 'do encarte do mercado', coleta: 'coletado na loja', seed: 'coletado na loja' };
+/** idade do preço: 'fresh' até 2 dias, 'ok' até 7, 'old' depois disso */
+export function trust(x) {
+  if (!x?.at) return null;
+  const days = Math.max(0, (Date.now() - new Date(x.at).getTime()) / 864e5);
+  const level = days <= 2 ? 'fresh' : days <= 7 ? 'ok' : 'old';
+  const short = days < 1 ? 'hoje' : days < 2 ? 'ontem' : days < 14 ? `${Math.floor(days)} dias` : `${Math.floor(days / 7)} sem.`;
+  const when = days < 1 ? 'hoje' : days < 2 ? 'ontem' : `há ${days < 14 ? `${Math.floor(days)} dias` : `${Math.floor(days / 7)} semanas`}`;
+  const src = SRC[x.src] || 'coletado';
+  return { level, short, when, src, text: `Atualizado ${when}, ${src}${level === 'old' ? '. Pode ter mudado' : ''}` };
+}
+export function trustTag(x) {
+  const t = trust(x); if (!t) return '';
+  return `<span class="trust trust--${t.level}" title="${esc(t.text)}"><i aria-hidden="true"></i>${t.short}</span>`;
+}

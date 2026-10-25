@@ -17,7 +17,7 @@ const total = () => st().items.reduce((s, i) => s + (i.price || 0) * i.qty, 0);
 const uid = () => Math.random().toString(36).slice(2, 9);
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, listening = false, lastAdded = null;
-const mode = () => api.store.get('tb.cartMode', 'voz'); // 'voz' (falar) | 'calc' (digitar preços)
+const mode = () => api.store.get('tb.cartMode', 'calc'); // 'calc' (calculadora, o padrão) | 'voz' (falar o item)
 
 export function badge() {
   const n = (S.cart || api.store.get(KEY, null))?.items?.length || 0;
@@ -50,8 +50,8 @@ export function render() {
       </header>
 
       <div class="ck-mode" role="tablist" aria-label="Como anotar">
+        <button role="tab" aria-selected="${mode() === 'calc'}" data-ck-mode="calc">${ic('calc')} Calculadora</button>
         <button role="tab" aria-selected="${mode() === 'voz'}" data-ck-mode="voz">${ic('mic')} Falar o item</button>
-        <button role="tab" aria-selected="${mode() === 'calc'}" data-ck-mode="calc">${ic('calc')} Digitar preços</button>
       </div>
 
       ${mode() === 'calc' ? calc.html() : `<section class="ck-total ${state}" aria-live="polite">
@@ -71,7 +71,7 @@ export function render() {
             <span><b>${listening ? 'Ouvindo… fale o item' : 'Toque e fale o item'}</b><small>Ex.: “Nescau 370 gramas 9 e 49”</small></span>
           </button>` : '<p class="note small">Seu navegador não reconhece fala. Digite como você falaria, por exemplo “arroz 5 quilos 25,75”.</p>'}
         <div class="ck-tools">
-          <button class="ck-tool ck-tool--scan" data-tool="scan"><span aria-hidden="true">${ic('camera')}</span><b>Ler código</b></button>
+          <button class="ck-tool ck-tool--scan" data-tool="scan"><span aria-hidden="true">${ic('barcode')}</span><b>Ler código</b></button>
           <button class="ck-tool" data-tool="promo"><span aria-hidden="true">${ic('tag')}</span><b>Promoção vale?</b></button>
           <button class="ck-tool" data-tool="tamanho"><span aria-hidden="true">${ic('scale')}</span><b>Qual compensa?</b></button>
         </div>

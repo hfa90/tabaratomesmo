@@ -7,6 +7,7 @@
 import * as api from './api.js';
 import { S, $, esc, brl, logo, logoFull, haversine, hooks, isOn, media } from './core.js';
 import { track } from './track.js';
+import * as interrupt from './interrupt.js';
 
 let watchId = null, streak = { id: null, n: 0 }, lastPosSent = null;
 const radiusKm = () => Math.max(50, Number(S.settings?.welcome_radius) || 150) / 1000;
@@ -96,6 +97,8 @@ function render(store, m) {
       </div>
       <p class="muted small center">Você está aqui porque o GPS do seu celular indicou esta loja. <button class="linkish small" data-wl-off>Não mostrar mais</button></p>
     </div>`;
+  // uma interrupção por visita: se já houve outra, só um aviso discreto
+  if (!force && !interrupt.claim('boas-vindas')) { hooks.toast?.(`Você está no ${m.name}. O carrinho já usa os preços desta loja.`); return; }
   hooks.openSheet('#welcomeSheet');
 }
 

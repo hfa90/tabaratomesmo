@@ -56,6 +56,7 @@ async function go(btn) {
       return;
     }
   }
+  try { await (await import('./push.js')).unsubscribe(); } catch {} // avisos no celular recomeçam também
   wipeDevice();
   // este aparelho já está na época nova: não se apaga de novo; os outros aparelhos se limpam sozinhos
   if (gen != null) { try { localStorage.setItem('tb.syncGen', String(gen)); } catch {} }

@@ -13,6 +13,9 @@ export const CONFIG = {
   // Centro de Manaus — usado até o usuário informar a localização
   DEFAULT_POS: { lat: -3.1019, lng: -60.025, label: 'Manaus' },
 
+  // Avisos com o site fechado (Web Push). Chave PÚBLICA; a privada fica só nos segredos da função "notificar".
+  VAPID_PUBLIC_KEY: 'BAegRvMVmtPuFNQqv8a8Xg43yPkwcMMvf8mLHhdGXr1d074bu7xR70SrBTlptm2kJv37JKOuy3YXDBBMCnV-j1w',
+
   // Se o banco não responder (ex.: schema ainda não aplicado), usa dados de demonstração
   DEMO_FALLBACK: true,
 };

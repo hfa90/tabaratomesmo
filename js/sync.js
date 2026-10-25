@@ -1,6 +1,6 @@
 // Mesma conta, vários aparelhos: o que a pessoa faz num celular aparece nos outros.
 // • Cada chave do aparelho (lista, carrinho, ranchos, notas, mercados ligados, casa, tema…) vira uma linha
-//   em user_state (supabase/atualizacao-2026-10-sync-clientes-campanhas.sql). Só a dona da conta lê.
+//   em user_state (supabase/atualizacoes/atualizacao-2026-10-sync-clientes-campanhas.sql). Só a dona da conta lê.
 // • Ao entrar na conta: baixa tudo; o mais novo vence. Na primeira vez num aparelho, junta as listas
 //   (nada que a pessoa montou sem conta se perde).
 // • Depois, cada gravação sobe em até 1 s e chega na hora nos outros aparelhos (Realtime);
@@ -11,7 +11,7 @@ import { hooks } from './core.js';
 // o que acompanha a conta (o resto é do aparelho: localização, cópia offline, avisos já vistos…)
 const KEYS = new Set(['tb.list', 'tb.rancho', 'tb.rmode', 'tb.rgroups', 'tb.cart', 'tb.cartMode', 'tb.lastCart', 'tb.history', 'tb.purchases',
   'tb.enabled', 'tb.home', 'tb.transport', 'tb.theme', 'tb.watch', 'tb.drops', 'tb.family', 'tb.famName', 'tb.receipts', 'tb.nfPending',
-  'tb.filaBest', 'tb.templates', 'tb.watchB', 'tb.changes', 'tb.welcomeOff', 'tb.adHide', 'tb.campHide', 'tb.notify', 'tb.calcHelp', 'tb.seenHome']);
+  'tb.filaBest', 'tb.templates', 'tb.watchB', 'tb.changes', 'tb.welcomeOff', 'tb.adHide', 'tb.campHide', 'tb.notify', 'tb.calcHelp', 'tb.seenHome', 'tb.pushPrefs']);
 
 let uid = null, stopRt = null, pushT = null, applying = false;
 let epochAt = 0, epochOk = true;

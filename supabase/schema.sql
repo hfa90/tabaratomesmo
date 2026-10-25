@@ -3,6 +3,9 @@
 --  Cole este arquivo inteiro no SQL Editor do projeto e clique em RUN.
 --  Pode ser executado mais de uma vez (idempotente para estrutura;
 --  o seed só roda se as tabelas estiverem vazias).
+--  Já inclui TODAS as atualizações (pasta supabase/atualizacoes/). Banco novo: rode só este.
+--  Banco antigo: pode rodar este arquivo inteiro de novo, ou só as atualizações que faltam
+--  (admin.html › Saúde do banco mostra quais).
 -- =====================================================================
 
 -- ---------- TABELAS ---------------------------------------------------
@@ -2860,3 +2863,1160 @@ do $$ begin
   alter table public.ia_readings drop constraint if exists ia_readings_kind_check;
   alter table public.ia_readings add constraint ia_readings_kind_check check (kind in ('etiqueta', 'nota', 'encarte', 'receita'));
 end $$;
+
+
+-- #####################################################################
+-- (incluído de atualizacao-2026-10-zerar-historico.sql)
+-- #####################################################################
+-- =====================================================================
+-- "Zerar meu histórico" (Você › Preferências)
+-- Rode uma vez no Supabase › SQL Editor (pode rodar de novo sem problema).
+--
+-- A pessoa recomeça como se fosse nova: lista do mês, ranchos, economia,
+-- notas, pontos, ranking e favoritos somem PARA ELA.
+-- Nada que os supermercados e a administração usam é apagado:
+--   • listas (shopping_lists), notas (receipts), preços enviados (price_reports)
+--     e métricas de uso (events) continuam no banco e nos painéis;
+--   • o perfil guarda a data do recomeço (history_reset_at) e uma "geração"
+--     (history_gen); o site da pessoa só mostra o que veio depois.
+-- Só os favoritos são apagados de verdade (não aparecem em painel nenhum).
+-- =====================================================================
+
+alter table public.profiles add column if not exists history_reset_at timestamptz;
+alter table public.profiles add column if not exists history_gen int not null default 0;
+
+-- cada recomeço abre uma "geração" nova de listas: a lista antiga do mês fica guardada
+-- (para os painéis) e a pessoa pode montar outra no mesmo mês
+alter table public.shopping_lists add column if not exists gen int not null default 0;
+drop index if exists public.shopping_lists_user_month;
+create unique index if not exists shopping_lists_user_month_gen on public.shopping_lists (user_id, month, gen);
+
+-- ---------------------------------------------------------------- recomeçar
+create or replace function public.reset_my_history()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); v_gen int;
+begin
+  if v_uid is null then raise exception 'Entre na sua conta para zerar o histórico.'; end if;
+  update public.profiles
+     set history_reset_at = now(), history_gen = history_gen + 1, updated_at = now()
+   where id = v_uid
+  returning history_gen into v_gen;
+  delete from public.favorites where user_id = v_uid;
+  return jsonb_build_object('reset_at', now(), 'gen', coalesce(v_gen, 0));
+end $$;
+revoke all on function public.reset_my_history() from public, anon;
+grant execute on function public.reset_my_history() to authenticated;
+
+-- data do último recomeço da pessoa (ou o começo dos tempos)
+create or replace function public._reset_at(p_uid uuid) returns timestamptz
+language sql stable security definer set search_path = public as $$
+  select coalesce((select history_reset_at from public.profiles where id = p_uid), '-infinity'::timestamptz);
+$$;
+revoke all on function public._reset_at(uuid) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------- "Minhas notas" só depois do recomeço
+create or replace function public.my_receipts(p_limit int default 50)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(x order by x.issued_at desc nulls last), '[]') from (
+    select r.id, r.chave, r.supermarket_id, r.store_name, r.issued_at, r.total, r.items_count, r.matched_count,
+           r.prices_added, r.points, r.status, r.market_confirmed,
+           (select jsonb_agg(jsonb_build_object('name', i.name, 'qty', i.qty, 'unit_price', i.unit_price, 'total', i.total, 'product_id', i.product_id) order by i.id)
+              from receipt_items i where i.receipt_id = r.id) as items
+    from receipts r where r.user_id = auth.uid() and r.created_at >= public._reset_at(auth.uid())
+    order by r.issued_at desc nulls last limit greatest(1, least(p_limit, 200))) x
+$$;
+revoke all on function public.my_receipts(int) from public, anon;
+grant execute on function public.my_receipts(int) to authenticated;
+
+-- ---------------------------------------------------------------- pontos e impacto só depois do recomeço
+create or replace function public.my_impact()
+returns jsonb language sql stable security definer set search_path = public as $$
+  with since as (select public._reset_at(auth.uid()) t),
+  mine as (
+    select * from price_reports where user_id = auth.uid() and created_at >= (select t from since)
+  ), myrec as (
+    select * from receipts where user_id = auth.uid() and created_at >= (select t from since)
+  ), pts as (
+    -- pontos de cada pessoa contam a partir do recomeço dela
+    select pr.user_id, pr.points, pr.created_at from price_reports pr where pr.created_at >= public._reset_at(pr.user_id)
+    union all select r.user_id, r.points, r.created_at from receipts r where r.status <> 'recusada' and r.created_at >= public._reset_at(r.user_id)
+  ), month_pts as (
+    select user_id, sum(points) pts from pts where created_at >= date_trunc('month', now()) group by user_id
+  )
+  select jsonb_build_object(
+    'reports',  (select count(*) from mine),
+    'approved', (select count(*) from mine where status = 'aprovado'),
+    'receipts', (select count(*) from myrec),
+    'receipt_prices', coalesce((select sum(prices_added) from myrec), 0),
+    'points',   coalesce((select sum(points) from pts where user_id = auth.uid()), 0),
+    'month_points', coalesce((select pts from month_pts where user_id = auth.uid()), 0),
+    'helped',   (select count(distinct l.user_id) from shopping_list_items i
+                   join shopping_lists l on l.id = i.list_id
+                  where l.user_id <> auth.uid()
+                    and i.product_id in (select product_id from mine
+                                         union select ri.product_id from receipt_items ri join myrec r on r.id = ri.receipt_id
+                                          where ri.price_added)),
+    'rank',     (select count(*) + 1 from month_pts
+                  where pts > coalesce((select pts from month_pts where user_id = auth.uid()), 0))
+  );
+$$;
+revoke all on function public.my_impact() from public, anon;
+grant execute on function public.my_impact() to authenticated;
+
+create or replace function public.leaderboard(p_neighborhood text default null, p_limit int default 10)
+returns table (name text, neighborhood text, points bigint, reports bigint, is_me boolean)
+language sql stable security definer set search_path = public as $$
+  with pts as (
+    select pr.user_id, pr.points from price_reports pr
+     where pr.created_at >= date_trunc('month', now()) and pr.created_at >= public._reset_at(pr.user_id)
+    union all select r.user_id, r.points from receipts r
+     where r.created_at >= date_trunc('month', now()) and r.status <> 'recusada' and r.created_at >= public._reset_at(r.user_id)
+  )
+  select trim(split_part(coalesce(nullif(pf.full_name, ''), 'Fiscal'), ' ', 1) || ' ' ||
+              coalesce(left(nullif(split_part(pf.full_name, ' ', 2), ''), 1) || '.', '')),
+         pf.neighborhood, sum(r.points)::bigint, count(*)::bigint, r.user_id = auth.uid()
+  from pts r join profiles pf on pf.id = r.user_id
+  where pf.show_in_ranking
+    and (p_neighborhood is null or pf.neighborhood ilike p_neighborhood)
+  group by r.user_id, pf.full_name, pf.neighborhood
+  order by sum(r.points) desc
+  limit greatest(1, least(p_limit, 50));
+$$;
+revoke all on function public.leaderboard(text, int) from public;
+grant execute on function public.leaderboard(text, int) to anon, authenticated;
+
+
+-- #####################################################################
+-- (incluído de atualizacao-2026-10-lista-familia.sql)
+-- #####################################################################
+-- =====================================================================
+-- Lista da família (compartilhada ao vivo)
+-- Rode uma vez no Supabase › SQL Editor (pode rodar de novo sem problema).
+--
+-- Cada lista tem um código de 8 letras (ex.: K7QM-2XPA). Quem tem o código
+-- vê e mexe na lista; a tabela não pode ser lida direto (sem políticas de RLS):
+-- tudo passa pelas funções abaixo, que exigem o código.
+-- As mudanças chegam na hora pelo canal "Broadcast" do Realtime (não precisa
+-- ligar nada: já vem ativo no Supabase).
+-- =====================================================================
+
+create table if not exists public.shared_lists (
+  code        text primary key,
+  name        text,
+  month       text,
+  items       jsonb not null default '[]'::jsonb,   -- [{ "product_id": 1, "qty": 2 }]
+  checked     jsonb not null default '[]'::jsonb,   -- [1, 5, 9]
+  members     int   not null default 1,
+  updated_by  text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+alter table public.shared_lists enable row level security;
+-- sem políticas de propósito: ninguém lista ou lê a tabela inteira
+
+-- letra aleatória (sem 0/O, 1/I/L) para o código
+create or replace function public._shared_code() returns text
+language plpgsql volatile set search_path = public as $$
+declare
+  alphabet text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  hex text := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+  c text := '';
+  i int;
+begin
+  for i in 0..7 loop
+    c := c || substr(alphabet, 1 + (('x' || substr(hex, i * 2 + 1, 2))::bit(8)::int % length(alphabet)), 1);
+  end loop;
+  return c;
+end $$;
+
+create or replace function public.shared_list_create(p_name text, p_month text, p_items jsonb, p_checked jsonb, p_by text default null)
+returns text language plpgsql security definer set search_path = public as $$
+declare c text;
+begin
+  if jsonb_array_length(coalesce(p_items, '[]'::jsonb)) > 500 then raise exception 'Lista grande demais'; end if;
+  loop
+    c := public._shared_code();
+    exit when not exists (select 1 from public.shared_lists where code = c);
+  end loop;
+  insert into public.shared_lists (code, name, month, items, checked, updated_by)
+  values (c, left(p_name, 60), left(p_month, 7), coalesce(p_items, '[]'::jsonb), coalesce(p_checked, '[]'::jsonb), left(p_by, 40));
+  return c;
+end $$;
+
+create or replace function public.shared_list_get(p_code text)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('code', code, 'name', name, 'month', month, 'items', items, 'checked', checked,
+                            'members', members, 'updated_by', updated_by, 'updated_at', updated_at)
+  from public.shared_lists where code = upper(replace(p_code, '-', ''));
+$$;
+
+create or replace function public.shared_list_join(p_code text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare r jsonb;
+begin
+  update public.shared_lists set members = least(members + 1, 50) where code = upper(replace(p_code, '-', ''));
+  select public.shared_list_get(p_code) into r;
+  if r is null then raise exception 'Código não encontrado'; end if;
+  return r;
+end $$;
+
+create or replace function public.shared_list_put(p_code text, p_name text, p_month text, p_items jsonb, p_checked jsonb, p_by text default null)
+returns timestamptz language plpgsql security definer set search_path = public as $$
+declare t timestamptz;
+begin
+  if jsonb_array_length(coalesce(p_items, '[]'::jsonb)) > 500 then raise exception 'Lista grande demais'; end if;
+  update public.shared_lists
+     set name = coalesce(left(p_name, 60), name), month = coalesce(left(p_month, 7), month),
+         items = coalesce(p_items, '[]'::jsonb), checked = coalesce(p_checked, '[]'::jsonb),
+         updated_by = left(p_by, 40), updated_at = now()
+   where code = upper(replace(p_code, '-', ''))
+  returning updated_at into t;
+  if t is null then raise exception 'Código não encontrado'; end if;
+  return t;
+end $$;
+
+revoke all on function public._shared_code() from public, anon, authenticated;
+grant execute on function public.shared_list_create(text, text, jsonb, jsonb, text) to anon, authenticated;
+grant execute on function public.shared_list_get(text)  to anon, authenticated;
+grant execute on function public.shared_list_join(text) to anon, authenticated;
+grant execute on function public.shared_list_put(text, text, text, jsonb, jsonb, text) to anon, authenticated;
+
+
+-- #####################################################################
+-- (incluído de atualizacao-2026-10-sync-clientes-campanhas.sql)
+-- #####################################################################
+-- =====================================================================
+-- Outubro/2026 — três partes (rode uma vez no Supabase › SQL Editor;
+-- pode rodar de novo sem problema):
+--   1. Sincronizar a conta entre aparelhos (user_state)
+--   2. Portal: "Clientes" — de onde vêm, se vão à loja mais perto, dias e horários
+--   3. Portal: "Campanhas" — aviso no celular, janela na tela e vitrine de produtos
+-- =====================================================================
+
+
+-- =====================================================================
+-- 1. SINCRONIZAR ENTRE APARELHOS
+-- Cada "chave" do aparelho (lista, carrinho, ranchos, notas, preferências…)
+-- vira uma linha. Só a própria pessoa lê e grava as suas linhas.
+-- =====================================================================
+create table if not exists public.user_state (
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  key        text not null check (key ~ '^tb\.[A-Za-z.]{1,40}$'),
+  value      jsonb,
+  device     text,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, key)
+);
+alter table public.user_state enable row level security;
+do $$ begin
+  drop policy if exists "own state" on public.user_state;
+  create policy "own state" on public.user_state for all
+    using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+end $$;
+grant select, insert, update, delete on public.user_state to authenticated;
+-- mudanças chegam na hora nos outros aparelhos (Realtime)
+do $$ begin
+  alter publication supabase_realtime add table public.user_state;
+exception when duplicate_object then null; when undefined_object then null; end $$;
+
+-- "Zerar meu histórico" também apaga o que estava sincronizado
+-- (as colunas abaixo vêm de atualizacao-2026-10-zerar-historico.sql; repetidas aqui para este arquivo funcionar sozinho)
+alter table public.profiles add column if not exists history_reset_at timestamptz;
+alter table public.profiles add column if not exists history_gen int not null default 0;
+create or replace function public.reset_my_history()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); v_gen int;
+begin
+  if v_uid is null then raise exception 'Entre na sua conta para zerar o histórico.'; end if;
+  update public.profiles
+     set history_reset_at = now(), history_gen = history_gen + 1, updated_at = now()
+   where id = v_uid
+  returning history_gen into v_gen;
+  delete from public.favorites where user_id = v_uid;
+  delete from public.user_state where user_id = v_uid;
+  return jsonb_build_object('reset_at', now(), 'gen', coalesce(v_gen, 0));
+end $$;
+revoke all on function public.reset_my_history() from public, anon;
+grant execute on function public.reset_my_history() to authenticated;
+
+
+-- =====================================================================
+-- Eventos: loja visitada e campanhas
+-- =====================================================================
+alter table public.events add column if not exists store_id int;
+alter table public.events add column if not exists campaign_id bigint;
+create index if not exists events_campaign on public.events (campaign_id, kind) where campaign_id is not null;
+alter table public.events drop constraint if exists events_kind_check;
+alter table public.events add constraint events_kind_check check (kind in
+  ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool',
+   'camp_view','camp_click','camp_close','camp_notify'));
+
+create or replace function public.track(p_events jsonb)
+returns int language plpgsql security definer set search_path = public as $$
+declare
+  e jsonb; n int := 0; pf profiles; v_nb text; v_age text;
+  kinds text[] := array['search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool',
+                        'camp_view','camp_click','camp_close','camp_notify'];
+begin
+  if jsonb_typeof(p_events) <> 'array' or jsonb_array_length(p_events) > 50 then return 0; end if;
+  if not setting_on('tracking_enabled') then return 0; end if;
+  if auth.uid() is not null then select * into pf from profiles where id = auth.uid(); end if;
+  if coalesce(pf.blocked, false) then return 0; end if;
+  v_age := case when pf.birth_date is null then null
+                when age(pf.birth_date) < interval '25 years' then '18-24'
+                when age(pf.birth_date) < interval '35 years' then '25-34'
+                when age(pf.birth_date) < interval '45 years' then '35-44'
+                when age(pf.birth_date) < interval '60 years' then '45-59'
+                else '60+' end;
+  for e in select * from jsonb_array_elements(p_events) loop
+    continue when not (coalesce(e->>'kind', '') = any (kinds));
+    v_nb := coalesce(nullif(pf.neighborhood, ''), nullif(left(e->>'neighborhood', 60), ''));
+    insert into events (kind, session_id, user_id, product_id, supermarket_id, query, results,
+                        neighborhood, zone, gender, age_band, value, ad_id, store_id, campaign_id)
+    values (e->>'kind', left(e->>'session', 40), auth.uid(),
+            (select id from products where id = nullif(e->>'product_id', '')::int),
+            (select id from supermarkets where id = nullif(e->>'market_id', '')::smallint),
+            nullif(lower(left(trim(e->>'query'), 60)), ''), nullif(e->>'results', '')::int,
+            v_nb, zone_of(v_nb), nullif(pf.gender, 'nao_informar'), v_age,
+            nullif(e->>'value', '')::numeric, nullif(e->>'ad_id', '')::bigint,
+            (select id from stores where id = nullif(e->>'store_id', '')::int),
+            nullif(e->>'campaign_id', '')::bigint);
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+revoke all on function public.track(jsonb) from public;
+grant execute on function public.track(jsonb) to anon, authenticated;
+
+
+-- =====================================================================
+-- 2. CLIENTES (portal): de onde vêm, loja mais perto de casa, dias e horários
+-- "Visita" = chegou à loja com o site aberto, marcou que comprou ou mandou a nota.
+-- Bairros só aparecem com 3 pessoas ou mais (privacidade).
+-- =====================================================================
+create or replace function public._km(a_lat double precision, a_lng double precision, b_lat double precision, b_lng double precision)
+returns double precision language sql immutable as $$
+  select 6371 * 2 * asin(sqrt(power(sin(radians(b_lat - a_lat) / 2), 2) +
+         cos(radians(a_lat)) * cos(radians(b_lat)) * power(sin(radians(b_lng - a_lng) / 2), 2)))
+$$;
+
+create or replace function public.market_customers(p_market smallint, p_days int default 90)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  v_since timestamptz := now() - make_interval(days => greatest(7, least(p_days, 365)));
+  k int := 3;
+  out jsonb;
+begin
+  if not (is_market_member(p_market) or is_master()) then raise exception 'Sem permissão para este supermercado.'; end if;
+  with v as (
+    select e.user_id, coalesce(e.user_id::text, e.session_id) who, e.created_at at, e.store_id, e.neighborhood nb
+      from events e where e.supermarket_id = p_market and e.kind in ('store_visit', 'bought') and e.created_at >= v_since
+    union all
+    select r.user_id, r.user_id::text, coalesce(r.issued_at, r.created_at), r.store_id, pf.neighborhood
+      from receipts r left join profiles pf on pf.id = r.user_id
+     where r.supermarket_id = p_market and coalesce(r.issued_at, r.created_at) >= v_since
+  ), vh as (  -- visita + casa da pessoa (endereço de casa ou o centro do bairro)
+    select v.*, coalesce(pf.neighborhood, v.nb) bairro, b.zone,
+           coalesce(pf.home_lat, b.lat) hlat, coalesce(pf.home_lng, b.lng) hlng
+      from v left join profiles pf on pf.id = v.user_id
+      left join bairros b on lower(b.name) = lower(coalesce(pf.neighborhood, v.nb))
+  ), near as (  -- para visitas com loja conhecida: era a loja mais perto de casa?
+    select vh.who, s.id store_id, _km(vh.hlat, vh.hlng, s.lat, s.lng) km,
+           (select s2.id from stores s2 where s2.supermarket_id = p_market order by _km(vh.hlat, vh.hlng, s2.lat, s2.lng) limit 1) own_nearest,
+           (select s3.supermarket_id from stores s3 join supermarkets m3 on m3.id = s3.supermarket_id and m3.active
+              order by _km(vh.hlat, vh.hlng, s3.lat, s3.lng) limit 1) any_nearest_market,
+           (select min(_km(vh.hlat, vh.hlng, s4.lat, s4.lng)) from stores s4 where s4.supermarket_id <> p_market) other_km
+      from vh join stores s on s.id = vh.store_id
+     where vh.hlat is not null and s.lat is not null
+  )
+  select jsonb_build_object(
+    'visits',  (select count(*) from vh),
+    'people',  (select count(distinct who) from vh),
+    'fans',    (select count(*) from profiles where p_market = any(preferred_markets)),
+    'bairros', coalesce((select jsonb_agg(x order by x.visits desc) from (
+        select vh.bairro name, max(vh.zone) zone, max(b.lat) lat, max(b.lng) lng, count(*) visits, count(distinct vh.who) people
+          from vh left join bairros b on lower(b.name) = lower(vh.bairro)
+         where vh.bairro is not null group by vh.bairro having count(distinct vh.who) >= k) x), '[]'),
+    'zones',   coalesce((select jsonb_agg(x order by x.visits desc) from (
+        select coalesce(zone, 'Não informado') zone, count(*) visits, count(distinct who) people from vh group by 1) x), '[]'),
+    'weekday', coalesce((select jsonb_agg(jsonb_build_object('dow', d, 'visits', n) order by d) from (
+        select extract(dow from at at time zone 'America/Manaus')::int d, count(*) n from vh group by 1) x), '[]'),
+    'monthday', coalesce((select jsonb_agg(jsonb_build_object('day', d, 'visits', n) order by d) from (
+        select extract(day from at at time zone 'America/Manaus')::int d, count(*) n from vh group by 1) x), '[]'),
+    'hours',   coalesce((select jsonb_agg(jsonb_build_object('h', h, 'visits', n) order by h) from (
+        select extract(hour from at at time zone 'America/Manaus')::int h, count(*) n from vh group by 1) x), '[]'),
+    'nearest', (select jsonb_build_object(
+        'known', count(*),
+        'own_nearest', count(*) filter (where store_id = own_nearest),
+        'any_nearest', count(*) filter (where any_nearest_market = p_market),
+        'avg_km', round(avg(km)::numeric, 1),
+        'passed_other', count(*) filter (where other_km < km - 0.3)) from near),
+    'stores',  coalesce((select jsonb_agg(x order by x.visits desc) from (
+        select s.id, s.name, s.neighborhood, s.lat, s.lng, count(vh.*) visits
+          from stores s left join vh on vh.store_id = s.id
+         where s.supermarket_id = p_market group by s.id) x), '[]')
+  ) into out;
+  return out;
+end $$;
+revoke all on function public.market_customers(smallint, int) from public, anon;
+grant execute on function public.market_customers(smallint, int) to authenticated;
+
+
+-- =====================================================================
+-- 3. CAMPANHAS DOS SUPERMERCADOS
+--   kind:     'aviso' (notificação no celular) · 'janela' (popup na tela) · 'vitrine' (faixa de produtos nas ofertas)
+--   audience: 'todos' · 'preferem' (o mercado está entre os preferidos da pessoa) · 'perto' (a até radius_km de uma loja)
+-- Regras para não incomodar ficam no aparelho (js/campanhas.js) e aqui:
+-- no máximo 3 campanhas ativas por mercado ao mesmo tempo.
+-- =====================================================================
+create table if not exists public.market_campaigns (
+  id             bigserial primary key,
+  supermarket_id smallint not null references public.supermarkets(id) on delete cascade,
+  kind           text not null check (kind in ('aviso', 'janela', 'vitrine')),
+  title          text not null check (length(title) between 3 and 70),
+  body           text check (length(body) <= 180),
+  image_url      text,
+  product_ids    int[] not null default '{}',
+  cta            text not null default 'ofertas' check (cta in ('ofertas', 'rota', 'produtos')),
+  audience       text not null default 'todos' check (audience in ('todos', 'preferem', 'perto')),
+  radius_km      numeric(4,1) not null default 2 check (radius_km between 0.5 and 10),
+  starts_at      timestamptz not null default now(),
+  ends_at        timestamptz not null default now() + interval '7 days',
+  status         text not null default 'ativa' check (status in ('ativa', 'pausada', 'encerrada', 'bloqueada')),
+  created_by     uuid default auth.uid(),
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+create index if not exists market_campaigns_live on public.market_campaigns (status, ends_at);
+alter table public.market_campaigns enable row level security;
+do $$ begin
+  drop policy if exists "public live" on public.market_campaigns;
+  create policy "public live" on public.market_campaigns for select
+    using (status = 'ativa' and now() between starts_at and ends_at and setting_on('campaigns_enabled'));
+end $$;
+grant select on public.market_campaigns to anon, authenticated;
+insert into public.app_settings (key, value, label) values
+  ('campaigns_enabled', 'true', 'Supermercados podem mostrar campanhas (aviso, janela e vitrine)')
+on conflict (key) do nothing;
+
+create or replace function public.campaign_save(p jsonb)
+returns bigint language plpgsql security definer set search_path = public as $$
+declare v_mid smallint := (p->>'supermarket_id')::smallint; v_id bigint := nullif(p->>'id', '')::bigint; v_live int;
+begin
+  if not (is_market_member(v_mid) or is_master()) then raise exception 'Sem permissão para este supermercado.'; end if;
+  if v_id is null then
+    select count(*) into v_live from market_campaigns where supermarket_id = v_mid and status = 'ativa' and ends_at > now();
+    if v_live >= 3 then raise exception 'Você já tem 3 campanhas ativas. Pause ou encerre uma para criar outra.'; end if;
+    insert into market_campaigns (supermarket_id, kind, title, body, image_url, product_ids, cta, audience, radius_km, starts_at, ends_at)
+    values (v_mid, p->>'kind', trim(p->>'title'), nullif(trim(p->>'body'), ''), nullif(p->>'image_url', ''),
+            coalesce((select array_agg(x::int) from jsonb_array_elements_text(p->'product_ids') x), '{}'),
+            coalesce(p->>'cta', 'ofertas'), coalesce(p->>'audience', 'todos'), coalesce((p->>'radius_km')::numeric, 2),
+            coalesce((p->>'starts_at')::timestamptz, now()), coalesce((p->>'ends_at')::timestamptz, now() + interval '7 days'))
+    returning id into v_id;
+  else
+    update market_campaigns set kind = p->>'kind', title = trim(p->>'title'), body = nullif(trim(p->>'body'), ''),
+           image_url = nullif(p->>'image_url', ''),
+           product_ids = coalesce((select array_agg(x::int) from jsonb_array_elements_text(p->'product_ids') x), '{}'),
+           cta = coalesce(p->>'cta', 'ofertas'), audience = coalesce(p->>'audience', 'todos'),
+           radius_km = coalesce((p->>'radius_km')::numeric, 2),
+           starts_at = coalesce((p->>'starts_at')::timestamptz, starts_at), ends_at = coalesce((p->>'ends_at')::timestamptz, ends_at),
+           updated_at = now()
+     where id = v_id and supermarket_id = v_mid and status <> 'bloqueada';
+  end if;
+  return v_id;
+end $$;
+
+create or replace function public.campaign_status(p_id bigint, p_status text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_mid smallint;
+begin
+  select supermarket_id into v_mid from market_campaigns where id = p_id;
+  if v_mid is null then raise exception 'Campanha não encontrada.'; end if;
+  if p_status = 'bloqueada' or (select status from market_campaigns where id = p_id) = 'bloqueada' then
+    if not is_master() then raise exception 'Só a administração pode bloquear ou liberar campanhas.'; end if;
+  elsif not (is_market_member(v_mid) or is_master()) then raise exception 'Sem permissão para este supermercado.'; end if;
+  if p_status = 'ativa' and (select count(*) from market_campaigns where supermarket_id = v_mid and status = 'ativa' and ends_at > now() and id <> p_id) >= 3 then
+    raise exception 'Já há 3 campanhas ativas. Pause outra antes.';
+  end if;
+  update market_campaigns set status = p_status, updated_at = now() where id = p_id;
+end $$;
+
+-- lista do portal (ou da administração, com p_market nulo) com os números de cada campanha
+create or replace function public.campaigns_list(p_market smallint default null)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  if p_market is null then
+    if not is_master() then raise exception 'Sem permissão.'; end if;
+  elsif not (is_market_member(p_market) or is_master()) then raise exception 'Sem permissão para este supermercado.'; end if;
+  return coalesce((select jsonb_agg(x order by x.created_at desc) from (
+    select c.*, s.name market_name,
+           (select count(*) from events e where e.campaign_id = c.id and e.kind = 'camp_view') views,
+           (select count(*) from events e where e.campaign_id = c.id and e.kind = 'camp_click') clicks,
+           (select count(*) from events e where e.campaign_id = c.id and e.kind = 'camp_notify') notified,
+           (select count(distinct coalesce(e.user_id::text, e.session_id)) from events e where e.campaign_id = c.id and e.kind = 'camp_view') people
+      from market_campaigns c join supermarkets s on s.id = c.supermarket_id
+     where p_market is null or c.supermarket_id = p_market
+     order by c.created_at desc limit 100) x), '[]');
+end $$;
+
+revoke all on function public.campaign_save(jsonb) from public, anon;
+revoke all on function public.campaign_status(bigint, text) from public, anon;
+revoke all on function public.campaigns_list(smallint) from public, anon;
+grant execute on function public.campaign_save(jsonb) to authenticated;
+grant execute on function public.campaign_status(bigint, text) to authenticated;
+grant execute on function public.campaigns_list(smallint) to authenticated;
+
+
+-- #####################################################################
+-- (incluído de atualizacao-2026-10-zerar-todos-aparelhos.sql)
+-- #####################################################################
+-- =====================================================================
+-- "Zerar meu histórico" vale para TODOS os aparelhos da conta.
+-- Rode uma vez no Supabase › SQL Editor (pode rodar de novo sem problema).
+--
+-- Problema: depois de zerar num celular, outro aparelho (ou aba) que ainda tinha a lista
+-- antiga a reenviava para a conta. Agora o banco recusa dados de quem está numa "época"
+-- anterior ao zerar (profiles.history_gen). O aparelho recusado se limpa sozinho.
+-- =====================================================================
+alter table public.user_state add column if not exists gen int;
+
+create or replace function public._user_state_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare g int;
+begin
+  select history_gen into g from profiles where id = new.user_id;
+  if coalesce(g, 0) > 0 and coalesce(new.gen, -1) <> g then
+    raise exception 'historico_zerado: esta conta foi zerada em outro aparelho';
+  end if;
+  return new;
+end $$;
+drop trigger if exists user_state_guard on public.user_state;
+create trigger user_state_guard before insert or update on public.user_state
+  for each row execute function public._user_state_guard();
+
+-- listas do mês de uma época antiga também não entram mais
+create or replace function public._shopping_list_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare g int;
+begin
+  select history_gen into g from profiles where id = new.user_id;
+  if coalesce(new.gen, 0) < coalesce(g, 0) then
+    raise exception 'historico_zerado: esta conta foi zerada em outro aparelho';
+  end if;
+  return new;
+end $$;
+drop trigger if exists shopping_list_guard on public.shopping_lists;
+create trigger shopping_list_guard before insert or update on public.shopping_lists
+  for each row execute function public._shopping_list_guard();
+
+
+-- #####################################################################
+-- (incluído de atualizacao-2026-10-datas-especiais.sql)
+-- #####################################################################
+-- =====================================================================
+-- Datas especiais (páginas temáticas): Black Friday, Natal, Halloween, Réveillon,
+-- Dia das Mães, Dia dos Pais e Dia dos Namorados.
+-- Rode uma vez no Supabase › SQL Editor (pode rodar de novo sem problema).
+--
+-- • Só a ADMINISTRAÇÃO cria, liga e desliga as páginas (admin.html › Datas especiais).
+-- • Os SUPERMERCADOS só escolhem os produtos (e um preço especial, se quiserem)
+--   para as datas que a administração ligou (parceiros.html › Datas especiais).
+-- • O site mostra a página e o banner só enquanto a data está ligada e no período.
+-- =====================================================================
+
+create table if not exists public.special_events (
+  slug        text primary key check (slug ~ '^[a-z0-9-]{3,40}$'),
+  theme       text not null check (theme in ('blackfriday', 'natal', 'halloween', 'reveillon', 'maes', 'pais', 'namorados')),
+  title       text not null check (length(title) between 3 and 60),
+  subtitle    text check (length(subtitle) <= 140),
+  banner_text text check (length(banner_text) <= 80),
+  starts_at   timestamptz not null,
+  ends_at     timestamptz not null,
+  active      boolean not null default false,
+  created_by  uuid default auth.uid(),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  check (ends_at > starts_at)
+);
+alter table public.special_events enable row level security;
+do $$ begin
+  drop policy if exists "public live" on public.special_events;
+  create policy "public live" on public.special_events for select
+    using (active and now() between starts_at and ends_at);
+end $$;
+grant select on public.special_events to anon, authenticated;
+
+create table if not exists public.special_event_products (
+  event_slug     text not null references public.special_events(slug) on delete cascade,
+  supermarket_id smallint not null references public.supermarkets(id) on delete cascade,
+  product_id     int not null references public.products(id) on delete cascade,
+  special_price  numeric(10,2) check (special_price is null or special_price > 0),
+  sort           int not null default 0,
+  created_at     timestamptz not null default now(),
+  primary key (event_slug, supermarket_id, product_id)
+);
+create index if not exists special_event_products_event on public.special_event_products (event_slug);
+alter table public.special_event_products enable row level security;
+do $$ begin
+  drop policy if exists "public live" on public.special_event_products;
+  create policy "public live" on public.special_event_products for select
+    using (exists (select 1 from public.special_events e where e.slug = event_slug and e.active and now() between e.starts_at and e.ends_at));
+end $$;
+grant select on public.special_event_products to anon, authenticated;
+
+-- ---------------------------------------------------------------- administração
+create or replace function public.admin_events()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_master() then raise exception 'Só a administração.'; end if;
+  return coalesce((select jsonb_agg(x order by x.starts_at desc) from (
+    select e.*, (select count(*) from special_event_products p where p.event_slug = e.slug) products,
+           (select count(distinct p.supermarket_id) from special_event_products p where p.event_slug = e.slug) markets
+      from special_events e) x), '[]');
+end $$;
+
+create or replace function public.admin_event_save(p jsonb)
+returns text language plpgsql security definer set search_path = public as $$
+declare v_slug text := lower(trim(p->>'slug'));
+begin
+  if not is_master() then raise exception 'Só a administração pode criar ou mudar datas especiais.'; end if;
+  insert into special_events (slug, theme, title, subtitle, banner_text, starts_at, ends_at, active)
+  values (v_slug, p->>'theme', trim(p->>'title'), nullif(trim(p->>'subtitle'), ''), nullif(trim(p->>'banner_text'), ''),
+          (p->>'starts_at')::timestamptz, (p->>'ends_at')::timestamptz, coalesce((p->>'active')::boolean, false))
+  on conflict (slug) do update set theme = excluded.theme, title = excluded.title, subtitle = excluded.subtitle,
+     banner_text = excluded.banner_text, starts_at = excluded.starts_at, ends_at = excluded.ends_at,
+     active = excluded.active, updated_at = now();
+  return v_slug;
+end $$;
+
+create or replace function public.admin_event_delete(p_slug text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_master() then raise exception 'Só a administração.'; end if;
+  delete from special_events where slug = p_slug;
+end $$;
+
+-- ---------------------------------------------------------------- supermercados: escolhem os produtos
+-- datas que a administração ligou e que ainda não acabaram (o mercado prepara antes de começar)
+create or replace function public.market_events(p_market smallint)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  if not (is_market_member(p_market) or is_master()) then raise exception 'Sem permissão para este supermercado.'; end if;
+  return coalesce((select jsonb_agg(x order by x.starts_at) from (
+    select e.slug, e.theme, e.title, e.subtitle, e.starts_at, e.ends_at,
+           coalesce((select jsonb_agg(jsonb_build_object('product_id', p.product_id, 'special_price', p.special_price) order by p.sort)
+                       from special_event_products p where p.event_slug = e.slug and p.supermarket_id = p_market), '[]') items
+      from special_events e where e.active and e.ends_at > now()) x), '[]');
+end $$;
+
+create or replace function public.market_event_products_set(p_slug text, p_market smallint, p_items jsonb)
+returns int language plpgsql security definer set search_path = public as $$
+declare n int := 0; it jsonb;
+begin
+  if not (is_market_member(p_market) or is_master()) then raise exception 'Sem permissão para este supermercado.'; end if;
+  if not exists (select 1 from special_events where slug = p_slug and active and ends_at > now()) then
+    raise exception 'Esta data especial não está ligada pela administração.';
+  end if;
+  if jsonb_array_length(coalesce(p_items, '[]')) > 24 then raise exception 'No máximo 24 produtos por data especial.'; end if;
+  delete from special_event_products where event_slug = p_slug and supermarket_id = p_market;
+  for it in select * from jsonb_array_elements(coalesce(p_items, '[]')) loop
+    insert into special_event_products (event_slug, supermarket_id, product_id, special_price, sort)
+    values (p_slug, p_market, (it->>'product_id')::int, nullif(it->>'special_price', '')::numeric, n)
+    on conflict do nothing;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+revoke all on function public.admin_events() from public, anon;
+revoke all on function public.admin_event_save(jsonb) from public, anon;
+revoke all on function public.admin_event_delete(text) from public, anon;
+revoke all on function public.market_events(smallint) from public, anon;
+revoke all on function public.market_event_products_set(text, smallint, jsonb) from public, anon;
+grant execute on function public.admin_events() to authenticated;
+grant execute on function public.admin_event_save(jsonb) to authenticated;
+grant execute on function public.admin_event_delete(text) to authenticated;
+grant execute on function public.market_events(smallint) to authenticated;
+grant execute on function public.market_event_products_set(text, smallint, jsonb) to authenticated;
+
+
+-- #####################################################################
+-- (incluído de atualizacao-2026-10-push-uso-lgpd.sql)
+-- #####################################################################
+-- =====================================================================
+-- Rodada de outubro/2026 (parte final):
+--   1. Painel de uso (quais telas e ferramentas as pessoas usam, quem volta)
+--   2. Avisos no celular com o site FECHADO (Web Push + função "notificar")
+--   3. Privacidade / LGPD: baixar meus dados e excluir minha conta
+--   4. Link "comprar no site/app do mercado" (shop_url)
+--   5. Saúde do banco (admin vê o que falta rodar)
+-- Rode uma vez no Supabase › SQL Editor (pode rodar de novo sem problema).
+-- Depois siga o README, seção "Avisos com o site fechado", para publicar a função e o agendamento.
+-- =====================================================================
+
+-- =====================================================================
+-- 1. USO: eventos de tela e um identificador do aparelho (aleatório, sem nome)
+-- =====================================================================
+alter table public.events add column if not exists device_id text;
+create index if not exists events_usage on public.events (created_at, kind);
+alter table public.events drop constraint if exists events_kind_check;
+alter table public.events add constraint events_kind_check check (kind in
+  ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool',
+   'camp_view','camp_click','camp_close','camp_notify','screen','push_on','push_open'));
+
+create or replace function public.track(p_events jsonb)
+returns int language plpgsql security definer set search_path = public as $$
+declare
+  e jsonb; n int := 0; pf profiles; v_nb text; v_age text;
+  kinds text[] := array['search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool',
+                        'camp_view','camp_click','camp_close','camp_notify','screen','push_on','push_open'];
+begin
+  if jsonb_typeof(p_events) <> 'array' or jsonb_array_length(p_events) > 50 then return 0; end if;
+  if not setting_on('tracking_enabled') then return 0; end if;
+  if auth.uid() is not null then select * into pf from profiles where id = auth.uid(); end if;
+  if coalesce(pf.blocked, false) then return 0; end if;
+  v_age := case when pf.birth_date is null then null
+                when age(pf.birth_date) < interval '25 years' then '18-24'
+                when age(pf.birth_date) < interval '35 years' then '25-34'
+                when age(pf.birth_date) < interval '45 years' then '35-44'
+                when age(pf.birth_date) < interval '60 years' then '45-59'
+                else '60+' end;
+  for e in select * from jsonb_array_elements(p_events) loop
+    continue when not (coalesce(e->>'kind', '') = any (kinds));
+    v_nb := coalesce(nullif(pf.neighborhood, ''), nullif(left(e->>'neighborhood', 60), ''));
+    insert into events (kind, session_id, user_id, product_id, supermarket_id, query, results,
+                        neighborhood, zone, gender, age_band, value, ad_id, store_id, campaign_id, device_id)
+    values (e->>'kind', left(e->>'session', 40), auth.uid(),
+            (select id from products where id = nullif(e->>'product_id', '')::int),
+            (select id from supermarkets where id = nullif(e->>'market_id', '')::smallint),
+            nullif(lower(left(trim(e->>'query'), 60)), ''), nullif(e->>'results', '')::int,
+            v_nb, zone_of(v_nb), nullif(pf.gender, 'nao_informar'), v_age,
+            nullif(e->>'value', '')::numeric, nullif(e->>'ad_id', '')::bigint,
+            (select id from stores where id = nullif(e->>'store_id', '')::int),
+            nullif(e->>'campaign_id', '')::bigint,
+            nullif(left(e->>'device', 40), ''));
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+revoke all on function public.track(jsonb) from public;
+grant execute on function public.track(jsonb) to anon, authenticated;
+
+-- Painel de uso (admin.html › Uso). "Pessoa" = conta, ou o aparelho quando não entrou na conta.
+create or replace function public.admin_usage(p_days int default 30)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  v_days int := greatest(7, least(coalesce(p_days, 30), 180));
+  v_since timestamptz := now() - make_interval(days => v_days);
+  out jsonb;
+begin
+  if not is_master() then raise exception 'Só a administração.'; end if;
+  with ev as (
+    select created_at, kind, query, coalesce(user_id::text, device_id, session_id) who
+      from events where created_at >= now() - interval '120 days' and coalesce(user_id::text, device_id, session_id) is not null
+  ),
+  firsts as (select who, min(created_at) first_at from ev group by who),
+  feat as (
+    select case
+             when kind = 'screen' then coalesce(query, 'outra')
+             when kind = 'tool' then 'ferramenta:' || coalesce(split_part(query, ':', 1), 'outra')
+             when kind = 'scan' then 'ferramenta:leitor'
+             when kind = 'queue_open' then 'ferramenta:fila'
+             when kind = 'search' then 'acao:busca'
+             when kind = 'add' then 'acao:adicionou'
+             when kind = 'route' then 'acao:rota'
+             when kind = 'rancho_done' then 'acao:rancho'
+             when kind = 'bought' then 'acao:comprou'
+             when kind = 'push_on' then 'acao:ativou_avisos'
+             when kind = 'push_open' then 'acao:abriu_aviso'
+             else null end name, who
+      from ev where created_at >= v_since
+  ),
+  weeks as (
+    select date_trunc('week', created_at)::date wk, count(distinct who) people
+      from ev where created_at >= now() - interval '8 weeks' group by 1
+  ),
+  news as (
+    select date_trunc('week', first_at)::date wk, count(*) n from firsts where first_at >= now() - interval '8 weeks' group by 1
+  ),
+  coh as (
+    select date_trunc('week', f.first_at)::date wk, f.who,
+           array_agg(distinct ((date_trunc('week', e.created_at)::date - date_trunc('week', f.first_at)::date) / 7)) w
+      from firsts f join ev e on e.who = f.who
+     where f.first_at >= now() - interval '8 weeks'
+     group by 1, 2
+  )
+  select jsonb_build_object(
+    'days', v_days,
+    'active_1', (select count(distinct who) from ev where created_at >= now() - interval '1 day'),
+    'active_7', (select count(distinct who) from ev where created_at >= now() - interval '7 days'),
+    'active_30', (select count(distinct who) from ev where created_at >= now() - interval '30 days'),
+    'new_7', (select count(*) from firsts where first_at >= now() - interval '7 days'),
+    'with_account_7', (select count(distinct who) from ev e where created_at >= now() - interval '7 days' and who ~ '^[0-9a-f]{8}-'),
+    'returned', (select round(100.0 * count(*) filter (where back) / nullif(count(*), 0))
+                   from (select who, bool_or(created_at >= now() - interval '7 days') back
+                           from ev where created_at >= now() - interval '14 days'
+                          group by who having min(created_at) < now() - interval '7 days') x),
+    'push_subs', (select count(*) from push_subscriptions),
+    'features', coalesce((select jsonb_agg(jsonb_build_object('name', name, 'people', people, 'uses', uses) order by people desc)
+                            from (select name, count(distinct who) people, count(*) uses from feat where name is not null group by name) f), '[]'),
+    'weeks', coalesce((select jsonb_agg(jsonb_build_object('week', w.wk, 'people', w.people, 'new', coalesce(n.n, 0)) order by w.wk)
+                         from weeks w left join news n on n.wk = w.wk), '[]'),
+    'cohorts', coalesce((select jsonb_agg(jsonb_build_object('week', wk, 'size', size, 'w1', w1, 'w2', w2, 'w3', w3) order by wk)
+                           from (select wk, count(*) size,
+                                        count(*) filter (where 1 = any(w)) w1,
+                                        count(*) filter (where 2 = any(w)) w2,
+                                        count(*) filter (where 3 = any(w)) w3
+                                   from coh group by wk) c), '[]')
+  ) into out;
+  return out;
+end $$;
+
+-- =====================================================================
+-- 2. AVISOS COM O SITE FECHADO (Web Push)
+-- O aparelho manda a "inscrição" do navegador + o que acompanhar (favoritos e itens comprados,
+-- mercados preferidos, lista da família, posição aproximada). A função "notificar" (Edge Function)
+-- roda a cada 15 min: pede ao banco o que avisar (push_collect) e entrega pelo Web Push.
+-- Regras: 8h às 21h (Manaus), no máximo 3 avisos por dia por aparelho e 1 de mercado por dia.
+-- =====================================================================
+create table if not exists public.push_subscriptions (
+  id           bigserial primary key,
+  endpoint     text not null unique check (endpoint ~ '^https://'),
+  p256dh       text not null,
+  auth         text not null,
+  user_id      uuid references auth.users(id) on delete cascade,
+  device       text,
+  prefs        jsonb not null default '{"precos": true, "campanhas": true, "familia": true}',
+  markets      smallint[] not null default '{}',
+  watch_ids    int[] not null default '{}',
+  refs         jsonb not null default '{}',     -- { "id do produto": menor preço já avisado }
+  lat          numeric(6,2),                     -- posição arredondada (~1 km), só para "perto do mercado"
+  lng          numeric(6,2),
+  family_code  text,
+  family_by    text,
+  family_seen  timestamptz,
+  pushes_day   date,
+  pushes_today int not null default 0,
+  last_push_at timestamptz,
+  fails        int not null default 0,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+create index if not exists push_subscriptions_user on public.push_subscriptions (user_id);
+alter table public.push_subscriptions enable row level security;
+-- sem políticas: só as funções abaixo leem e gravam
+
+create table if not exists public.push_log (
+  sub_id  bigint not null references public.push_subscriptions(id) on delete cascade,
+  ref     text not null,
+  sent_at timestamptz not null default now(),
+  primary key (sub_id, ref)
+);
+alter table public.push_log enable row level security;
+
+insert into public.app_settings (key, value, label) values
+  ('push_enabled', 'true', 'Avisos no celular com o site fechado'),
+  ('privacy_contact', '""', 'Contato para pedidos sobre dados pessoais (LGPD)')
+on conflict (key) do nothing;
+
+-- o aparelho se inscreve (com ou sem conta) e atualiza o que acompanha
+create or replace function public.push_subscribe(p jsonb)
+returns bigint language plpgsql security definer set search_path = public as $$
+declare v_id bigint; v_end text := p->>'endpoint';
+begin
+  if v_end is null or v_end !~ '^https://' or length(v_end) > 600 then raise exception 'Inscrição inválida.'; end if;
+  insert into push_subscriptions as s (endpoint, p256dh, auth, user_id, device, prefs, markets, watch_ids, lat, lng, family_code, family_by)
+  values (v_end, left(p->>'p256dh', 200), left(p->>'auth', 100), auth.uid(), left(p->>'device', 40),
+          case when jsonb_typeof(p->'prefs') = 'object' then p->'prefs' else '{"precos": true, "campanhas": true, "familia": true}' end,
+          coalesce((select array_agg(distinct x::smallint) from jsonb_array_elements_text(case when jsonb_typeof(p->'markets') = 'array' then p->'markets' else '[]' end) x limit 20), '{}'),
+          coalesce((select array_agg(distinct x::int) from (select x from jsonb_array_elements_text(case when jsonb_typeof(p->'watch_ids') = 'array' then p->'watch_ids' else '[]' end) x limit 120) y), '{}'),
+          round((p->>'lat')::numeric, 2), round((p->>'lng')::numeric, 2),
+          nullif(upper(left(p->>'family_code', 12)), ''), nullif(left(p->>'family_by', 40), ''))
+  on conflict (endpoint) do update set
+    p256dh = excluded.p256dh, auth = excluded.auth,
+    user_id = coalesce(auth.uid(), s.user_id), device = excluded.device, prefs = excluded.prefs,
+    markets = excluded.markets, watch_ids = excluded.watch_ids, lat = excluded.lat, lng = excluded.lng,
+    family_code = excluded.family_code, family_by = excluded.family_by,
+    family_seen = case when excluded.family_code is distinct from s.family_code then null else s.family_seen end,
+    fails = 0, updated_at = now()
+  returning id into v_id;
+  return v_id;
+end $$;
+
+create or replace function public.push_unsubscribe(p_endpoint text)
+returns void language sql security definer set search_path = public as $$
+  delete from push_subscriptions where endpoint = p_endpoint;
+$$;
+
+-- chamado só pela função "notificar" (chave de serviço): monta os avisos e já marca como enviados
+create or replace function public.push_collect(p_limit int default 500)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  s push_subscriptions; out jsonb := '[]'; v_refs jsonb; drops jsonb; r record; ref numeric;
+  v_today date := (now() at time zone 'America/Manaus')::date;
+  v_hour int := extract(hour from now() at time zone 'America/Manaus');
+  fl shared_lists; cp record; v_msg jsonb; v_today_n int;
+begin
+  if not setting_on('push_enabled') or v_hour < 8 or v_hour >= 21 then return out; end if;
+
+  drop table if exists _tb_mins;
+  create temp table _tb_mins on commit drop as
+    select v.id, v.name, v.min_price, (v.prices->0->>'market_id')::smallint mid from v_products v;
+
+  for s in select * from push_subscriptions where fails < 5 order by coalesce(last_push_at, 'epoch') limit greatest(1, least(p_limit, 2000)) loop
+    v_msg := null;
+    v_today_n := case when s.pushes_day = v_today then s.pushes_today else 0 end;
+
+    -- lista da família: alguém mexeu (e não foi esta pessoa)
+    if s.family_code is not null and coalesce((s.prefs->>'familia')::boolean, true) then
+      select * into fl from shared_lists where code = s.family_code;
+      if found then
+        if s.family_seen is not null and fl.updated_at > s.family_seen and fl.updated_by is distinct from s.family_by then
+          v_msg := jsonb_build_object('title', coalesce(fl.updated_by, 'Alguém') || ' mexeu na ' || coalesce('lista "' || fl.name || '"', 'lista da família'),
+                                      'body', 'Toque para ver o que foi marcado ou incluído.', 'url', './#lista', 'tag', 'tb-familia');
+        end if;
+        update push_subscriptions set family_seen = fl.updated_at where id = s.id;
+      end if;
+    end if;
+
+    -- preços que baixaram do que a pessoa acompanha (favoritos e o que já comprou)
+    v_refs := s.refs; drops := '[]';
+    if coalesce((s.prefs->>'precos')::boolean, true) and cardinality(s.watch_ids) > 0 then
+      for r in select m.id, m.name, m.min_price, sm.name market from _tb_mins m left join supermarkets sm on sm.id = m.mid
+                where m.id = any(s.watch_ids) loop
+        ref := (v_refs->>r.id::text)::numeric;
+        if ref is null or r.min_price > ref then
+          v_refs := jsonb_set(v_refs, array[r.id::text], to_jsonb(r.min_price));
+        elsif ref - r.min_price >= 0.10 and r.min_price <= ref * 0.97 then
+          drops := drops || jsonb_build_object('name', r.name, 'from', ref, 'to', r.min_price, 'market', r.market);
+          v_refs := jsonb_set(v_refs, array[r.id::text], to_jsonb(r.min_price));
+        end if;
+      end loop;
+      update push_subscriptions set refs = v_refs where id = s.id;
+      if v_msg is null and jsonb_array_length(drops) > 0 then
+        v_msg := case when jsonb_array_length(drops) = 1 then
+          jsonb_build_object('title', 'Baixou: ' || (drops->0->>'name'),
+                             'body', 'De R$ ' || replace(to_char((drops->0->>'from')::numeric, 'FM999990.00'), '.', ',') ||
+                                     ' por R$ ' || replace(to_char((drops->0->>'to')::numeric, 'FM999990.00'), '.', ',') ||
+                                     coalesce(' no ' || (drops->0->>'market'), '') || '.',
+                             'url', './#ofertas', 'tag', 'tb-preco')
+        else
+          jsonb_build_object('title', jsonb_array_length(drops) || ' produtos que você acompanha baixaram',
+                             'body', (select string_agg(d->>'name', ', ') from (select d from jsonb_array_elements(drops) d limit 3) x),
+                             'url', './#ofertas', 'tag', 'tb-preco')
+        end;
+      end if;
+    end if;
+
+    -- aviso de supermercado (um por dia, só o que a pessoa ainda não recebeu)
+    if v_msg is null and coalesce((s.prefs->>'campanhas')::boolean, true) and setting_on('campaigns_enabled')
+       and not exists (select 1 from push_log l where l.sub_id = s.id and l.ref like 'camp:%' and l.sent_at >= now() - interval '20 hours') then
+      select c.id, c.title, c.body, c.supermarket_id, sm.name market into cp
+        from market_campaigns c join supermarkets sm on sm.id = c.supermarket_id and sm.active
+       where c.kind = 'aviso' and c.status = 'ativa' and now() between c.starts_at and c.ends_at
+         and not exists (select 1 from push_log l where l.sub_id = s.id and l.ref = 'camp:' || c.id)
+         and (c.audience = 'todos'
+              or (c.audience = 'preferem' and c.supermarket_id = any(s.markets))
+              or (c.audience = 'perto' and s.lat is not null and exists (
+                    select 1 from stores st where st.supermarket_id = c.supermarket_id
+                       and _km(s.lat::float8, s.lng::float8, st.lat, st.lng) <= c.radius_km)))
+       order by (c.audience = 'perto') desc, c.created_at desc limit 1;
+      if found then
+        v_msg := jsonb_build_object('title', cp.market || ': ' || cp.title, 'body', coalesce(cp.body, 'Toque para ver as ofertas.'),
+                                    'url', './#ofertas', 'tag', 'tb-camp-' || cp.id, 'campaign_id', cp.id);
+        insert into push_log (sub_id, ref) values (s.id, 'camp:' || cp.id) on conflict do nothing;
+        insert into events (kind, supermarket_id, campaign_id, device_id) values ('camp_notify', cp.supermarket_id, cp.id, s.device);
+      end if;
+    end if;
+
+    if v_msg is not null and v_today_n < 3 then
+      out := out || (v_msg || jsonb_build_object('id', s.id, 'endpoint', s.endpoint, 'p256dh', s.p256dh, 'auth', s.auth));
+      update push_subscriptions set pushes_day = v_today, pushes_today = v_today_n + 1, last_push_at = now() where id = s.id;
+    end if;
+  end loop;
+  return out;
+end $$;
+
+-- resultado da entrega: 404/410 = inscrição morreu (apaga); outros erros contam falha
+create or replace function public.push_result(p jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+declare x jsonb;
+begin
+  for x in select * from jsonb_array_elements(coalesce(p, '[]')) loop
+    if (x->>'status')::int in (404, 410) then delete from push_subscriptions where id = (x->>'id')::bigint;
+    elsif (x->>'ok')::boolean then update push_subscriptions set fails = 0 where id = (x->>'id')::bigint;
+    else update push_subscriptions set fails = fails + 1 where id = (x->>'id')::bigint;
+    end if;
+  end loop;
+end $$;
+
+revoke all on function public.push_subscribe(jsonb) from public;
+revoke all on function public.push_unsubscribe(text) from public;
+revoke all on function public.push_collect(int) from public, anon, authenticated;
+revoke all on function public.push_result(jsonb) from public, anon, authenticated;
+grant execute on function public.push_subscribe(jsonb) to anon, authenticated;
+grant execute on function public.push_unsubscribe(text) to anon, authenticated;
+grant execute on function public.push_collect(int) to service_role;
+grant execute on function public.push_result(jsonb) to service_role;
+
+-- =====================================================================
+-- 3. PRIVACIDADE (LGPD): baixar meus dados e excluir minha conta
+-- O que os supermercados já viram em números agregados continua lá, mas sem ligação com a pessoa.
+-- =====================================================================
+create or replace function public.my_data_export()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); out jsonb; t record; rows jsonb;
+begin
+  if v_uid is null then raise exception 'Entre na sua conta para baixar seus dados.'; end if;
+  out := jsonb_build_object(
+    'gerado_em', now(),
+    'conta', (select jsonb_build_object('id', u.id, 'email', u.email, 'criada_em', u.created_at) from auth.users u where u.id = v_uid),
+    'perfil', (select to_jsonb(p) from profiles p where p.id = v_uid));
+  for t in select c.table_name from information_schema.columns c
+            join information_schema.tables tb on tb.table_schema = c.table_schema and tb.table_name = c.table_name and tb.table_type = 'BASE TABLE'
+           where c.table_schema = 'public' and c.column_name = 'user_id'
+             and c.table_name not in ('events', 'push_subscriptions')
+           order by 1 loop
+    execute format('select coalesce(jsonb_agg(to_jsonb(x)), ''[]'') from (select * from public.%I where user_id = $1 limit 5000) x', t.table_name)
+      into rows using v_uid;
+    if jsonb_array_length(rows) > 0 then out := out || jsonb_build_object(t.table_name, rows); end if;
+  end loop;
+  out := out || jsonb_build_object(
+    'avisos_no_celular', (select coalesce(jsonb_agg(jsonb_build_object('aparelho', device, 'preferencias', prefs, 'mercados', markets,
+                                   'produtos_acompanhados', watch_ids, 'posicao_aproximada', case when lat is null then null else jsonb_build_object('lat', lat, 'lng', lng) end,
+                                   'criado_em', created_at)), '[]') from push_subscriptions where user_id = v_uid),
+    'uso', jsonb_build_object(
+      'total_eventos', (select count(*) from events where user_id = v_uid),
+      'primeiro', (select min(created_at) from events where user_id = v_uid),
+      'ultimo', (select max(created_at) from events where user_id = v_uid),
+      'ultimos_500', (select coalesce(jsonb_agg(jsonb_build_object('quando', created_at, 'tipo', kind, 'busca', query, 'produto', product_id, 'mercado', supermarket_id)), '[]')
+                        from (select * from events where user_id = v_uid order by created_at desc limit 500) e)));
+  return out;
+end $$;
+
+create or replace function public.delete_my_account(p_confirm text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); t record;
+begin
+  if v_uid is null then raise exception 'Entre na sua conta.'; end if;
+  if upper(trim(coalesce(p_confirm, ''))) <> 'EXCLUIR' then raise exception 'Digite EXCLUIR para confirmar.'; end if;
+  if is_master() then raise exception 'A conta de administração master não pode ser excluída por aqui.'; end if;
+  -- números de uso continuam (sem ligação com a pessoa)
+  update events set user_id = null where user_id = v_uid;
+  for t in select c.table_name, c.is_nullable from information_schema.columns c
+            join information_schema.tables tb on tb.table_schema = c.table_schema and tb.table_name = c.table_name and tb.table_type = 'BASE TABLE'
+           where c.table_schema = 'public' and c.column_name = 'user_id' and c.table_name <> 'events' loop
+    if t.table_name = 'encarte_imports' and t.is_nullable = 'YES' then
+      execute format('update public.%I set user_id = null where user_id = $1', t.table_name) using v_uid;
+    else
+      execute format('delete from public.%I where user_id = $1', t.table_name) using v_uid;
+    end if;
+  end loop;
+  delete from auth.users where id = v_uid; -- perfil, favoritos, listas etc. saem em cascata
+end $$;
+
+revoke all on function public.my_data_export() from public, anon;
+revoke all on function public.delete_my_account(text) from public, anon;
+grant execute on function public.my_data_export() to authenticated;
+grant execute on function public.delete_my_account(text) to authenticated;
+
+-- =====================================================================
+-- 4. COMPRAR NO SITE/APP DO MERCADO
+-- =====================================================================
+alter table public.supermarkets add column if not exists shop_url text check (shop_url is null or shop_url ~ '^https://');
+
+create or replace function public.admin_save_market(p jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_id smallint := nullif(p->>'id', '')::smallint; r supermarkets;
+begin
+  perform admin_guard();
+  if coalesce(trim(p->>'name'), '') = '' then raise exception 'Informe o nome do supermercado.'; end if;
+  if v_id is null then
+    insert into supermarkets (slug, name, logo_url, color, website, shop_url, active, portal_enabled)
+    values (coalesce(nullif(trim(p->>'slug'), ''), lower(regexp_replace(unaccent_safe(p->>'name'), '[^a-zA-Z0-9]+', '-', 'g'))),
+            trim(p->>'name'), nullif(p->>'logo_url', ''), coalesce(nullif(p->>'color', ''), '#0F5A3E'), nullif(p->>'website', ''),
+            nullif(trim(p->>'shop_url'), ''),
+            coalesce((p->>'active')::boolean, true), coalesce((p->>'portal_enabled')::boolean, true))
+    returning * into r;
+  else
+    update supermarkets set name = trim(p->>'name'), slug = coalesce(nullif(trim(p->>'slug'), ''), slug),
+      logo_url = nullif(p->>'logo_url', ''), color = coalesce(nullif(p->>'color', ''), color), website = nullif(p->>'website', ''),
+      shop_url = case when p ? 'shop_url' then nullif(trim(p->>'shop_url'), '') else shop_url end,
+      active = coalesce((p->>'active')::boolean, active), portal_enabled = coalesce((p->>'portal_enabled')::boolean, portal_enabled)
+    where id = v_id returning * into r;
+  end if;
+  perform admin_note('salvar mercado', to_jsonb(r));
+  return to_jsonb(r);
+exception when unique_violation then
+  raise exception 'Já existe um supermercado com esse identificador (slug). Escolha outro.';
+end $$;
+
+-- o próprio supermercado também pode informar o link da loja online (portal › Minha loja)
+create or replace function public.market_set_shop_url(p_market smallint, p_url text)
+returns text language plpgsql security definer set search_path = public as $$
+declare v text := nullif(trim(p_url), '');
+begin
+  if not (is_market_member(p_market) or is_master()) then raise exception 'Sem permissão para este supermercado.'; end if;
+  if v is not null and v !~ '^https://' then raise exception 'O link precisa começar com https://'; end if;
+  update supermarkets set shop_url = v where id = p_market;
+  return v;
+end $$;
+revoke all on function public.market_set_shop_url(smallint, text) from public, anon;
+grant execute on function public.market_set_shop_url(smallint, text) to authenticated;
+
+-- =====================================================================
+-- 5. SAÚDE DO BANCO: o admin vê o que está instalado e o que falta rodar
+-- =====================================================================
+create or replace function public.db_health()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare out jsonb; v_job boolean := null;
+begin
+  if not is_master() then raise exception 'Só a administração.'; end if;
+  if to_regclass('cron.job') is not null then
+    execute 'select exists (select 1 from cron.job where jobname = ''tb-notificar'' and active)' into v_job;
+  end if;
+  with req(grp, kind, name) as (values
+    ('Base (schema.sql)', 'table', 'public.v_products'),
+    ('Base (schema.sql)', 'table', 'public.events'),
+    ('Base (schema.sql)', 'func', 'public.track(jsonb)'),
+    ('Base (schema.sql)', 'func', 'public.admin_overview(integer)'),
+    ('Notas e leitor com IA', 'table', 'public.receipts'),
+    ('Notas e leitor com IA', 'table', 'public.ia_readings'),
+    ('Zerar histórico', 'col', 'profiles.history_reset_at'),
+    ('Zerar histórico', 'func', 'public.reset_my_history()'),
+    ('Lista da família', 'table', 'public.shared_lists'),
+    ('Sincronizar aparelhos e campanhas', 'table', 'public.user_state'),
+    ('Sincronizar aparelhos e campanhas', 'table', 'public.market_campaigns'),
+    ('Zerar em todos os aparelhos', 'col', 'user_state.gen'),
+    ('Zerar em todos os aparelhos', 'col', 'profiles.history_gen'),
+    ('Datas especiais', 'table', 'public.special_events'),
+    ('Datas especiais', 'func', 'public.market_event_products_set(text,smallint,jsonb)'),
+    ('Uso, avisos e privacidade', 'col', 'events.device_id'),
+    ('Uso, avisos e privacidade', 'table', 'public.push_subscriptions'),
+    ('Uso, avisos e privacidade', 'func', 'public.push_collect(integer)'),
+    ('Uso, avisos e privacidade', 'func', 'public.my_data_export()'),
+    ('Uso, avisos e privacidade', 'col', 'supermarkets.shop_url')
+  ), chk as (
+    select grp, kind, name, case kind
+      when 'table' then to_regclass(name) is not null
+      when 'func' then to_regprocedure(name) is not null
+      when 'col' then exists (select 1 from information_schema.columns c where c.table_schema = 'public'
+                                and c.table_name = split_part(name, '.', 1) and c.column_name = split_part(name, '.', 2))
+    end ok from req
+  )
+  select jsonb_build_object(
+    'checks', (select jsonb_agg(to_jsonb(chk)) from chk),
+    'extensions', jsonb_build_object(
+      'pg_cron', exists (select 1 from pg_extension where extname = 'pg_cron'),
+      'pg_net', exists (select 1 from pg_extension where extname = 'pg_net')),
+    'push_job', v_job,
+    'push_subs', (select count(*) from push_subscriptions),
+    'events_30d', (select count(*) from events where created_at >= now() - interval '30 days')
+  ) into out;
+  return out;
+end $$;
+
+revoke all on function public.admin_usage(int) from public, anon;
+revoke all on function public.db_health() from public, anon;
+grant execute on function public.admin_usage(int) to authenticated;
+grant execute on function public.db_health() to authenticated;

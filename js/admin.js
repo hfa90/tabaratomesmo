@@ -84,13 +84,102 @@ async function enter() {
 
 function route() {
   const v = (location.hash || '#geral').slice(1);
-  const views = { geral: renderOverview, encartes: renderEncartes, mercados: renderMarkets, usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, datas: renderEventos, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
+  const views = { geral: renderOverview, encartes: renderEncartes, mercados: renderMarkets, usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, datas: renderEventos, uso: renderUso, saude: renderSaude, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
   const view = views[v] ? v : 'geral';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
   views[view]();
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', () => { if (!$('#ptNav').hidden) route(); });
+
+// ================================================================ USO DO SITE
+// Quais telas e ferramentas as pessoas usam e quem volta. "Pessoa" = conta, ou o aparelho sem conta.
+const FEAT = {
+  inicio: 'Página inicial', ofertas: 'Ofertas', lista: 'Lista do mês', carrinho: 'No mercado (calculadora)', fila: 'Jogo da fila', notas: 'Minhas notas',
+  conta: 'Você (conta)', mapa: 'Mapa', refeicoes: 'Refeições', especial: 'Data especial',
+  'ferramenta:calc': 'Calculadora', 'ferramenta:fotopreco': 'Conferir: foto do preço', 'ferramenta:leitor': 'Conferir: ler código', 'ferramenta:nota': 'Conferir: nota fiscal',
+  'ferramenta:conferir': 'Conferir um preço (menu)', 'ferramenta:cupom': 'Cupom do caixa', 'ferramenta:resumo': 'Resumo do mês', 'ferramenta:fila': 'Jogo da fila', 'ferramenta:voz': 'Lista falada',
+  'acao:busca': 'Buscou produto', 'acao:adicionou': 'Pôs item na lista', 'acao:rota': 'Pediu rota', 'acao:rancho': 'Fechou o rancho', 'acao:comprou': 'Marcou onde comprou',
+  'acao:ativou_avisos': 'Ligou avisos no celular', 'acao:abriu_aviso': 'Abriu um aviso',
+};
+const featName = (k) => FEAT[k] || k.replace(/^ferramenta:/, 'Ferramenta: ').replace(/^acao:/, '');
+async function renderUso() {
+  st.usoDays ||= 30;
+  $('#ptMain').innerHTML = head('Uso do site', 'O que as pessoas usam de verdade e quantas voltam. Ajuda a decidir o que melhorar, juntar ou tirar.',
+    `<div class="row-actions"><div class="seg" role="radiogroup" aria-label="Período">${[[7, '7 dias'], [30, '30 dias'], [90, '90 dias']].map(([d, l]) => `<button role="radio" aria-checked="${st.usoDays === d}" data-uso-days="${d}">${l}</button>`).join('')}</div></div>`)
+    + '<div id="uso"><div class="skeleton" style="height:420px"></div></div>';
+  let U;
+  try { U = await A.usage(st.usoDays); }
+  catch (e) { $('#uso').innerHTML = `<p class="note">${/admin_usage|PGRST202|could not find/i.test(e.message) ? 'Falta rodar <code>supabase/atualizacoes/atualizacao-2026-10-push-uso-lgpd.sql</code> no Supabase. Veja <a class="linkish" href="#saude">Saúde do banco</a>.' : esc(e.message)}</p>`; return; }
+  const act = U.active_30 || 1;
+  const screens = U.features.filter((f) => !f.name.includes(':'));
+  const tools = U.features.filter((f) => f.name.startsWith('ferramenta:'));
+  const acts = U.features.filter((f) => f.name.startsWith('acao:'));
+  const low = [...screens, ...tools].filter((f) => f.people / act < 0.05 && act >= 40);
+  const bars = (rows) => hbars(rows, { label: (r) => esc(featName(r.name)), value: (r) => r.people, note: (r) => `${Math.round((r.people / act) * 100)}% das pessoas · ${fmtN(r.uses)} vezes` });
+  const mxW = Math.max(1, ...U.weeks.map((w) => w.people));
+  const wk = (d) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const pc = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '–');
+  $('#uso').innerHTML = `
+    <section class="kpis">
+      ${kpi('Pessoas hoje', U.active_1, { hint: 'últimas 24 horas' })}
+      ${kpi('Pessoas na semana', U.active_7, { hint: `${fmtN(U.with_account_7)} com conta` })}
+      ${kpi('Pessoas no mês', U.active_30, { hint: 'últimos 30 dias' })}
+      ${kpi('Novas na semana', U.new_7, { hint: 'primeira visita nos últimos 7 dias' })}
+      ${kpi('Voltaram', U.returned ?? 0, { fmt: (v) => `${v}%`, hint: 'de quem veio na semana passada, voltou nesta', accent: true })}
+      ${kpi('Avisos ligados', U.push_subs, { hint: 'aparelhos recebendo com o site fechado' })}
+    </section>
+    <section class="panel"><div class="panel__head"><h2>Pessoas por semana</h2><span class="muted small">barra clara = pessoas novas</span></div>
+      <div class="uso-weeks">${U.weeks.map((w) => `<div class="uso-w" title="${fmtN(w.people)} pessoas, ${fmtN(w.new)} novas"><span class="uso-w__b" style="--h:${(w.people / mxW) * 100}%"><i style="--n:${w.people ? (w.new / w.people) * 100 : 0}%"></i></span><b>${fmtN(w.people)}</b><small>${wk(w.week)}</small></div>`).join('') || '<p class="muted small">Ainda sem dados.</p>'}</div></section>
+    ${low.length ? `<div class="note uso-low"><b>Pouco usado (menos de 5% das pessoas):</b> ${low.map((f) => esc(featName(f.name))).join(', ')}. Bons candidatos a juntar com outra função ou tirar.</div>` : ''}
+    <div class="pt-grid">
+      <section class="panel"><div class="panel__head"><h2>Telas</h2><span class="muted small">pessoas que abriram</span></div>${bars(screens)}</section>
+      <section class="panel"><div class="panel__head"><h2>Ferramentas</h2><span class="muted small">pessoas que usaram</span></div>${bars(tools)}</section>
+    </div>
+    <div class="pt-grid">
+      <section class="panel"><div class="panel__head"><h2>Ações</h2></div>${bars(acts)}</section>
+      <section class="panel"><div class="panel__head"><h2>Quem volta</h2><span class="muted small">pessoas novas de cada semana que voltaram depois</span></div>
+        ${U.cohorts.length ? `<div class="tbl-wrap"><table class="tbl tbl--sm uso-coh"><thead><tr><th>Chegaram na semana de</th><th>Novas</th><th>1 semana depois</th><th>2 semanas</th><th>3 semanas</th></tr></thead><tbody>
+          ${U.cohorts.map((c) => `<tr><td>${wk(c.week)}</td><td>${fmtN(c.size)}</td>${[c.w1, c.w2, c.w3].map((n) => `<td><span class="uso-c" style="--a:${c.size ? (n / c.size).toFixed(2) : 0}">${pc(n, c.size)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+          <p class="muted small">Semanas recentes ainda não tiveram tempo de mostrar quem volta.</p>` : '<p class="muted small">Ainda sem dados.</p>'}</section>
+    </div>
+    <p class="muted small">Contamos por conta (quem entrou) ou por um número aleatório do aparelho (quem não entrou). Nada de nome, e-mail ou posição. Quem desligou "Ajudar a melhorar o site" não entra na conta.</p>`;
+}
+
+// ================================================================ SAÚDE DO BANCO
+async function renderSaude() {
+  $('#ptMain').innerHTML = head('Saúde do banco', 'Confere se todas as atualizações do banco foram rodadas e se os avisos com o site fechado estão ligados.')
+    + '<div id="saude"><div class="skeleton" style="height:300px"></div></div>';
+  let H;
+  try { H = await A.dbHealth(); } catch (e) { $('#saude').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
+  if (!H) {
+    $('#saude').innerHTML = `<section class="panel saude-miss"><h2>Falta rodar a atualização mais nova</h2>
+      <p>Abra o Supabase › <b>SQL Editor</b>, cole o arquivo <code>supabase/atualizacoes/atualizacao-2026-10-push-uso-lgpd.sql</code> e clique em <b>Run</b>. Depois volte aqui.</p>
+      <p class="muted small">Se o banco é novo, rode só o <code>supabase/schema.sql</code>: ele já tem tudo.</p></section>`;
+    return;
+  }
+  const groups = new Map();
+  for (const c of H.checks || []) { if (!groups.has(c.grp)) groups.set(c.grp, []); groups.get(c.grp).push(c); }
+  const FILES = {
+    'Notas e leitor com IA': 'atualizacao-2026-10-notas-ia.sql', 'Zerar histórico': 'atualizacao-2026-10-zerar-historico.sql', 'Lista da família': 'atualizacao-2026-10-lista-familia.sql',
+    'Sincronizar aparelhos e campanhas': 'atualizacao-2026-10-sync-clientes-campanhas.sql', 'Zerar em todos os aparelhos': 'atualizacao-2026-10-zerar-todos-aparelhos.sql',
+    'Datas especiais': 'atualizacao-2026-10-datas-especiais.sql', 'Uso, avisos e privacidade': 'atualizacao-2026-10-push-uso-lgpd.sql', 'Base (schema.sql)': 'schema.sql',
+  };
+  const missing = [...groups].filter(([, cs]) => cs.some((c) => !c.ok));
+  const ok = (b) => `<em class="saude-dot ${b ? 'is-ok' : b === false ? 'is-bad' : ''}">${b ? 'em dia' : b === false ? 'falta' : '–'}</em>`;
+  $('#saude').innerHTML = `
+    <section class="panel ${missing.length ? 'saude-miss' : 'saude-ok'}"><h2>${missing.length ? `Falta rodar ${missing.length} ${missing.length > 1 ? 'atualizações' : 'atualização'}` : 'Banco em dia'}</h2>
+      <p class="small">${missing.length ? `No Supabase › SQL Editor, rode: ${missing.map(([g]) => `<code>supabase/${FILES[g] === 'schema.sql' ? '' : 'atualizacoes/'}${FILES[g] || g}</code>`).join(', ')}. Ou rode só <code>supabase/schema.sql</code>, que junta tudo e pode ser rodado de novo sem perder nada.` : 'Todas as tabelas e funções que o site usa estão instaladas.'}</p></section>
+    <section class="panel"><div class="panel__head"><h2>Partes do banco</h2></div>
+      <ul class="cfg-list">${[...groups].map(([g, cs]) => `<li><span><b>${esc(g)}</b><small class="muted">${cs.filter((c) => !c.ok).map((c) => esc(c.name)).join(', ') || `${cs.length} itens conferidos`}</small></span>${ok(cs.every((c) => c.ok))}</li>`).join('')}</ul></section>
+    <section class="panel"><div class="panel__head"><h2>Avisos com o site fechado</h2></div>
+      <ul class="cfg-list">
+        <li><span><b>Extensões pg_cron e pg_net</b><small class="muted">Agendam a função "notificar" a cada 15 minutos (Database › Extensions).</small></span>${ok(H.extensions?.pg_cron && H.extensions?.pg_net)}</li>
+        <li><span><b>Agendamento tb-notificar</b><small class="muted">Arquivo <code>supabase/agendar-avisos.sql</code>, depois de publicar a função.</small></span>${ok(H.push_job)}</li>
+        <li><span><b>Aparelhos inscritos</b><small class="muted">Pessoas que ligaram os avisos no celular.</small></span><b>${fmtN(H.push_subs)}</b></li>
+        <li><span><b>Eventos de uso (30 dias)</b><small class="muted">Base do painel de uso.</small></span><b>${fmtN(H.events_30d)}</b></li>
+      </ul></section>`;
+}
 
 // ================================================================ VISÃO GERAL
 async function renderOverview() {
@@ -198,6 +287,7 @@ function marketForm(m = {}) {
         <label>Cor da marca<input name="color" type="color" value="${esc(m.color || '#0F5A3E')}" style="padding:4px;height:48px" /></label></div>
       <label>Logomarca (URL ou caminho, ex.: assets/logos/coema.png)<input name="logo_url" value="${esc(m.logo_url || '')}" /></label>
       <label>Site<input name="website" value="${esc(m.website || '')}" placeholder="https://" /></label>
+      <label>Loja online ou app (para "comprar esta lista")<input name="shop_url" value="${esc(m.shop_url || '')}" placeholder="https://" /></label>
       <p class="form__err" role="alert"></p><button class="btn btn--primary btn--block">Salvar</button></form>`);
 }
 
@@ -338,7 +428,7 @@ async function renderNotasAdmin() {
   $('#encBox').innerHTML = '<div class="skeleton" style="height:300px"></div>';
   let D;
   try { [D] = await Promise.all([A.receiptsOverview(), st.markets ? 0 : A.markets().then((m) => (st.markets = m))]); }
-  catch (e) { $('#encBox').innerHTML = `<p class="note">${esc(e.message)}. Rode o arquivo <code>supabase/atualizacao-2026-10-notas-ia.sql</code> no SQL Editor.</p>`; return; }
+  catch (e) { $('#encBox').innerHTML = `<p class="note">${esc(e.message)}. Rode o arquivo <code>supabase/atualizacoes/atualizacao-2026-10-notas-ia.sql</code> no SQL Editor.</p>`; return; }
   const mk = st.markets || [];
   $('#encBox').innerHTML = `<header class="pt-head"><div><h1>Notas fiscais</h1><p class="muted">Notas enviadas pelos usuários: preços reais lidos da Sefaz, na data e no mercado certos.</p></div></header>
     <div class="kpis">${kpi('Notas enviadas', Number(D.total))}${kpi('Últimos 7 dias', Number(D.last_7d))}${kpi('Pessoas (30 dias)', Number(D.users_30d))}${kpi('Preços atualizados', Number(D.prices_added))}</div>
@@ -371,7 +461,7 @@ async function renderEventos() {
     '<button class="btn btn--primary" data-ev-new>+ Nova data especial</button>') + '<div id="evBox"><div class="skeleton" style="height:240px"></div></div>';
   let list = [];
   try { const c = await api.sbClient(); const { data, error } = await c.rpc('admin_events'); if (error) throw error; list = data || []; }
-  catch (e) { $('#evBox').innerHTML = `<p class="note">${/function|PGRST202/i.test(e.message) ? 'Ainda não ativado no banco: rode supabase/atualizacao-2026-10-datas-especiais.sql no SQL Editor.' : esc(e.message)}</p>${themeGallery()}`; return; }
+  catch (e) { $('#evBox').innerHTML = `<p class="note">${/function|PGRST202/i.test(e.message) ? 'Ainda não ativado no banco: rode supabase/atualizacoes/atualizacao-2026-10-datas-especiais.sql no SQL Editor.' : esc(e.message)}</p>${themeGallery()}`; return; }
   const now = Date.now();
   $('#evBox').innerHTML = `${list.length ? `<div class="ev-list">${list.map((e) => { const t = THEMES[e.theme]; const live = e.active && new Date(e.starts_at) <= now && new Date(e.ends_at) >= now;
     return `<article class="panel ev-card" style="--t-bg1:${t.c.bg1};--t-bg2:${t.c.bg2};--t-acc:${t.c.acc};--t-acc2:${t.c.acc2}">
@@ -440,7 +530,7 @@ async function renderCampsAdmin() {
   const box = $('#adm-camps'); if (!box) return;
   let list = [];
   try { const c = await api.sbClient(); const { data, error } = await c.rpc('campaigns_list', { p_market: null }); if (error) throw error; list = data || []; }
-  catch (e) { box.innerHTML = `<section class="panel"><div class="panel__head"><h2>Campanhas dos mercados</h2></div><p class="muted small">${/function|PGRST202/i.test(e.message) ? 'Ainda não ativadas no banco (rode supabase/atualizacao-2026-10-sync-clientes-campanhas.sql).' : esc(e.message)}</p></section>`; return; }
+  catch (e) { box.innerHTML = `<section class="panel"><div class="panel__head"><h2>Campanhas dos mercados</h2></div><p class="muted small">${/function|PGRST202/i.test(e.message) ? 'Ainda não ativadas no banco (rode supabase/atualizacoes/atualizacao-2026-10-sync-clientes-campanhas.sql).' : esc(e.message)}</p></section>`; return; }
   const K = { aviso: 'Aviso no celular', janela: 'Janela', vitrine: 'Vitrine' };
   const A = { todos: 'todos', preferem: 'quem prefere o mercado', perto: 'perto da loja' };
   box.innerHTML = `<section class="panel"><div class="panel__head"><h2>Campanhas dos mercados</h2><span class="muted small">aviso, janela e vitrine · ${list.length}</span></div>
@@ -594,6 +684,8 @@ async function renderConfig() {
     ['ads_enabled', 'Publicidade aparece no site', 'Desligado: nenhum anúncio é mostrado, mesmo os pagos e aprovados.'],
     ['welcome_enabled', 'Boas-vindas ao chegar numa loja', 'Com a localização liberada, o site reconhece a loja pelo GPS e mostra as ofertas dela.'],
     ['receipts_enabled', 'Usuários podem enviar notas fiscais', 'Página “Minhas notas”: a nota é lida na Sefaz e os preços entram com a data e o mercado certos.'],
+    ['push_enabled', 'Avisos no celular com o site fechado', 'Preço que baixou, lista da família e avisos dos mercados (8h às 21h, no máximo 3 por dia). Precisa da função "notificar" publicada.'],
+    ['campaigns_enabled', 'Campanhas dos supermercados', 'Janela, aviso e vitrine que os mercados criam no portal.'],
     ['ia_enabled', 'Leitor com IA', 'Importar encarte por foto/PDF, Foto do preço na prateleira e nota fiscal por foto. Precisa da chave ANTHROPIC_API_KEY na função leitor-ia.'],
   ];
   $('#cfg').innerHTML = `
@@ -610,6 +702,10 @@ async function renderConfig() {
       <section class="panel"><div class="panel__head"><h2>Aviso no topo do site</h2></div>
         <form class="form" id="cfgBanner"><label>Mensagem<textarea name="banner" maxlength="200" placeholder="Ex.: Semana do rancho: promoções exclusivas até domingo!">${esc(val('banner') || '')}</textarea></label>
           <div class="row-actions"><button class="btn btn--primary">Publicar aviso</button><button class="btn btn--ghost" type="button" data-banner-clear>Tirar aviso</button></div></form></section>
+      <section class="panel"><div class="panel__head"><h2>Privacidade (LGPD)</h2></div>
+        <form class="form" id="cfgPrivacy"><label>Contato para pedidos sobre dados pessoais<input name="contact" maxlength="120" value="${esc(val('privacy_contact') || '')}" placeholder="e-mail ou WhatsApp do responsável" /></label>
+          <p class="muted small">Aparece na <a class="linkish" href="privacidade.html" target="_blank">política de privacidade</a>. Quem tem conta também baixa e exclui os dados sozinho, em Você › Conta.</p>
+          <button class="btn btn--primary">Salvar contato</button></form></section>
     </div>
     <section class="panel"><div class="panel__head"><h2>Administradores master</h2></div>
       <ul class="cfg-list">${ad.map((a) => `<li><span><b>${esc(a.email)}</b><small class="muted">${a.has_account ? 'conta criada' : 'ainda sem conta no site'} · incluído por ${esc(a.added_by || '–')} em ${dateBR(a.created_at)}</small></span>
@@ -629,6 +725,7 @@ document.addEventListener('click', async (e) => {
   const d = t.dataset;
   if (d.demo !== undefined) { A.useDemo(); st.user = { email: 'haydenfernandes.ti@gmail.com' }; return enter(); }
   if (d.days) { st.days = Number(d.days); return renderOverview(); }
+  if (d.usoDays) { st.usoDays = Number(d.usoDays); return renderUso(); }
   if (d.rdays) { st.days = Number(d.rdays); st.overview = null; return renderReports(); }
   if (d.mkNew !== undefined) return marketForm();
   if (d.mkEdit) return marketForm(st.markets.find((m) => m.id === Number(d.mkEdit)));
@@ -733,7 +830,7 @@ document.addEventListener('submit', async (e) => {
     if (fid === 'admLogin') {
       await api.signIn({ email: f.email.value.trim(), password: f.password.value });
     } else if (fid === 'mkForm') {
-      await A.saveMarket({ id: f.mid.value || null, name: f.mname.value.trim(), slug: f.slug.value.trim(), color: f.color.value, logo_url: f.logo_url.value.trim(), website: f.website.value.trim() });
+      await A.saveMarket({ id: f.mid.value || null, name: f.mname.value.trim(), slug: f.slug.value.trim(), color: f.color.value, logo_url: f.logo_url.value.trim(), website: f.website.value.trim(), shop_url: f.shop_url.value.trim() });
       closeSheet(); toast('Supermercado salvo.'); renderMarkets();
     } else if (fid === 'memAdd') {
       await A.addMember(f.email.value.trim(), Number(f.dataset.mk), f.role.value); toast('Acesso liberado.'); accessSheet(Number(f.dataset.mk)); refreshMarketsSoon();
@@ -754,6 +851,8 @@ document.addEventListener('submit', async (e) => {
       await A.setSetting('anon_comparisons', Math.max(0, Number(f.anon.value) || 0));
       await A.setSetting('quick_comparisons', Math.max(0, Number(f.quick.value) || 0));
       await A.setSetting('welcome_radius', Math.min(500, Math.max(50, Number(f.radius.value) || 150))); toast('Limites salvos.');
+    } else if (fid === 'cfgPrivacy') {
+      await A.setSetting('privacy_contact', f.contact.value.trim()); toast('Contato salvo.');
     } else if (fid === 'cfgBanner') {
       await A.setSetting('banner', f.banner.value.trim()); toast(f.banner.value.trim() ? 'Aviso publicado no site.' : 'Aviso retirado.');
     } else if (fid === 'planNew') {

@@ -411,7 +411,7 @@ export async function customers(mid, days = 90) {
   if (MODE === 'demo') return demoCustomers(mid, days);
   const c = await api.sbClient();
   const { data, error } = await c.rpc('market_customers', { p_market: mid, p_days: days });
-  if (error) { const e = new Error(isMissingFn(error) ? 'Esta análise ainda não foi ativada no banco (rode supabase/atualizacao-2026-10-sync-clientes-campanhas.sql).' : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
+  if (error) { const e = new Error(isMissingFn(error) ? 'Esta análise ainda não foi ativada no banco (rode supabase/atualizacoes/atualizacao-2026-10-sync-clientes-campanhas.sql).' : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
   return data;
 }
 async function demoCustomers(mid, days) {
@@ -446,7 +446,7 @@ export async function campaigns(mid) {
   if (MODE === 'demo') return (demoState().campaigns || []).filter((c) => c.supermarket_id === mid);
   const c = await api.sbClient();
   const { data, error } = await c.rpc('campaigns_list', { p_market: mid });
-  if (error) { const e = new Error(isMissingFn(error) ? 'As campanhas ainda não foram ativadas no banco (rode supabase/atualizacao-2026-10-sync-clientes-campanhas.sql).' : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
+  if (error) { const e = new Error(isMissingFn(error) ? 'As campanhas ainda não foram ativadas no banco (rode supabase/atualizacoes/atualizacao-2026-10-sync-clientes-campanhas.sql).' : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
   return data;
 }
 export async function saveCampaign(p) {
@@ -495,7 +495,7 @@ export async function marketEvents(mid) {
   }
   const c = await api.sbClient();
   const { data, error } = await c.rpc('market_events', { p_market: mid });
-  if (error) { const e = new Error(isMissingFn(error) ? 'As datas especiais ainda não foram ativadas no banco (rode supabase/atualizacao-2026-10-datas-especiais.sql).' : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
+  if (error) { const e = new Error(isMissingFn(error) ? 'As datas especiais ainda não foram ativadas no banco (rode supabase/atualizacoes/atualizacao-2026-10-datas-especiais.sql).' : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
   return data;
 }
 export async function setEventProducts(slug, mid, items) {
@@ -508,5 +508,14 @@ export async function setEventProducts(slug, mid, items) {
   const c = await api.sbClient();
   const { data, error } = await c.rpc('market_event_products_set', { p_slug: slug, p_market: mid, p_items: items });
   if (error) throw new Error(error.message);
+  return data;
+}
+
+// ---------------------------------------------------------------- loja online do mercado ("comprar esta lista")
+export async function setShopUrl(mid, url) {
+  if (MODE === 'demo') { const d = demoState(); d.shopUrls ||= {}; d.shopUrls[mid] = url || null; saveDemo(d); return url; }
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc('market_set_shop_url', { p_market: mid, p_url: url });
+  if (error) throw new Error(isMissingFn(error) ? 'Falta a administração atualizar o banco (atualizacao-2026-10-push-uso-lgpd.sql).' : error.message);
   return data;
 }

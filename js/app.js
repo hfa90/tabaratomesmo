@@ -4,7 +4,7 @@ import * as api from './api.js';
 import { lineChart } from './chart.js';
 import {
   S, $, $$, esc, brl, pct, km, reduceMotion, haversine, isOn, visiblePrices,
-  initials, logo, logoFull, priceTag, changeBadge, stepper, hooks, ago, media, promoPill,
+  initials, logo, logoFull, priceTag, changeBadge, stepper, hooks, ago, media, promoPill, trust, trustTag,
 } from './core.js';
 import * as rancho from './rancho.js';
 import * as fiscal from './fiscal.js';
@@ -32,6 +32,8 @@ import * as campanhas from './campanhas.js';
 import * as especial from './especial.js';
 import { parse as parseSpeech, match as fuzzyMatch } from './voice.js';
 import './fotopreco.js';
+import * as push from './push.js';
+import './privacidade.js';
 
 
 function card(p, i) {
@@ -54,7 +56,7 @@ function card(p, i) {
       <p>${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</p>
     </div>
     <div class="card__price">${priceTag(best.price)}${best.regular ? `<s class="was">${brl(best.regular)}</s>` : ''}${trend}${promo ? promoPill(promo) : ''}${perUnitBadge(p.unit, best.price)}</div>
-    <div class="card__where">${logo(bm, 'xs')}<span>${esc(bm.name)}${nb ? ` · ${km(nb.km)}` : ''}</span></div>
+    <div class="card__where">${logo(bm, 'xs')}<span>${esc(bm.name)}${nb ? ` · ${km(nb.km)}` : ''}</span>${trustTag(best)}</div>
     <footer class="card__foot">
       <span class="card__others">${others.length ? `+${others.length} ${others.length > 1 ? 'mercados' : 'mercado'}, até ${brl(others[others.length - 1].price)}` : 'Só neste mercado'}</span>
       ${stepper(p.id)}
@@ -355,7 +357,7 @@ async function openProduct(pid) {
                 <div class="bar__meta">
                   <span>${j === 0 ? 'Menor preço' : `+${brl(x.price - best.price)} (${pct((x.price / best.price - 1) * 100)})`}</span>
                   ${ch != null && Math.abs(ch) >= 0.5 ? `<span class="${ch < 0 ? 'down' : 'up'}">${ch < 0 ? '▼' : '▲'} ${Math.abs(ch).toFixed(1).replace('.', ',')}% em 7 dias</span>` : ''}
-                  ${x.src === 'comunidade' ? `<span>informado por vizinhos ${ago(x.at)}</span>` : ''}
+                  ${trust(x) ? `<span class="trust-line trust--${trust(x).level}"><i aria-hidden="true"></i>${esc(trust(x).when)}, ${esc(trust(x).src)}</span>` : ''}
                   ${n ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${n.store.lat},${n.store.lng}" target="_blank" rel="noopener" data-route="${m.id}">${esc(n.store.neighborhood)}, ${km(n.km)}</a>` : ''}
                 </div>
               </div>
@@ -385,7 +387,7 @@ async function openProduct(pid) {
         ${S.list.get(p.id) ? stepper(p.id) : `<button class="btn btn--primary" data-add="${p.id}">Adicionar ao rancho</button>`}
         <button class="btn btn--ghost" data-report="${p.id}">Viu outro preço?</button>
       </div>
-      <p class="muted small">Atualizado ${new Date(p.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}. ${api.MODE === 'demo' ? 'Dados de demonstração.' : ''}</p>
+      <p class="muted small pd__trust"><span class="trust-legend"><i class="trust--fresh"></i>até 2 dias <i class="trust--ok"></i>até 1 semana <i class="trust--old"></i>mais antigo, pode ter mudado</span>${api.MODE === 'demo' ? ' Dados de demonstração.' : ''}</p>
     </div>`;
   $('#productSheet').dataset.pid = pid;
   openSheet('#productSheet');
@@ -751,6 +753,7 @@ function routeNow() {
   if (view === 'ofertas') renderSaveStrip();
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === (view === 'fila' ? 'carrinho' : view)));
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+  if (view !== lastView) track('screen', { query: view }); // painel de uso da administração
   lastView = view;
   campanhas.onRoute();
 }
@@ -970,6 +973,17 @@ async function boot() {
     if (location.hash === '#lista') renderList();
   });
   await api.initAuth();
+
+  // chegou tocando num aviso do celular
+  try {
+    const q = new URLSearchParams(location.search); const av = q.get('aviso');
+    if (av) {
+      track('push_open', { query: av, campaign_id: q.get('camp') || null });
+      if (q.get('camp')) track('camp_click', { campaign_id: q.get('camp') });
+      history.replaceState(null, '', location.pathname + location.hash);
+    }
+  } catch {}
+  push.refresh(6000); // mantém em dia o que o servidor acompanha (avisos com o site fechado)
 
   api.onNewPrice((row) => {
     const p = S.products.find((x) => x.id === row.product_id); if (!p) return;

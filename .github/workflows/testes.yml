@@ -1,0 +1,55 @@
+# Testes automáticos: rodam a cada envio (push) e em cada pedido de mudança (pull request).
+# 1. Banco: instala o schema.sql inteiro duas vezes num Postgres limpo e roda tests/sql/testes.sql
+# 2. Site: abre as páginas num navegador de celular e de computador (tests/e2e) com dados de demonstração
+name: Testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  banco:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Imitação do Supabase
+        run: psql -v ON_ERROR_STOP=1 -q -f tests/sql/mock-supabase.sql
+      - name: schema.sql (1ª vez)
+        run: psql -v ON_ERROR_STOP=1 -q -f supabase/schema.sql
+      - name: schema.sql (2ª vez, tem que rodar de novo sem erro)
+        run: psql -v ON_ERROR_STOP=1 -q -f supabase/schema.sql
+      - name: Testes do banco
+        run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes.sql
+
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+        env:
+          CI: '1'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: relatorio-dos-testes
+          path: test-results/
+          retention-days: 7

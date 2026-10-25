@@ -415,3 +415,22 @@ body.portal { padding-bottom: 0; }
 .evp-row__t small { color: var(--muted); font-size: .76rem; }
 .evp-row__p { display: inline-flex; align-items: center; gap: 4px; font-size: .8rem; color: var(--muted); }
 .form .evp-row__p input { width: 84px !important; height: 34px !important; padding: 0 8px !important; }
+
+/* ---------- admin › Uso do site ---------- */
+@media (min-width: 900px) { #uso .kpis { grid-template-columns: repeat(6, 1fr); } }
+.uso-weeks { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; align-items: end; height: 190px; }
+.uso-w { display: grid; grid-template-rows: 1fr auto auto; gap: 4px; height: 100%; text-align: center; font-size: .78rem; }
+.uso-w__b { align-self: end; height: var(--h); min-height: 4px; border-radius: 8px 8px 3px 3px; background: var(--brand); position: relative; overflow: hidden; }
+.uso-w__b i { position: absolute; left: 0; right: 0; top: 0; height: var(--n); background: color-mix(in srgb, var(--brand) 40%, var(--surface)); }
+.uso-w small { color: var(--muted); }
+.uso-low { margin: 4px 0 2px; }
+.uso-c { display: inline-block; min-width: 46px; padding: 3px 8px; border-radius: 8px; font-weight: 700; background: color-mix(in srgb, var(--brand) calc(var(--a) * 70%), transparent); }
+/* ---------- admin › Saúde do banco ---------- */
+.saude-ok { border-left: 4px solid #1BAF7A; }
+.saude-miss { border-left: 4px solid #E0A100; }
+.saude-ok h2, .saude-miss h2 { margin: 0 0 6px; font-size: 1.15rem; }
+.saude-dot { font-style: normal; white-space: nowrap; flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: .8rem; font-weight: 700; background: var(--surface-2); color: var(--muted); }
+.saude-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.saude-dot.is-ok { color: #0E7A45; background: color-mix(in srgb, #1BAF7A 14%, transparent); }
+.saude-dot.is-bad { color: #9A5B00; background: color-mix(in srgb, #E0A100 18%, transparent); }
+#uso, #saude { display: grid; gap: 14px; }

@@ -379,7 +379,7 @@ export async function proteinWeekday() {
 }
 
 // ---------------------------------------------------------------- rancho (lista mensal)
-// geração das listas: muda quando a pessoa zera o histórico (supabase/atualizacao-2026-10-zerar-historico.sql).
+// geração das listas: muda quando a pessoa zera o histórico (supabase/atualizacoes/atualizacao-2026-10-zerar-historico.sql).
 // null = banco sem a coluna ainda (comportamento antigo)
 let listGen = null;
 export function setListGen(g) { listGen = Number.isFinite(Number(g)) ? Number(g) : null; }
@@ -637,7 +637,7 @@ off.handle('track', trackLive);
 off.handle('ean', eanLive);
 off.handle('photo', photoLive);
 
-// ---------------------------------------------------------------- lista da família (supabase/atualizacao-2026-10-lista-familia.sql)
+// ---------------------------------------------------------------- lista da família (supabase/atualizacoes/atualizacao-2026-10-lista-familia.sql)
 const famErr = (error) => { const e = new Error(error.message); e.code = /function|PGRST202|42883/i.test(`${error.code} ${error.message}`) ? 'sem_funcao' : error.code; return e; };
 const famRpc = async (fn, args) => {
   if (MODE === 'demo') { const e = new Error('demo'); e.code = 'sem_funcao'; throw e; }
@@ -746,3 +746,21 @@ export async function loadEvent() {
     return { event: evs[0], items: items || [] };
   } catch { return null; }
 }
+
+// ---------------------------------------------------------------- rodada final: avisos com o site fechado, uso, privacidade
+// (supabase/atualizacoes/atualizacao-2026-10-push-uso-lgpd.sql)
+const rpcErr = (error) => { const e = new Error(error.message); e.code = /function|PGRST202|42883/i.test(`${error.code} ${error.message}`) ? 'sem_funcao' : error.code; return e; };
+async function rpc(fn, args, ms = 10000) {
+  if (MODE !== 'live') { const e = new Error('Disponível só com o banco no ar.'); e.code = 'demo'; throw e; }
+  const c = await client();
+  const { data, error } = await withTimeout(c.rpc(fn, args), ms);
+  if (error) throw rpcErr(error);
+  return data;
+}
+export const pushSubscribe = (p) => rpc('push_subscribe', { p });
+export const pushUnsubscribe = (endpoint) => rpc('push_unsubscribe', { p_endpoint: endpoint });
+export const myDataExport = () => rpc('my_data_export', {}, 20000);
+export const deleteMyAccount = (confirm) => rpc('delete_my_account', { p_confirm: confirm });
+export const adminUsage = (days = 30) => rpc('admin_usage', { p_days: days }, 20000);
+export const dbHealth = () => rpc('db_health', {});
+export const marketSetShopUrl = (market, url) => rpc('market_set_shop_url', { p_market: market, p_url: url });
