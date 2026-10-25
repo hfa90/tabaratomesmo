@@ -109,8 +109,8 @@ async function renderUso() {
     `<div class="row-actions"><div class="seg" role="radiogroup" aria-label="Período">${[[7, '7 dias'], [30, '30 dias'], [90, '90 dias']].map(([d, l]) => `<button role="radio" aria-checked="${st.usoDays === d}" data-uso-days="${d}">${l}</button>`).join('')}</div></div>`)
     + '<div id="uso"><div class="skeleton" style="height:420px"></div></div>';
   let U;
-  try { U = await A.usage(st.usoDays); }
-  catch (e) { $('#uso').innerHTML = `<p class="note">${/admin_usage|PGRST202|could not find/i.test(e.message) ? 'Falta rodar <code>supabase/atualizacoes/atualizacao-2026-10-push-uso-lgpd.sql</code> no Supabase. Veja <a class="linkish" href="#saude">Saúde do banco</a>.' : esc(e.message)}</p>`; return; }
+  try { U = await A.usage(st.usoDays); if (!$('#uso')) return; }
+  catch (e) { if (!$('#uso')) return; $('#uso').innerHTML = `<p class="note">${/admin_usage|PGRST202|could not find/i.test(e.message) ? 'Falta rodar <code>supabase/atualizacoes/atualizacao-2026-10-push-uso-lgpd.sql</code> no Supabase. Veja <a class="linkish" href="#saude">Saúde do banco</a>.' : esc(e.message)}</p>`; return; }
   const act = U.active_30 || 1;
   const screens = U.features.filter((f) => !f.name.includes(':'));
   const tools = U.features.filter((f) => f.name.startsWith('ferramenta:'));
@@ -151,7 +151,7 @@ async function renderSaude() {
   $('#ptMain').innerHTML = head('Saúde do banco', 'Confere se todas as atualizações do banco foram rodadas e se os avisos com o site fechado estão ligados.')
     + '<div id="saude"><div class="skeleton" style="height:300px"></div></div>';
   let H;
-  try { H = await A.dbHealth(); } catch (e) { $('#saude').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
+  try { H = await A.dbHealth(); if (!$('#saude')) return; } catch (e) { if (!$('#saude')) return; $('#saude').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
   if (!H) {
     $('#saude').innerHTML = `<section class="panel saude-miss"><h2>Falta rodar a atualização mais nova</h2>
       <p>Abra o Supabase › <b>SQL Editor</b>, cole o arquivo <code>supabase/atualizacoes/atualizacao-2026-10-push-uso-lgpd.sql</code> e clique em <b>Run</b>. Depois volte aqui.</p>
@@ -187,7 +187,8 @@ async function renderOverview() {
     `<div class="row-actions"><div class="seg" role="radiogroup" aria-label="Período">${[[1, 'Hoje'], [7, '7 dias'], [30, '30 dias'], [90, '90 dias'], [365, '12 meses']].map(([d, l]) => `<button role="radio" aria-checked="${st.days === d}" data-days="${d}">${l}</button>`).join('')}</div></div>`)
     + '<div id="ov"><div class="skeleton" style="height:420px"></div></div>';
   let D;
-  try { D = await A.overview(st.days); st.overview = D; } catch (e) { $('#ov').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
+  try { D = await A.overview(st.days); st.overview = D; } catch (e) { if ($('#ov')) $('#ov').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
+  if (!$('#ov')) return; // a pessoa já trocou de seção
   const K = D.kpis;
   const days = D.daily || [];
   const t = (x) => new Date(x.d + 'T12:00').getTime();
