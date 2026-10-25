@@ -256,7 +256,9 @@ function prefsPanel() {
   return `<section class="panel"><div class="panel__head"><h2>Preferências</h2></div><ul class="pref-list">
     ${row('haptics', 'Vibrar ao tocar', 'Uma vibração curta confirma cada ação (no Android).', hap)}
     ${row('notify', 'Avisos de preço', canN ? (Notification.permission === 'denied' ? 'Bloqueado no navegador: libere nas permissões do site.' : 'Avisamos no celular quando um favorito baixar.') : 'Este navegador não mostra avisos.', notif, !canN || Notification.permission === 'denied')}
-  </ul></section>`;
+  </ul>
+  <div class="pref-reset"><span><b>Zerar meu histórico</b><small class="muted">Recomeçar do zero, como se fosse a primeira vez.</small></span>
+    <button class="btn btn--danger btn--sm" data-zerar="open">Zerar</button></div></section>`;
 }
 document.addEventListener('change', async (e) => {
   const k = e.target.dataset?.pref; if (!k) return;

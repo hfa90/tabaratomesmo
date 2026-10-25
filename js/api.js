@@ -376,12 +376,19 @@ export async function proteinWeekday() {
 }
 
 // ---------------------------------------------------------------- rancho (lista mensal)
+// geração das listas: muda quando a pessoa zera o histórico (supabase/atualizacao-2026-10-zerar-historico.sql).
+// null = banco sem a coluna ainda (comportamento antigo)
+let listGen = null;
+export function setListGen(g) { listGen = Number.isFinite(Number(g)) ? Number(g) : null; }
+
 export async function loadRancho(month) {
   if (MODE === 'demo') return null;
   const c = await client();
-  const { data, error } = await c.from('shopping_lists')
+  let q = c.from('shopping_lists')
     .select('id, name, month, status, completed_at, shopping_list_items(product_id, qty, checked)')
-    .eq('month', month + '-01').maybeSingle();
+    .eq('month', month + '-01');
+  if (listGen != null) q = q.eq('gen', listGen);
+  const { data, error } = await q.maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -395,9 +402,11 @@ export async function saveRancho(meta, items) {
     best_total: meta.bestTotal || null, savings: meta.savings ?? null, updated_at: new Date().toISOString(),
   };
   const extra = { base_total: meta.baseTotal ?? null, items_count: items.length, bought_market: meta.bought ?? null, spent: meta.spent ?? null };
-  let { data: list, error } = await c.from('shopping_lists').upsert({ ...row, ...extra }, { onConflict: 'user_id,month' }).select('id').single();
+  if (listGen != null) row.gen = listGen;
+  const conflict = listGen != null ? 'user_id,month,gen' : 'user_id,month';
+  let { data: list, error } = await c.from('shopping_lists').upsert({ ...row, ...extra }, { onConflict: conflict }).select('id').single();
   // banco sem as colunas novas: grava só o básico
-  if (error && /column|PGRST204/i.test(error.message + error.code)) ({ data: list, error } = await c.from('shopping_lists').upsert(row, { onConflict: 'user_id,month' }).select('id').single());
+  if (error && /column|PGRST204/i.test(error.message + error.code)) ({ data: list, error } = await c.from('shopping_lists').upsert(row, { onConflict: conflict }).select('id').single());
   if (error) throw error;
   await c.from('shopping_list_items').delete().eq('list_id', list.id);
   if (items.length) {
@@ -453,6 +462,7 @@ export async function myRanchos() {
   const c = await client();
   const { data, error } = await c.from('shopping_lists')
     .select('month, name, status, completed_at, best_market, best_total, savings, base_total, bought_market, spent, items_count')
+    .match(listGen != null ? { gen: listGen } : {})
     .order('month', { ascending: false }).limit(24);
   if (error) throw error;
   return data;
@@ -461,7 +471,7 @@ export async function myRanchos() {
 export async function setRanchoBought(month, fields) {
   if (MODE === 'demo') return;
   const c = await client();
-  const { error } = await c.from('shopping_lists').update(fields).eq('month', month + '-01');
+  const { error } = await c.from('shopping_lists').update(fields).match({ month: month + '-01', ...(listGen != null ? { gen: listGen } : {}) });
   if (error) throw error;
 }
 
@@ -644,4 +654,17 @@ export async function familyChannel(code, onMsg) {
   const ch = c.channel(`familia-${code}`, { config: { broadcast: { self: false } } });
   ch.on('broadcast', { event: 'sync' }, ({ payload }) => onMsg(payload)).subscribe();
   return { send: (payload) => ch.send({ type: 'broadcast', event: 'sync', payload }), close: () => c.removeChannel(ch) };
+}
+
+// ---------------------------------------------------------------- zerar o histórico da pessoa (o banco guarda tudo para os painéis)
+export async function resetHistory() {
+  if (MODE === 'demo') return { gen: null };
+  const c = await client();
+  const { data, error } = await withTimeout(c.rpc('reset_my_history'));
+  if (error) {
+    const e = new Error(error.message);
+    e.code = /function|PGRST202|42883/i.test(`${error.code} ${error.message}`) ? 'sem_funcao' : error.code;
+    throw e;
+  }
+  return data;
 }

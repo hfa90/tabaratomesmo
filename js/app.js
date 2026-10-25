@@ -26,6 +26,7 @@ import './fx.js';
 import * as alerts from './alerts.js';
 import './resumo.js';
 import * as familia from './familia.js';
+import './zerar.js';
 import { parse as parseSpeech, match as fuzzyMatch } from './voice.js';
 import './fotopreco.js';
 
@@ -927,6 +928,7 @@ async function boot() {
   api.onAuth(async (user) => {
     S.user = user;
     S.profile = user ? await api.getProfile().catch(() => null) : null;
+    api.setListGen(S.profile?.history_gen); // listas só da "geração" atual (depois de zerar o histórico)
     S.favs = new Set(user ? await api.loadFavorites().catch(() => []) : []);
     if (user && S.profile?.transport) { const m = rancho.MODES[S.profile.transport]; if (m && S.transport.mode !== S.profile.transport) S.transport = { mode: S.profile.transport, value: m.value }; }
     if (user && S.profile?.home_lat && !S.home) S.home = { lat: S.profile.home_lat, lng: S.profile.home_lng, label: S.profile.home_label || S.profile.neighborhood };
