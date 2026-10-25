@@ -62,14 +62,14 @@ create index if not exists events_campaign on public.events (campaign_id, kind) 
 alter table public.events drop constraint if exists events_kind_check;
 alter table public.events add constraint events_kind_check check (kind in
   ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool',
-   'camp_view','camp_click','camp_close','camp_notify'));
+   'camp_view','camp_click','camp_close','camp_notify','screen','push_on','push_open'));
 
 create or replace function public.track(p_events jsonb)
 returns int language plpgsql security definer set search_path = public as $$
 declare
   e jsonb; n int := 0; pf profiles; v_nb text; v_age text;
   kinds text[] := array['search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool',
-                        'camp_view','camp_click','camp_close','camp_notify'];
+                        'camp_view','camp_click','camp_close','camp_notify','screen','push_on','push_open'];
 begin
   if jsonb_typeof(p_events) <> 'array' or jsonb_array_length(p_events) > 50 then return 0; end if;
   if not setting_on('tracking_enabled') then return 0; end if;

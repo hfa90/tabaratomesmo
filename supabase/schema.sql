@@ -371,7 +371,12 @@ create table if not exists public.shopping_lists (
   updated_at   timestamptz not null default now(),
   completed_at timestamptz
 );
-create unique index if not exists shopping_lists_user_month on public.shopping_lists (user_id, month);
+-- (depois do "zerar histórico" a chave passa a ser user_id, month, gen: não recria a antiga num banco que já tem gen)
+do $$ begin
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'shopping_lists' and column_name = 'gen') then
+    create unique index if not exists shopping_lists_user_month on public.shopping_lists (user_id, month);
+  end if;
+end $$;
 
 create table if not exists public.shopping_list_items (
   list_id    uuid not null references public.shopping_lists(id) on delete cascade,
@@ -1245,7 +1250,8 @@ create table if not exists public.events (
 alter table public.events add column if not exists ad_id bigint;
 alter table public.events drop constraint if exists events_kind_check;
 alter table public.events add constraint events_kind_check check (kind in
-  ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool'));
+  ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool',
+   'camp_view','camp_click','camp_close','camp_notify','screen','push_on','push_open'));
 create index if not exists events_ad on public.events (ad_id, kind) where ad_id is not null;
 create index if not exists events_kind_time on public.events (kind, created_at desc);
 create index if not exists events_market on public.events (supermarket_id, created_at desc);
@@ -3149,14 +3155,14 @@ create index if not exists events_campaign on public.events (campaign_id, kind) 
 alter table public.events drop constraint if exists events_kind_check;
 alter table public.events add constraint events_kind_check check (kind in
   ('search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool',
-   'camp_view','camp_click','camp_close','camp_notify'));
+   'camp_view','camp_click','camp_close','camp_notify','screen','push_on','push_open'));
 
 create or replace function public.track(p_events jsonb)
 returns int language plpgsql security definer set search_path = public as $$
 declare
   e jsonb; n int := 0; pf profiles; v_nb text; v_age text;
   kinds text[] := array['search','view','add','route','rancho_done','bought','promo_view','ad_view','ad_reveal','ad_click','cart_item','queue_open','store_visit','scan','tool',
-                        'camp_view','camp_click','camp_close','camp_notify'];
+                        'camp_view','camp_click','camp_close','camp_notify','screen','push_on','push_open'];
 begin
   if jsonb_typeof(p_events) <> 'array' or jsonb_array_length(p_events) > 50 then return 0; end if;
   if not setting_on('tracking_enabled') then return 0; end if;

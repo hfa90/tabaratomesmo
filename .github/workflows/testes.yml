@@ -32,6 +32,10 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -q -f supabase/schema.sql
       - name: schema.sql (2ª vez, tem que rodar de novo sem erro)
         run: psql -v ON_ERROR_STOP=1 -q -f supabase/schema.sql
+      - name: schema.sql de novo com dados de um banco em uso
+        run: |
+          psql -v ON_ERROR_STOP=1 -q -f tests/sql/dados-reais.sql
+          psql -v ON_ERROR_STOP=1 -q -f supabase/schema.sql
       - name: Testes do banco
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes.sql
 
