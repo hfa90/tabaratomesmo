@@ -671,7 +671,22 @@ function renderSaveStrip() {
 // ======================================================================
 //  Rotas
 // ======================================================================
+// ordem das telas: define se a nova página entra pela direita (avançar) ou pela esquerda (voltar)
+const VIEW_ORDER = { inicio: 0, ofertas: 1, refeicoes: 2, lista: 3, carrinho: 4, fila: 5, notas: 6, mapa: 7, conta: 8 };
+let lastView = null;
 function route() {
+  const next = currentView();
+  // desliza entre páginas (View Transitions); onde não houver, troca na hora
+  if (lastView && next !== lastView && document.startViewTransition && !reduceMotion && !document.hidden) {
+    document.documentElement.dataset.dir = (VIEW_ORDER[next] ?? 1) >= (VIEW_ORDER[lastView] ?? 1) ? 'fwd' : 'back';
+    document.startViewTransition(() => routeNow());
+  } else routeNow();
+}
+function currentView() {
+  const v = (location.hash || S.firstView || (api.store.get('tb.seenHome', null) ? '#ofertas' : '#inicio')).slice(1).split('?')[0];
+  return ['inicio', 'ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila', 'notas', 'refeicoes'].includes(v) ? v : (v === 'completar' ? 'conta' : 'ofertas');
+}
+function routeNow() {
   // sem endereço: quem chega pela primeira vez vê a página inicial; quem já conhece vai direto às ofertas
   S.firstView ??= api.store.get('tb.seenHome', null) ? '#ofertas' : '#inicio';
   let v = (location.hash || S.firstView).slice(1).split('?')[0];
@@ -691,7 +706,19 @@ function route() {
   if (view === 'ofertas') renderSaveStrip();
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === (view === 'fila' ? 'carrinho' : view)));
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+  lastView = view;
 }
+
+// ---------------------------------------------------------------- tela de carregamento
+const splashStart = performance.now();
+function hideSplash() {
+  const el = $('#splash'); if (!el || el.classList.contains('is-out')) return;
+  // fica o tempo mínimo da animação na primeira abertura; nas seguintes da mesma sessão, sai assim que der
+  let again = false; try { again = !!sessionStorage.getItem('tb.splash'); sessionStorage.setItem('tb.splash', '1'); } catch {}
+  const wait = again || reduceMotion ? 0 : Math.max(0, 1100 - (performance.now() - splashStart));
+  setTimeout(() => { el.classList.add('is-out'); setTimeout(() => el.remove(), 450); }, wait);
+}
+setTimeout(hideSplash, 8000); // nunca fica preso na tela de carregamento
 
 // ======================================================================
 //  Toasts
@@ -847,7 +874,7 @@ async function boot() {
 
   if (S.pos) { computeNearest(); $('#locLabel').textContent = S.pos.label || 'Minha localização'; $('#locBtn').classList.add('is-set'); }
   rancho.meta();
-  renderChips(); renderNearby(); renderDeals(); renderGrid(); renderSaveStrip(); route();
+  renderChips(); renderNearby(); renderDeals(); renderGrid(); renderSaveStrip(); route(); hideSplash();
   if (location.hash === '#refeicoes') refeicoes.render();
   fiscal.renderHome(); fiscal.checkAtStore();
   ajudantes.renderHub();
@@ -901,7 +928,7 @@ async function boot() {
 }
 
 boot().catch((e) => {
-  console.error(e);
+  console.error(e); hideSplash();
   $('#productGrid').innerHTML = `<p class="empty">Não foi possível carregar os preços. Verifique sua conexão e recarregue a página.</p>`;
 });
 

@@ -2,11 +2,16 @@
   "name": "Tá Barato Mesmo?",
   "short_name": "Tá Barato",
   "description": "Compare preços de supermercados em Manaus.",
-  "start_url": "./#ofertas",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#F6F6F3",
+  "background_color": "#0F5A3E",
   "theme_color": "#FFFFFF",
   "lang": "pt-BR",
-  "icons": [{ "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "icons": [
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
 }

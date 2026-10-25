@@ -1905,3 +1905,64 @@ body:has(#siteBanner) #profileBanner { display: none !important; }
 .more[open] > summary { margin-bottom: 8px; }
 .kind__i { background: var(--brand-soft) !important; color: var(--brand) !important; }
 .kind__i svg.i { width: 24px; height: 24px; }
+
+/* =====================================================================
+   Marca: etiqueta com "visto" + nome em dois tons
+   ===================================================================== */
+.brand__mark { width: 34px; height: 34px; flex: none; display: block; filter: drop-shadow(0 3px 6px rgba(11, 74, 51, .25)); transition: transform .2s; }
+.brand__mark svg { width: 100%; height: 100%; display: block; }
+.brand:hover .brand__mark { transform: rotate(-6deg) scale(1.05); }
+.brand__name { font: 800 1.08rem/1 var(--display) !important; letter-spacing: -.025em; color: var(--ink); }
+.brand__name em { font-style: normal; color: var(--brand); }
+@media (max-width: 360px) { .brand__name em { display: none; } }
+
+/* =====================================================================
+   Tela de carregamento
+   ===================================================================== */
+.splash { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: radial-gradient(120% 90% at 50% 30%, #16805A 0%, #0F5A3E 55%, #0A3F2C 100%); color: #fff; transition: opacity .4s ease, visibility .4s; }
+.splash.is-out { opacity: 0; visibility: hidden; }
+.splash__in { display: grid; justify-items: center; gap: 10px; text-align: center; padding: 24px; }
+.splash__mark { width: 96px; height: 96px; border-radius: 26px; box-shadow: 0 20px 50px -18px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08); animation: sp-pop .55s cubic-bezier(.2,1.4,.4,1) both; }
+.splash__tag { transform-origin: 24px 24px; transform: rotate(-14deg); animation: sp-swing 1.1s cubic-bezier(.3,1.6,.5,1) .15s both; }
+.splash__check { stroke-dasharray: 1; stroke-dashoffset: 1; animation: sp-draw .45s ease-out .55s forwards; }
+.splash__name { margin-top: 8px; font: 800 1.6rem/1 var(--display); letter-spacing: -.03em; animation: sp-up .5s ease-out .3s both; }
+.splash__name em { font-style: normal; color: #FFD43B; }
+.splash__msg { font-size: .92rem; opacity: .8; animation: sp-up .5s ease-out .45s both; }
+.splash__bar { margin-top: 10px; width: 140px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.18); overflow: hidden; animation: sp-up .5s ease-out .5s both; }
+.splash__bar i { display: block; width: 40%; height: 100%; border-radius: inherit; background: #FFD43B; animation: sp-bar 1.1s ease-in-out infinite; }
+@keyframes sp-pop { from { transform: scale(.6); opacity: 0; } }
+@keyframes sp-swing { 0% { transform: rotate(-60deg); } 100% { transform: rotate(-14deg); } }
+@keyframes sp-draw { to { stroke-dashoffset: 0; } }
+@keyframes sp-up { from { opacity: 0; transform: translateY(8px); } }
+@keyframes sp-bar { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+@media (prefers-reduced-motion: reduce) { .splash *, .splash { animation: none !important; } .splash__check { stroke-dashoffset: 0; } }
+
+/* =====================================================================
+   Deslizar ao trocar de página (View Transitions). Topo e barra ficam parados.
+   ===================================================================== */
+.topbar { view-transition-name: topbar; }
+.tabbar { view-transition-name: tabbar; }
+main#app { view-transition-name: page; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+::view-transition-old(page) { animation: vt-out-l .16s cubic-bezier(.4,0,1,1) both; }
+::view-transition-new(page) { animation: vt-in-r .3s cubic-bezier(.2,.8,.2,1) .06s both; }
+:root[data-dir="back"]::view-transition-old(page) { animation-name: vt-out-r; }
+:root[data-dir="back"]::view-transition-new(page) { animation-name: vt-in-l; }
+@keyframes vt-in-r { from { opacity: 0; transform: translateX(36px); } }
+@keyframes vt-in-l { from { opacity: 0; transform: translateX(-36px); } }
+@keyframes vt-out-l { to { opacity: 0; transform: translateX(-16px); } }
+@keyframes vt-out-r { to { opacity: 0; transform: translateX(16px); } }
+
+/* =====================================================================
+   Página ativa bem destacada
+   ===================================================================== */
+.tabbar a:not(.tab-mic) svg { box-sizing: content-box; padding: 4px 17px; border-radius: 999px; transition: background .25s, color .25s, transform .25s cubic-bezier(.2,1.4,.4,1); }
+.tabbar a:not(.tab-mic).is-active svg { background: var(--brand-soft); transform: translateY(-1px); }
+.tabbar a { transition: color .2s; }
+.tabbar a.is-active { color: var(--brand); font-weight: 800; }
+.tabbar a.is-active::after { content: ''; position: absolute; top: 0; left: 50%; width: 28px; height: 3px; margin-left: -14px; border-radius: 0 0 3px 3px; background: var(--brand); animation: tab-in .3s cubic-bezier(.2,1.4,.4,1); }
+.tabbar a.tab-mic.is-active::after { display: none; }
+.tabbar a.tab-mic.is-active .tab-mic__b { box-shadow: 0 0 0 4px var(--brand-soft), 0 6px 16px -6px rgba(15, 90, 62, .7); transform: scale(1.06); }
+.tab-mic__b { transition: transform .25s cubic-bezier(.2,1.4,.4,1), box-shadow .25s; }
+@keyframes tab-in { from { transform: scaleX(0); } }
+.topnav a.is-active { color: var(--brand) !important; background: var(--brand-soft) !important; font-weight: 700; }
