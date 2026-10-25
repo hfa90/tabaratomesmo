@@ -18,6 +18,8 @@ import * as ajudantes from './ajudantes.js';
 import * as deals from './deals.js';
 import * as off from './offline.js';
 import './cupom.js';
+import * as notas from './notas.js';
+import './fotopreco.js';
 
 
 function card(p, i) {
@@ -626,8 +628,10 @@ function renderAccount() { account.render(); }
 //  Rotas
 // ======================================================================
 function route() {
-  const v = (location.hash || '#ofertas').slice(1).split('?')[0];
-  const view = ['ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila'].includes(v) ? v : 'ofertas';
+  let v = (location.hash || '#ofertas').slice(1).split('?')[0];
+  // vindo da confirmação de e-mail: abre "completar cadastro" assim que a conta carregar
+  if (v === 'completar') { S.wantComplete = true; history.replaceState(null, '', '#conta'); v = 'conta'; if (S.user) { S.wantComplete = false; setTimeout(() => openAuth('complete'), 300); } }
+  const view = ['ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila', 'notas'].includes(v) ? v : 'ofertas';
   $$('.view').forEach((s) => (s.hidden = s.dataset.view !== view));
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === view));
   if (view === 'mapa') drawMap();
@@ -635,6 +639,7 @@ function route() {
   if (view === 'conta') renderAccount();
   if (view === 'carrinho') carrinho.render();
   if (view === 'fila') fila.render();
+  if (view === 'notas') notas.render();
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === (view === 'fila' ? 'carrinho' : view)));
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
 }
@@ -819,6 +824,8 @@ async function boot() {
     if (user && S.profile?.transport) { const m = rancho.MODES[S.profile.transport]; if (m && S.transport.mode !== S.profile.transport) S.transport = { mode: S.profile.transport, value: m.value }; }
     if (user && S.profile?.home_lat && !S.home) S.home = { lat: S.profile.home_lat, lng: S.profile.home_lng, label: S.profile.home_label || S.profile.neighborhood };
     renderProfileBanner(); renderAccount(); renderGrid(); fiscal.renderHome();
+    if (location.hash === '#notas') notas.render();
+    if (user && S.wantComplete) { S.wantComplete = false; if (!S.profile?.completed_at) setTimeout(() => openAuth('complete'), 300); }
     if (user) await rancho.syncFromServer();
     if (location.hash === '#lista') renderList();
   });

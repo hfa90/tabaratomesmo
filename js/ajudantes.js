@@ -13,6 +13,8 @@ const TOOLS = [
   { id: 'tamanho', icon: '⚖️', name: 'Qual compensa?', sub: 'Pacote grande ou pequeno', c: '#0F8A5F' },
   { id: 'promo', icon: '🏷️', name: 'Promoção vale?', sub: 'Leve 3, pague 2…', c: '#D9480F' },
   { id: 'caminho', icon: '🗺️', name: 'Caminho no mercado', sub: 'Lista na ordem dos corredores', c: '#7048E8' },
+  { id: 'fotopreco', icon: '📸', name: 'Foto do preço', sub: 'Fotografe a etiqueta e confira', c: '#C2255C' },
+  { id: 'notas', icon: '🧾', name: 'Mandar nota', sub: 'Ganhe pontos com a sua compra', c: '#0B7285' },
 ];
 
 /** fileira de ajudantes. compact = versão menor (carrinho) */
@@ -235,6 +237,8 @@ document.addEventListener('click', (e) => {
   if (d.tool) {
     const p = d.toolPid ? S.products.find((x) => x.id === Number(d.toolPid)) : null;
     if (d.tool === 'scan') return scanner.open({ mode: location.hash === '#carrinho' ? 'carrinho' : 'preco' });
+    if (d.tool === 'fotopreco') return import('./fotopreco.js').then((m) => m.open());
+    if (d.tool === 'notas') { hooks.closeSheet?.('#toolSheet'); location.hash = '#notas'; return; }
     if (d.tool === 'tamanho') return openTamanho(p);
     if (d.tool === 'promo') return openPromo(p);
     if (d.tool === 'caminho') { if (!S.list.size) hooks.toast?.('Primeiro coloque os produtos no rancho. Depois eu mostro o caminho! 🗺️'); hooks.closeSheet?.('#toolSheet'); api.store.set('tb.rmode', 'shop'); hooks.ranchoMode?.('shop'); location.hash = '#lista'; return; }

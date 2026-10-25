@@ -200,3 +200,51 @@ body.portal { padding-bottom: 0; }
   .ad-admin { grid-template-columns: minmax(0, 420px) 1fr; }
 }
 @media (min-width: 1100px) { .ad-builder { grid-template-columns: minmax(0, 1fr) 380px; } }
+
+/* =====================================================================
+   Importar encarte com IA
+   ===================================================================== */
+.en-setup { gap: 12px; }
+.en-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.en-f { display: grid; gap: 4px; font-size: .8rem; font-weight: 600; color: var(--ink-2); flex: 1; min-width: 150px; }
+.en-f select, .en-f input, .en-hint input { height: 42px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); width: 100%; }
+.en-drop { padding: 30px 16px; }
+.en-drop__i { font-size: 2.4rem; line-height: 1; }
+.en-hint summary { cursor: pointer; font-size: .85rem; color: var(--muted); padding: 4px 0; }
+.en-hint input { margin-top: 6px; }
+.en-prog { font-size: .88rem; }
+.en-pgl { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.en-pgl li { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 12px; border: 1px solid var(--line); font-size: .82rem; }
+.en-pgl img { width: 44px; height: 56px; object-fit: cover; border-radius: 6px; flex: none; background: var(--surface-2); }
+.en-pgl li > span { display: grid; flex: 1; min-width: 0; line-height: 1.25; }
+.en-pgl b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.en-pgl small { color: var(--muted); }
+.en-pgl li.is-lendo { border-color: var(--brand); background: var(--brand-soft); }
+.en-pgl li.is-lendo small::before { content: '⏳ '; }
+.en-pgl li.is-ok small::before { content: '✓ '; color: var(--brand); }
+.en-pgl li.is-erro { border-color: color-mix(in srgb, var(--up) 40%, var(--line)); }
+.en-rev { gap: 12px; }
+.en-tbl td { vertical-align: top; }
+.en-tbl tr.is-warn td { background: color-mix(in srgb, var(--tag) 12%, transparent); }
+.en-ai b { font-weight: 600; display: block; }
+.en-ai small { color: var(--muted); }
+.en-conf { font-weight: 700; color: var(--brand); }
+.en-conf.is-low { color: var(--up); }
+.en-flags { display: flex !important; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.en-flags span { font-size: .7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--tag); color: var(--tag-ink); }
+.en-prod { position: relative; min-width: 220px; }
+.en-pick { text-align: left; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-size: .85rem; width: 100%; }
+.en-pick.is-empty { border-style: dashed; color: var(--muted); }
+.en-pick:hover { border-color: var(--brand); }
+.en-new { display: grid; gap: 4px; }
+.en-new input, .en-new select { height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); font-size: .82rem; }
+.en-new .pill { justify-self: start; }
+.en-new .linkish { justify-self: start; font-size: .78rem; }
+.en-num { width: 84px; height: 34px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); text-align: right; font-variant-numeric: tabular-nums; }
+.en-popover { position: absolute; z-index: 5; left: 0; top: calc(100% - 4px); width: min(360px, 80vw); padding: 10px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-pop); display: grid; gap: 8px; }
+.en-popover input { height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); }
+.en-popover ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 240px; overflow: auto; }
+.en-popover li button { width: 100%; text-align: left; padding: 7px 10px; border-radius: 8px; font-size: .84rem; }
+.en-popover li button:hover { background: var(--brand-soft); }
+.en-go { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding-top: 4px; position: sticky; bottom: 0; background: var(--surface); padding-bottom: 6px; }
+.en-done details { margin-top: 6px; font-size: .85rem; }

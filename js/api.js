@@ -175,6 +175,9 @@ export async function initAuth() {
   } catch (e) { console.warn('[TáBarato] conta indisponível agora', e); emitAuth(null); }
 }
 
+/** página que recebe os links dos e-mails (auth.html), no mesmo endereço do site */
+export const authPage = (flow) => new URL(`auth.html?flow=${flow}`, location.href.split('#')[0]).href;
+
 export async function signUp({ name, email, password }) {
   if (MODE === 'demo') {
     const u = { id: 'demo', email, user_metadata: { full_name: name } };
@@ -186,7 +189,7 @@ export async function signUp({ name, email, password }) {
   const c = await client();
   const { data, error } = await c.auth.signUp({
     email, password,
-    options: { data: { full_name: name }, emailRedirectTo: location.origin + location.pathname },
+    options: { data: { full_name: name }, emailRedirectTo: authPage('signup') },
   });
   if (error) throw error;
   return { user: data.user, needsConfirm: !data.session };
@@ -207,7 +210,7 @@ export async function signIn({ email, password }) {
 export async function resetPassword(email) {
   if (MODE === 'demo') return;
   const c = await client();
-  const { error } = await c.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+  const { error } = await c.auth.resetPasswordForEmail(email, { redirectTo: authPage('recovery') });
   if (error) throw error;
 }
 
@@ -568,6 +571,44 @@ export async function readNfce(url) {
     const e = new Error(msg); e.code = code; throw e;
   }
   return data;
+}
+
+/** grava a nota no servidor: a função lê a Sefaz de novo e grava os preços (receipt_ingest) */
+export async function saveNfce(url, matches, supermarket_id) {
+  if (MODE === 'demo') return { saved: { demo: true, points: 20 + 2 * matches.length, prices_added: matches.length, matched: matches.length, market_confirmed: true, supermarket_id } };
+  const c = await client();
+  const { data, error } = await c.functions.invoke('nfce', { body: { url, save: true, matches, supermarket_id } });
+  if (error) {
+    let msg = error.message, code = 'erro';
+    try { const j = await error.context?.json?.(); if (j?.error) msg = j.error; if (j?.code) code = j.code; } catch {}
+    if (error.context?.status === 404) code = 'sem_funcao';
+    throw Object.assign(new Error(msg), { code });
+  }
+  return data;
+}
+
+/** notas enviadas pela pessoa (com os itens) */
+export async function myReceipts() {
+  if (MODE !== 'live') return [];
+  const c = await client();
+  const { data, error } = await c.rpc('my_receipts', { p_limit: 100 });
+  if (error) { if (/my_receipts|PGRST202|does not exist/i.test(error.message + error.code)) return []; throw error; }
+  return data || [];
+}
+
+/** preço da prateleira com a foto lida pela IA como prova */
+export async function reportPriceWithPhoto(row) {
+  if (MODE === 'demo') return reportPrice(row);
+  if (MODE === 'offline' || !navigator.onLine) return reportPrice(row);
+  const c = await client();
+  const { data, error } = await c.from('price_reports').insert(row).select('id, status, points, at_store').single();
+  if (error && /ia_reading_id|photo_url|PGRST204/i.test(error.message + error.code)) {
+    const { ia_reading_id, photo_url, ...rest } = row; return reportPrice(rest);
+  }
+  if (error) throw error;
+  // a aprovação automática acontece depois da gravação: relê o status
+  const { data: now } = await c.from('price_reports').select('status, points').eq('id', data.id).maybeSingle();
+  return { ...data, ...(now || {}) };
 }
 
 // ---------------------------------------------------------------- fila offline: como reenviar cada coisa

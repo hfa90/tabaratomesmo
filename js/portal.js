@@ -5,6 +5,7 @@ import { lineChart } from './chart.js';
 import { $, $$, esc, brl, logo, reduceMotion } from './core.js';
 import { hbars, kpi, heatmap, fmtN, pctTxt, DOW } from './viz.js';
 import * as ads from './ads.js';
+import * as encarte from './encarte.js';
 
 const st = {
   user: null, markets: [], mid: null, categories: [],
@@ -136,12 +137,24 @@ function renderPicker() {
 function route() {
   if (!st.mid) return;
   const v = (location.hash || '#painel').slice(1);
-  const view = ['painel', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos'].includes(v) ? v : 'painel';
+  const view = ['painel', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte'].includes(v) ? v : 'painel';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
-  ({ painel: renderDashboard, produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals })[view]();
+  ({ painel: renderDashboard, produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte })[view]();
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
+
+// ================================================================ ENCARTE (IA)
+function renderEncarte() {
+  const main = $('#ptMain');
+  main.innerHTML = `${banner()}<div id="encBox"></div>`;
+  const m = market();
+  encarte.mount($('#encBox'), {
+    markets: [m], fixedMarket: st.mid, categories: st.categories?.length ? st.categories : [{ slug: 'mercearia', name: 'Mercearia' }],
+    apply: (mid, rows, a, b, f) => P.encarteApply(mid, rows, a, b, f).then((r) => { st.catalog = null; st.promos = null; return r; }),
+    toast, demo: P.MODE === 'demo',
+  });
+}
 
 // ================================================================ PAINEL
 async function renderDashboard() {

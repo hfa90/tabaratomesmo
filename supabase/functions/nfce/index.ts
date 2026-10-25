@@ -4,7 +4,12 @@
 // Ou pela linha de comando: supabase functions deploy nfce
 //
 // Entrada:  POST { "url": "https://sistemas.sefaz.am.gov.br/nfceweb/consultarNFCe.jsp?p=..." }
-// Saída:    { store: { name, cnpj }, date, total, items: [{ name, code, qty, unit, unit_price, total }] }
+// Saída:    { chave, store: { name, cnpj }, date, total, items: [{ name, code, qty, unit, unit_price, total }] }
+//
+// Gravar a nota (página "Minhas notas"): POST { url, save: true, supermarket_id?, matches: [{ i, product_id }] }
+//   A função lê a Sefaz de novo aqui no servidor (os preços nunca vêm do navegador) e grava pela
+//   função SQL receipt_ingest. Exige o login do usuário no Authorization.
+import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -34,8 +39,8 @@ const money = (s = '') => {
 };
 const pick = (html: string, re: RegExp) => { const m = html.match(re); return m ? m[1] : ''; };
 
-function parse(html: string) {
-  const items: Array<Record<string, unknown>> = [];
+function parse(html: string): any {
+  const items: Array<Record<string, any>> = [];
   // layout padrão do portal da NFC-e (Sefaz AM e vários estados): <tr id="Item + 1">…</tr>
   const rows = html.split(/<tr[^>]*id=["']?Item\s*\+?\s*\d+["']?[^>]*>/i).slice(1);
   for (const raw of rows) {
@@ -54,16 +59,23 @@ function parse(html: string) {
   const total = money(pick(html, /class=["'][^"']*totalNumb txtMax[^"']*["'][^>]*>([\s\S]*?)<\/span>/i))
     ?? money(pick(html, /Valor a pagar[\s\S]{0,80}?class=["'][^"']*totalNumb[^"']*["'][^>]*>([\s\S]*?)<\/span>/i));
   const date = (clean(html).match(/Emiss[ãa]o:?\s*(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}(?::\d{2})?)/i) || [])[1] || null;
-  return { store: { name: storeName || null, cnpj }, date, total, items };
+  return { store: { name: storeName || null, cnpj }, date, total, items, chave: chaveFrom(html) };
+}
+
+// chave de acesso (44 dígitos): no parâmetro p= do QR, em chNFe=, ou escrita na página
+function chaveFrom(html: string, url?: URL) {
+  const tries = [url?.searchParams.get('p'), url?.searchParams.get('chNFe'), url?.search, clean(html).match(/Chave de acesso:?\s*([\d\s]{44,60})/i)?.[1]];
+  for (const t of tries) { const m = String(t || '').replace(/\s/g, '').match(/\d{44}/); if (m) return m[0]; }
+  return null;
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'Use POST.' }, 405);
-  let url: URL;
+  let url: URL; let body: any = {};
   try {
-    const { url: u } = await req.json();
-    url = new URL(String(u || '').trim());
+    body = await req.json();
+    url = new URL(String(body.url || '').trim());
   } catch { return json({ error: 'Link inválido.', code: 'host' }, 400); }
   if (!allowed(url)) return json({ error: 'Esse link não é de uma consulta de NFC-e da Sefaz.', code: 'host' }, 400);
 
@@ -82,9 +94,28 @@ Deno.serve(async (req: Request) => {
   }
 
   const out = parse(html);
+  out.chave = chaveFrom(html, url) || out.chave;
   if (!out.items.length) {
     const why = /captcha|recaptcha/i.test(html) ? 'A Sefaz pediu verificação (captcha) para esta nota.' : 'Não encontrei os itens nesta página da Sefaz.';
     return json({ error: why, code: 'layout' }, 422);
   }
-  return json(out);
+  if (!body.save) return json(out);
+
+  // ---- gravar: preços reais da nota, conferidos aqui no servidor
+  const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+  const { data: u } = await admin.auth.getUser(jwt);
+  if (!u?.user) return json({ error: 'Entre na sua conta para enviar a nota.', code: 'login' }, 401);
+  const pick = new Map<number, number>();
+  for (const m of Array.isArray(body.matches) ? body.matches : []) {
+    const i = Number(m?.i), pid = Number(m?.product_id);
+    if (Number.isInteger(i) && i >= 0 && i < out.items.length && Number.isInteger(pid) && pid > 0) pick.set(i, pid);
+  }
+  const payload = { ...out, supermarket_id: body.supermarket_id ?? null, items: out.items.map((it, i) => ({ ...it, product_id: pick.get(i) ?? null })) };
+  const { data, error } = await admin.rpc('receipt_ingest', { p_user: u.user.id, p: payload });
+  if (error) {
+    const dup = /já foi enviada/i.test(error.message);
+    return json({ error: error.message, code: dup ? 'duplicada' : 'gravar' }, dup ? 409 : 400);
+  }
+  return json({ ...out, saved: data });
 });

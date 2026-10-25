@@ -318,3 +318,14 @@ export async function reviewPhoto(id, approve) {
   if (MODE !== 'demo') return rpc('admin_review_photo', { p_id: id, p_approve: approve });
   const l = ls.get('tb.demoPhotos', []); if (l[id - 1]) l[id - 1].status = approve ? 'aprovada' : 'recusada'; ls.set('tb.demoPhotos', l);
 }
+
+// ---------------------------------------------------------------- encartes e notas fiscais
+export async function receiptsOverview() {
+  if (MODE === 'demo') return { total: 0, last_7d: 0, users_30d: 0, prices_added: 0, unknown_cnpj: [], unmatched: [], encartes: [] };
+  return rpc('admin_receipts_overview');
+}
+export async function setCnpj(market, raiz) { return rpc('admin_set_cnpj', { p_market: market, p_raiz: raiz }); }
+export async function encarteApply(market, rows, starts, ends, file) {
+  if (MODE === 'demo') return { total: rows.length, prices: rows.filter((r) => !r.preco_de).length, promos: rows.filter((r) => r.preco_de).length, created: rows.filter((r) => !r.product_id).length, errors: [] };
+  return rpc('encarte_apply', { p_market: market, p_rows: rows, p_starts: starts, p_ends: ends, p_file: file });
+}

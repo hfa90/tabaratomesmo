@@ -5,6 +5,7 @@ import { lineChart } from './chart.js';
 import { $, $$, esc, brl, logo, reduceMotion } from './core.js';
 import { hbars, kpi, heatmap, fmtN, downloadCSV } from './viz.js';
 import * as adsUI from './ads.js';
+import * as encarte from './encarte.js';
 
 const st = { user: null, days: 30, usersQ: '', usersFilter: 'all', usersPage: 0, repStatus: 'pendente', modTab: 'precos', prodQ: '', overview: null, markets: null, adStatus: 'pendente', ads: null };
 const PAGE = 50;
@@ -82,7 +83,7 @@ async function enter() {
 
 function route() {
   const v = (location.hash || '#geral').slice(1);
-  const views = { geral: renderOverview, mercados: renderMarkets, usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
+  const views = { geral: renderOverview, encartes: renderEncartes, mercados: renderMarkets, usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
   const view = views[v] ? v : 'geral';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
   views[view]();
@@ -292,7 +293,7 @@ async function renderModeration() {
     ${R.map((r) => { const diff = r.current_price ? (r.price / r.current_price - 1) * 100 : null; return `<tr><td class="nowrap">${dateTime(r.created_at)}</td>
       <td>${r.emoji || ''} ${esc(r.product)}<small class="muted">${esc([r.brand, r.unit].filter(Boolean).join(' · '))}</small></td><td>${esc(r.market)}</td>
       <td class="r"><b>${brl(Number(r.price))}</b>${diff != null && Math.abs(diff) >= 1 ? `<small class="${diff < 0 ? 'down' : 'up'}">${diff > 0 ? '+' : ''}${diff.toFixed(0)}%</small>` : ''}</td>
-      <td class="r">${r.current_price ? brl(Number(r.current_price)) : '–'}</td><td><small>${esc(r.email || '–')}</small>${r.at_store ? '<span class="pill pill--ok">na loja</span>' : ''}</td>
+      <td class="r">${r.current_price ? brl(Number(r.current_price)) : '–'}</td><td><small>${esc(r.email || '–')}</small>${r.at_store ? '<span class="pill pill--ok">na loja</span>' : ''}${r.photo_url ? ` <a class="pill pill--soft" href="${esc(r.photo_url)}" target="_blank" rel="noopener">📸 foto</a>` : ''}${r.note ? `<small class="muted">${esc(r.note)}</small>` : ''}</td>
       <td>${{ pendente: '<span class="pill pill--soft">Aguardando</span>', aprovado: '<span class="pill pill--ok">Aprovado</span>', rejeitado: '<span class="pill pill--warn">Recusado</span>' }[r.status]}</td>
       <td class="r nowrap">${r.status !== 'aprovado' ? `<button class="btn btn--primary btn--sm" data-rev="${r.id}" data-ok="1">Aprovar</button>` : ''} ${r.status !== 'rejeitado' ? `<button class="btn btn--ghost btn--sm" data-rev="${r.id}" data-ok="0">Recusar</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="8" class="muted center" style="padding:24px">Nada por aqui.</td></tr>'}
   </tbody></table></div>`;
@@ -317,6 +318,49 @@ async function renderPhotos() {
         : `<span class="pill ${f.status === 'aprovada' ? 'pill--ok' : 'pill--warn'}">${f.status === 'aprovada' ? 'Aprovada' : 'Recusada'}</span>`}</div>
     </article>`).join('')}</div>` : '<p class="muted small">Nenhuma foto por aqui.</p>';
 }
+
+// ================================================================ ENCARTES E NOTAS
+async function renderEncartes() {
+  const tab = st.encTab || 'encarte';
+  $('#ptMain').innerHTML = `${banner()}<div class="tabs" role="tablist" style="margin-bottom:4px">
+      <button role="tab" aria-selected="${tab === 'encarte'}" data-enctab="encarte">🗞️ Importar encarte (IA)</button>
+      <button role="tab" aria-selected="${tab === 'notas'}" data-enctab="notas">🧾 Notas fiscais</button></div><div id="encBox"></div>`;
+  if (tab === 'notas') return renderNotasAdmin();
+  const [mk, cat] = await Promise.all([st.markets ? st.markets : A.markets().then((m) => (st.markets = m)), api.loadCatalog().then((c) => c.categories).catch(() => [])]);
+  encarte.mount($('#encBox'), {
+    markets: mk.filter((m) => m.active !== false), categories: cat.length ? cat : [{ slug: 'mercearia', name: 'Mercearia' }],
+    apply: A.encarteApply, toast, demo: A.MODE === 'demo',
+  });
+}
+
+async function renderNotasAdmin() {
+  $('#encBox').innerHTML = '<div class="skeleton" style="height:300px"></div>';
+  let D;
+  try { [D] = await Promise.all([A.receiptsOverview(), st.markets ? 0 : A.markets().then((m) => (st.markets = m))]); }
+  catch (e) { $('#encBox').innerHTML = `<p class="note">${esc(e.message)}. Rode o arquivo <code>supabase/atualizacao-2026-10-notas-ia.sql</code> no SQL Editor.</p>`; return; }
+  const mk = st.markets || [];
+  $('#encBox').innerHTML = `<header class="pt-head"><div><h1>Notas fiscais</h1><p class="muted">Notas enviadas pelos usuários: preços reais lidos da Sefaz, na data e no mercado certos.</p></div></header>
+    <div class="kpis">${kpi('Notas enviadas', Number(D.total))}${kpi('Últimos 7 dias', Number(D.last_7d))}${kpi('Pessoas (30 dias)', Number(D.users_30d))}${kpi('Preços atualizados', Number(D.prices_added))}</div>
+    <section class="panel"><div class="panel__head"><h2>CNPJs ainda sem mercado</h2><small class="muted">Defina a rede e as notas desse CNPJ passam a atualizar preços (as antigas também)</small></div>
+      ${D.unknown_cnpj.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>CNPJ (raiz)</th><th>Loja na nota</th><th class="r">Notas</th><th>Rede</th><th></th></tr></thead><tbody>
+        ${D.unknown_cnpj.map((c) => `<tr><td><code>${esc(c.raiz)}</code></td><td>${esc(c.loja || '–')}</td><td class="r">${c.notas}</td>
+          <td><select data-cnpj-mk="${esc(c.raiz)}">${mk.map((m) => `<option value="${m.id}" ${m.id === c.sugestao ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></td>
+          <td class="r"><button class="btn btn--primary btn--sm" data-cnpj-set="${esc(c.raiz)}">Confirmar</button></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">Todos os CNPJs das notas já estão ligados a um mercado. 👍</p>'}
+      <form class="form form--inline" id="cnpjAdd"><label>CNPJ de uma rede (8 primeiros dígitos ou completo)<input name="c" inputmode="numeric" required /></label>
+        <label>Rede<select name="m">${mk.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></label><button class="btn btn--ghost">Adicionar</button></form></section>
+    <section class="panel"><div class="panel__head"><h2>Itens comprados que não temos no catálogo</h2><small class="muted">últimos 60 dias</small></div>
+      ${D.unmatched.length ? `<div class="tbl-wrap"><table class="tbl tbl--sm"><thead><tr><th>Como aparece na nota</th><th class="r">Vezes</th><th class="r">Preço médio</th></tr></thead><tbody>
+        ${D.unmatched.map((u) => `<tr><td>${esc(u.nome)}</td><td class="r">${u.vezes}</td><td class="r">${u.preco_medio != null ? brl(Number(u.preco_medio)) : '–'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">Nada por enquanto.</p>'}</section>
+    <section class="panel"><div class="panel__head"><h2>Encartes importados</h2></div>
+      ${D.encartes.length ? `<div class="tbl-wrap"><table class="tbl tbl--sm"><thead><tr><th>Quando</th><th>Mercado</th><th>Arquivo</th><th class="r">Itens</th><th class="r">Preços</th><th class="r">Promoções</th><th class="r">Novos</th></tr></thead><tbody>
+        ${D.encartes.map((e) => `<tr><td class="nowrap">${dateTime(e.created_at)}</td><td>${esc(e.market || '')}</td><td><small>${esc(e.file_name || '')}</small></td><td class="r">${e.rows_total}</td><td class="r">${e.prices}</td><td class="r">${e.promos}</td><td class="r">${e.created}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">Nenhum encarte importado ainda.</p>'}</section>`;
+  $('#cnpjAdd').addEventListener('submit', (e) => { e.preventDefault(); const f = e.target; run(() => A.setCnpj(Number(f.m.value), f.c.value), 'CNPJ ligado à rede.').then((ok) => ok && renderNotasAdmin()); });
+}
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-enctab], [data-cnpj-set]'); if (!t) return;
+  if (t.dataset.enctab) { st.encTab = t.dataset.enctab; return renderEncartes(); }
+  if (t.dataset.cnpjSet) { const raiz = t.dataset.cnpjSet; const m = Number($(`[data-cnpj-mk="${raiz}"]`).value); run(() => A.setCnpj(m, raiz), 'CNPJ ligado à rede.').then((ok) => ok && renderNotasAdmin()); }
+});
 
 // ================================================================ PUBLICIDADE
 async function renderAdsAdmin() {
@@ -453,6 +497,8 @@ async function renderConfig() {
     ['tracking_enabled', 'Coleta de métricas de uso', 'Desligado: buscas, visualizações e rotas deixam de ser registradas.'],
     ['ads_enabled', 'Publicidade aparece no site', 'Desligado: nenhum anúncio é mostrado, mesmo os pagos e aprovados.'],
     ['welcome_enabled', 'Boas-vindas ao chegar numa loja', 'Com a localização liberada, o site reconhece a loja pelo GPS e mostra as ofertas dela.'],
+    ['receipts_enabled', 'Usuários podem enviar notas fiscais', 'Página “Minhas notas”: a nota é lida na Sefaz e os preços entram com a data e o mercado certos.'],
+    ['ia_enabled', 'Leitor com IA', 'Importar encarte por foto/PDF, Foto do preço na prateleira e nota fiscal por foto. Precisa da chave ANTHROPIC_API_KEY na função leitor-ia.'],
   ];
   $('#cfg').innerHTML = `
     <section class="panel"><div class="panel__head"><h2>Funções do site</h2></div>

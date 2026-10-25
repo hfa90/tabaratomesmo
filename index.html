@@ -17,6 +17,13 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="css/styles.css" />
   <script>
+    // link de e-mail (confirmação, nova senha) que caiu na página inicial: manda para a página de conta
+    (function () {
+      var q = location.search, h = location.hash;
+      if (/[?&](token_hash|code)=/.test(q) || /(access_token|error_code|type=recovery|type=signup)=?/.test(h)) {
+        location.replace('auth.html' + q + h);
+      }
+    })();
     // tema claro é o padrão; o escuro é opcional e fica salvo no aparelho
     try { if (localStorage.getItem('tb.theme') === '"dark"') { document.documentElement.dataset.theme = 'dark'; document.querySelector('meta[name=theme-color]').content = '#111513'; } } catch (e) {}
   </script>
@@ -36,6 +43,7 @@
         <a href="#ofertas" data-nav="ofertas">Ofertas</a>
         <a href="#lista" data-nav="lista">Rancho do mês <b class="badge" data-list-count hidden></b></a>
         <a href="#carrinho" data-nav="carrinho">Carrinho <b class="badge" data-cart-count hidden></b></a>
+        <a href="#notas" data-nav="notas">Minhas notas</a>
         <a href="#mapa" data-nav="mapa">Mapa</a>
         <a href="#conta" data-nav="conta" id="accountLink">Entrar</a>
       </nav>
@@ -126,6 +134,11 @@
       <div id="filaView"></div>
     </section>
 
+    <!-- ===== MINHAS NOTAS (nota fiscal) ===== -->
+    <section class="view" id="view-notas" data-view="notas" hidden>
+      <div id="notasView"></div>
+    </section>
+
     <!-- ===== CONTA ===== -->
     <section class="view" id="view-conta" data-view="conta" hidden>
       <div id="accountBody"></div>
@@ -134,6 +147,7 @@
 
   <footer class="site-foot">
     <span>Tá Barato Mesmo? · Manaus</span>
+    <a href="#notas">Minhas notas</a>
     <a href="parceiros.html">Área do supermercado</a>
   </footer>
 

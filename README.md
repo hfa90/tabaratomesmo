@@ -31,6 +31,12 @@ Comparador de preços de supermercados de Manaus: Nova Era, Supermercados DB, Ve
 - **Funciona sem internet dentro do mercado** (`js/offline.js`, `sw.js`): o catálogo, os descontos e as configurações ficam salvos no aparelho a cada abertura; sem sinal, o site abre com os preços salvos e mostra uma faixa "Sem internet… preços salvos em 15/10, 18:32". Preços informados, fotos de etiqueta, códigos ensinados e eventos de uso ficam numa fila (IndexedDB) e são enviados sozinhos quando a internet volta. As bibliotecas de CDN (Supabase, leitor de código, mapa) também ficam guardadas.
 - **🧾 Conferir a nota do caixa** (`js/cupom.js` + função `supabase/functions/nfce`): depois de pagar, a pessoa lê o QR da NFC-e (Carrinho › Conferir a nota, no fim da compra ou na Fila do caixa). O app busca os itens na Sefaz e compara com o preço da etiqueta anotado no carrinho: 😀 "O caixa cobrou certinho!" ou 😬 "1 item passou mais caro: R$ 0,50 a mais", com o aviso de que vale o menor preço (Lei 10.962/2004). Mostra itens do carrinho que não aparecem na nota e permite mandar os preços reais da nota para o site (com pontos).
 - **💳 Dias de desconto** (`js/deals.js`, tabela `market_deals`): os mercados cadastram no portal (aba Descontos) descontos que se repetem, por dia da semana, seção da loja e forma de pagamento ("Terça do Hortifrúti", "5% no Pix"). O site mostra a semana na página inicial, avisa no detalhe do produto ("terça no Nova Era: 15% off, R$ 4,94") e o relatório do Rancho calcula o **melhor dia para ir**.
+- **🧾 Minhas notas** (`#notas`, `js/notas.js`): a pessoa manda a nota fiscal da compra lendo o QR com a câmera, escolhendo uma **foto, print ou PDF** (o app acha o QR na imagem com `BarcodeDetector`/jsQR e abre PDFs com pdf.js) ou colando o link. Sem QR legível, a IA lê os itens da foto.
+  - **Para a pessoa:** 20 a 150 pontos por nota (mais quando atualiza preços velhos), **+10 comparações** por nota no cadastro rápido, controle de gastos automático (mês, mercado, categoria), "estes itens hoje sairiam R$ X mais baratos no mercado Y", lista "o que você sempre compra" com o menor preço de hoje e ⭐ para ser avisado quando baixar. Funciona até sem conta (guarda no aparelho).
+  - **Para o site:** a função `nfce` relê a nota **na Sefaz, no servidor** (o navegador só diz qual item é qual produto) e grava por `receipt_ingest`: preços com a **data da compra**, no **mercado reconhecido pelo CNPJ**; a mesma nota (chave de acesso) só entra uma vez; código de barras da nota ensina o EAN; itens que ninguém achou no catálogo aparecem no admin. O CNPJ de cada rede é aprendido quando 2 pessoas indicam o mesmo mercado, ou definido em Administração › Encartes e notas (as notas antigas daquele CNPJ passam a publicar os preços).
+- **📸 Foto do preço** (ajudante na página inicial, `js/fotopreco.js`): foto do produto com a etiqueta da prateleira → a IA lê nome, marca, tamanho, preço (e o EAN impresso na etiqueta) → o app acha o produto e compara com o preço daquele mercado: 😀 confere (confirma e renova a data), 😬/🤑 mudou (manda o preço novo com a foto como prova), ❔ não existe (pede cadastro com a foto). **Na loja (GPS ≤ 500 m) com a foto lida pela IA, o preço entra no site na hora**; fora da loja, vai para a moderação com a foto.
+- **🗞️ Importar encarte com IA** (Administração › Encartes e notas, e Portal › Encarte (IA); `js/encarte.js`): fotos ou PDF de várias páginas → a IA lê cada produto, preço, "de/por", preço por kg, condições (clube, atacado) e a validade → o sistema acha cada item no catálogo (EAN, nome, marca, tamanho) → revisão só do que tem dúvida (confiança baixa, preço muito diferente do atual, produto não encontrado) → publicar: "de/por" vira **promoção** com a validade do encarte, preço normal atualiza o mercado e produtos novos são criados (`encarte_apply`).
+- **Conta**: links dos e-mails (confirmar cadastro, nova senha, troca de e-mail, convite) abrem `auth.html`, com a cara do site: criar nova senha com medidor de força, "E-mail confirmado! Bem-vindo" com atalho para completar o cadastro, e tela de "link expirado" que já pede outro.
 - **Página Você**: quanto a pessoa já economizou (total, por mês e projeção), o supermercado onde mais compra, histórico dos ranchos, conquistas, fiscal do preço e dados da conta. Funciona até sem conta (guarda no aparelho).
 - **Área do supermercado** (`parceiros.html`): cada mercado cadastra, edita e remove produtos, envia fotos reais, cria promoções **exclusivas do site** (com código para o caixa) ou **gerais da loja**, importa produtos em massa pela planilha [`assets/modelo-importacao-tabaratomesmo.xlsx`](assets/modelo-importacao-tabaratomesmo.xlsx) e acompanha métricas: buscas, buscas sem resultado, produtos e marcas mais vistos, ranking de preferência de compra (dia/semana/mês), regiões e bairros, sexo e faixa etária de quem faz o rancho, horários de pico, produtos em que está perdendo clientes e desempenho das promoções.
 - **Cadastro em duas etapas**: o cadastro rápido (nome, e-mail, senha) libera 15 comparações; o cadastro completo (celular, nascimento, bairro, mercados preferidos) libera uso sem limite. Sem cadastro: 3 comparações.
@@ -77,6 +83,23 @@ O navegador não consegue abrir a página da Sefaz direto, então a leitura da n
 3. Clique em **Deploy**. Pode deixar "Verify JWT" ligado (o site manda a chave pública).
 
 Pela linha de comando: `supabase functions deploy nfce`. Enquanto a função não existir, o app mostra "Função ainda não instalada" ao ler uma nota; no modo demonstração há uma nota de exemplo.
+
+### 1d. Atualização de outubro/2026 (notas, IA, encartes, e-mails)
+1. **Banco:** no SQL Editor, rode [`supabase/atualizacao-2026-10-notas-ia.sql`](supabase/atualizacao-2026-10-notas-ia.sql) (pode rodar de novo sem problema; o `schema.sql` já inclui tudo para instalações novas).
+2. **Funções:** publique de novo a `nfce` (agora grava a nota) e a nova `leitor-ia`:
+   ```bash
+   supabase functions deploy nfce
+   supabase functions deploy leitor-ia
+   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...      # chave da API da Anthropic (console.anthropic.com)
+   # opcional: supabase secrets set IA_MODEL=claude-sonnet-5-5
+   ```
+   Pelo painel: Edge Functions › Deploy a new function › nome `leitor-ia` › cole `supabase/functions/leitor-ia/index.ts`; a chave vai em Edge Functions › Secrets. Limite: 30 leituras por pessoa por dia (Configurações › `ia_daily_limit`); encartes só para administradores e mercados parceiros.
+3. **Login e e-mails:** o link do e-mail ia para `localhost:3000` porque o **Site URL** do projeto ainda está no padrão. Rode uma vez (Node 18+), com um token de https://supabase.com/dashboard/account/tokens:
+   ```powershell
+   $env:SUPABASE_ACCESS_TOKEN="sbp_..." ; node supabase/configurar-auth.mjs
+   ```
+   Ele define o Site URL (`https://hfa90.github.io/tabaratomesmo`, sem barra no fim), libera os endereços de retorno e troca os 6 e-mails pelos modelos de [`supabase/email-templates/`](supabase/email-templates/). Sem o script: Authentication › URL Configuration (Site URL + Redirect URLs `https://hfa90.github.io/tabaratomesmo/**`) e Authentication › Email Templates (cole cada arquivo `.html`).
+4. **Remetente (recomendado):** o e-mail padrão do Supabase tem limite baixo de envios por hora e pode cair no spam. Em Authentication › SMTP Settings, configure um SMTP próprio (Resend, Brevo, Amazon SES…) com um remetente como `nao-responda@seudominio.com.br`.
 
 ### 2. Logomarcas oficiais
 Coloque os arquivos em `assets/logos/` com estes nomes (PNG ou troque a extensão na coluna `logo_url`):
@@ -135,7 +158,16 @@ js/unitprice.js       preço por kg/L/unidade e comparação de tamanhos
 js/offline.js         cópia do catálogo no aparelho e fila de envios sem internet
 js/deals.js           dias e formas de pagamento com desconto
 js/cupom.js           conferir a nota do caixa (NFC-e)
-supabase/functions/nfce/index.ts   função que lê a página da NFC-e na Sefaz
+js/notas.js           Minhas notas: enviar nota fiscal (QR, foto, PDF), gastos e benefícios
+js/fotopreco.js       Foto do preço: etiqueta da prateleira lida pela IA
+js/encarte.js         importar encarte com IA (admin e portal)
+js/ia.js              fotos, PDFs (pdf.js), QR em imagem (jsQR) e chamada à função leitor-ia
+auth.html, js/auth-page.js, css/auth.css   página dos links dos e-mails (nova senha, confirmação)
+supabase/functions/nfce/index.ts   função que lê a página da NFC-e na Sefaz (e grava a nota)
+supabase/functions/leitor-ia/index.ts   leitor com IA: encarte, etiqueta, nota por foto
+supabase/email-templates/   e-mails de conta com a cara do site
+supabase/configurar-auth.mjs   aplica Site URL, endereços de retorno e e-mails no Supabase
+supabase/atualizacao-2026-10-notas-ia.sql   atualização do banco (notas, IA, encartes)
 js/ads.js             anúncios de curiosidade nos espaços do site
 js/portal.js          portal: painel, produtos, promoções, importação
 js/portal-api.js      dados do portal (Supabase ou demonstração)

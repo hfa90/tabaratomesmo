@@ -396,3 +396,12 @@ export async function cancelAd(id) {
   const { error } = await c.rpc('market_ad_cancel', { p_id: id });
   if (error) throw new Error(error.message);
 }
+
+// ---------------------------------------------------------------- encarte lido pela IA
+export async function encarteApply(mid, rows, starts, ends, file) {
+  if (MODE === 'demo') return { total: rows.length, prices: rows.filter((r) => !r.preco_de).length, promos: rows.filter((r) => r.preco_de).length, created: rows.filter((r) => !r.product_id).length, errors: [] };
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc('encarte_apply', { p_market: mid, p_rows: rows, p_starts: starts, p_ends: ends, p_file: file });
+  if (error) throw new Error(error.message);
+  return data;
+}

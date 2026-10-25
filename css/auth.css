@@ -1,0 +1,65 @@
+/* Página de conta (auth.html): redefinir senha, confirmar e-mail, link expirado */
+body.auth-page {
+  padding: 0; min-height: 100dvh; display: grid; grid-template-rows: auto 1fr;
+  background:
+    radial-gradient(1200px 500px at 50% -180px, color-mix(in srgb, var(--brand) 22%, transparent), transparent 70%),
+    var(--bg);
+}
+.au-top { display: flex; justify-content: center; padding: 22px 16px 8px; }
+.au-top .brand { margin: 0; }
+.au-wrap { display: grid; align-content: start; justify-items: center; gap: 14px; padding: 18px 16px 40px; }
+.au-card {
+  width: 100%; max-width: 440px; background: var(--surface); border: 1px solid var(--line); border-radius: 24px;
+  padding: 28px 22px 22px; box-shadow: var(--shadow-pop); display: grid; gap: 12px; text-align: center;
+  position: relative; overflow: hidden; animation: au-in .35s cubic-bezier(.2, .9, .3, 1.2) both;
+}
+.au-card::before { /* furinho de etiqueta de preço */
+  content: ''; position: absolute; top: 14px; left: 50%; width: 10px; height: 10px; margin-left: -5px;
+  border-radius: 50%; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line);
+}
+.au-card.is-ok { border-top: 5px solid var(--brand); }
+.au-card.is-warn { border-top: 5px solid var(--tag); }
+.au-card .form { text-align: left; margin-top: 4px; }
+.au-card .btn + .btn { margin-top: -2px; }
+.au-h { font: 700 1.55rem/1.15 var(--display); letter-spacing: -.02em; }
+.au-kicker { font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--brand); margin-bottom: -6px; }
+.au-tag { font-size: 3rem; line-height: 1; display: block; margin: 6px auto 2px; }
+.au-tag--spin { animation: au-swing 1.2s ease-in-out infinite; transform-origin: 50% 10%; }
+.au-tag--sad { filter: grayscale(.2); }
+.au-loading { display: grid; gap: 8px; padding: 10px 0; }
+.au-foot { max-width: 440px; text-align: center; }
+
+.au-burst {
+  width: 76px; height: 76px; margin: 8px auto 4px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--brand); color: var(--brand-ink); font: 700 2.2rem/1 var(--display);
+  box-shadow: 0 0 0 10px var(--brand-soft), 0 0 0 20px color-mix(in srgb, var(--brand-soft) 50%, transparent);
+  animation: au-pop .55s cubic-bezier(.2, 1.5, .4, 1) both;
+}
+
+.au-perks { list-style: none; padding: 0; margin: 4px 0 6px; display: grid; gap: 8px; text-align: left; }
+.au-perks li { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); font-size: .93rem; }
+.au-perks li > span:first-child { font-size: 1.35rem; flex: none; width: 28px; text-align: center; }
+
+.au-meter { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: -6px; }
+.au-meter i { height: 5px; border-radius: 3px; background: var(--line); transition: background .2s; }
+.au-meter[data-s="1"] i:nth-child(-n+1) { background: var(--up); }
+.au-meter[data-s="2"] i:nth-child(-n+2) { background: #E8A30C; }
+.au-meter[data-s="3"] i:nth-child(-n+3) { background: var(--brand-2); }
+.au-meter[data-s="4"] i { background: var(--brand); }
+.au-rules { list-style: none; padding: 0; margin: -4px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.au-rules li { font-size: .78rem; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.au-rules li::before { content: '○ '; }
+.au-rules li.is-ok { background: var(--brand-soft); color: var(--brand); }
+.au-rules li.is-ok::before { content: '✓ '; }
+
+.au-seg { border: 0; padding: 4px; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--surface-2); border-radius: 14px; }
+.au-seg label { display: block !important; cursor: pointer; }
+.au-seg input { position: absolute; opacity: 0; pointer-events: none; }
+.au-seg span { display: block; text-align: center; padding: 9px 6px; border-radius: 10px; font-size: .85rem; font-weight: 700; color: var(--muted); }
+.au-seg input:checked + span { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.au-seg input:focus-visible + span { outline: 2px solid var(--focus); }
+
+@keyframes au-in { from { opacity: 0; transform: translateY(12px) scale(.98); } }
+@keyframes au-pop { from { transform: scale(.3); opacity: 0; } }
+@keyframes au-swing { 0%, 100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
+@media (prefers-reduced-motion: reduce) { .au-card, .au-burst, .au-tag--spin { animation: none; } }
