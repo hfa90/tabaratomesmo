@@ -50,10 +50,14 @@ async function fromOFF(q) {
       const it = j?.product && offItem(j.product, b, true); if (it) { out.push(it); break; }
     }
   }
-  if (q.text.length >= 3) {
-    const res = await Promise.all(bases.map((b) => getJSON(`${b}/cgi/search.pl?search_terms=${encodeURIComponent(q.text)}&search_simple=1&json=1&page_size=12&fields=${OFF_FIELDS}&tagtype_0=countries&tag_contains_0=contains&tag_0=brazil`)
-      .then((j) => (j?.products || []).map((p) => offItem(p, b)).filter(Boolean))));
-    out.push(...res.flat());
+  // variações da busca: nome + marca, marca + tipo, só o nome (o tamanho só ajuda a ordenar)
+  const first = (q.name || '').split(/\s+/)[0] || '';
+  const terms = [...new Set([[q.name, q.brand].filter(Boolean).join(' '), [q.brand, first].filter(Boolean).join(' '), q.name].map((x) => x.trim()).filter((x) => x.length >= 3))];
+  const search = (b, term, br = true) => getJSON(`${b}/cgi/search.pl?search_terms=${encodeURIComponent(term)}&search_simple=1&json=1&page_size=12&fields=${OFF_FIELDS}${br ? '&tagtype_0=countries&tag_contains_0=contains&tag_0=brazil' : ''}`)
+    .then((j) => (j?.products || []).map((p) => offItem(p, b)).filter(Boolean));
+  if (terms.length) {
+    out.push(...(await Promise.all(bases.flatMap((b) => terms.map((t) => search(b, t))))).flat());
+    if (out.length < 6) out.push(...(await Promise.all(bases.map((b) => search(b, terms[0], false)))).flat()); // pouco no Brasil: procura no mundo
   }
   // os mais parecidos com o que foi digitado primeiro (marca e tamanho contam)
   const words = strip(q.text).split(/\s+/).filter((w) => w.length > 1);
