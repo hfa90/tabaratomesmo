@@ -45,8 +45,9 @@ function wipeDevice() {
 
 async function go(btn) {
   btn.disabled = true; btn.textContent = 'Zerando…';
+  let gen = null;
   if (S.user) {
-    try { await api.resetHistory(); }
+    try { gen = (await api.resetHistory())?.gen ?? null; }
     catch (e) {
       btn.disabled = false; btn.innerHTML = `${ic('trash')} Zerar tudo`;
       hooks.toast?.(e.code === 'sem_funcao'
@@ -56,6 +57,8 @@ async function go(btn) {
     }
   }
   wipeDevice();
+  // este aparelho já está na época nova: não se apaga de novo; os outros aparelhos se limpam sozinhos
+  if (gen != null) { try { localStorage.setItem('tb.syncGen', String(gen)); } catch {} }
   $('#toolBody').innerHTML = `<div class="tool zr-done"><span class="zr-done__i">${ic('sparkle')}</span>
     <h2 class="sheet__title" id="toolTitle">Tudo zerado</h2><p class="tool__lead">Recomeçando do início…</p></div>`;
   setTimeout(() => location.replace(location.pathname), 1200);

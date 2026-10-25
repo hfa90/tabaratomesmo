@@ -49,7 +49,9 @@ function persist(sync = true) {
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => {
       const items = [...S.list].map(([product_id, qty]) => ({ product_id, qty, checked: S.rancho.checked.includes(product_id) }));
-      api.saveRancho(S.rancho, items).catch((e) => console.warn('sync rancho', e));
+      // não grava a lista se a conta foi zerada em outro aparelho (este aparelho será limpo)
+      Promise.resolve(hooks.epochOk ? hooks.epochOk() : true)
+        .then((ok) => ok && api.saveRancho(S.rancho, items)).catch((e) => console.warn('sync rancho', e));
     }, 1200);
   }
 }

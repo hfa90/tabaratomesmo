@@ -680,12 +680,14 @@ export async function stateLoad() {
   if (error) { const e = new Error(error.message); e.code = /relation|PGRST205|42P01|does not exist/i.test(`${error.code} ${error.message}`) ? 'sem_tabela' : error.code; throw e; }
   return data;
 }
-export async function statePush(rows) {
+export async function statePush(rows, gen = null) {
   if (MODE !== 'live' || !rows.length) return;
   const c = await client();
   const { data: { user } } = await c.auth.getUser();
   if (!user) return;
-  const { error } = await c.from('user_state').upsert(rows.map((r) => ({ ...r, user_id: user.id })), { onConflict: 'user_id,key' });
+  const up = (withGen) => c.from('user_state').upsert(rows.map((r) => ({ ...r, user_id: user.id, ...(withGen && gen != null ? { gen } : {}) })), { onConflict: 'user_id,key' });
+  let { error } = await up(true);
+  if (error && /gen|PGRST204|column/i.test(error.message + error.code) && !/historico_zerado/.test(error.message)) ({ error } = await up(false)); // banco sem a coluna gen
   if (error) throw error;
 }
 export async function stateChannel(userId, onRow) {
@@ -715,4 +717,15 @@ export async function loadCampaigns() {
     const { data, error } = await withTimeout(c.from('market_campaigns').select('id, supermarket_id, kind, title, body, image_url, product_ids, cta, audience, radius_km, starts_at, ends_at'));
     return error ? [] : data;
   } catch { return []; }
+}
+
+/** "época" da conta: muda quando a pessoa zera o histórico (em qualquer aparelho) */
+export async function profileEpoch() {
+  if (MODE !== 'live') return null;
+  try {
+    const c = await client();
+    const { data, error } = await withTimeout(c.from('profiles').select('history_gen, history_reset_at').maybeSingle(), 6000);
+    if (error || !data || data.history_gen == null) return null;
+    return { gen: Number(data.history_gen), reset_at: data.history_reset_at };
+  } catch { return null; }
 }

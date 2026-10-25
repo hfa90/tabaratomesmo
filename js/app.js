@@ -902,6 +902,7 @@ Object.assign(hooks, {
   openHome: (cb) => openLoc('home', cb),
   familyChanged: () => familia.changed(),
   afterSync: (keys) => applySynced(keys),
+  epochOk: () => sync.checkEpoch(),
   familyRender: () => familia.render(),
   ranchoMode: (m) => rancho.setMode(m),
   afterContribution: () => { fiscal.renderHome(); if (S.user) api.getProfile().then((p) => { S.profile = p; renderProfileBanner(); }).catch(() => {}); },
@@ -926,6 +927,7 @@ async function boot() {
   rancho.meta();
   renderChips(); renderNearby(); renderDeals(); renderGrid(); renderSaveStrip(); route(); hideSplash();
   familia.init(); campanhas.init();
+  try { if (sessionStorage.getItem('tb.wipedElsewhere')) { sessionStorage.removeItem('tb.wipedElsewhere'); toast('O histórico desta conta foi zerado em outro aparelho. Este aparelho também recomeçou do zero.'); } } catch {}
   if (location.hash === '#refeicoes') refeicoes.render();
   fiscal.renderHome(); fiscal.checkAtStore();
   ajudantes.renderHub();

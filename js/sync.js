@@ -14,6 +14,7 @@ const KEYS = new Set(['tb.list', 'tb.rancho', 'tb.rmode', 'tb.rgroups', 'tb.cart
   'tb.filaBest', 'tb.welcomeOff', 'tb.adHide', 'tb.campHide', 'tb.notify', 'tb.calcHelp', 'tb.seenHome']);
 
 let uid = null, stopRt = null, pushT = null, applying = false;
+let epochAt = 0, epochOk = true;
 const queue = new Map();
 const raw = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
 const stamps = () => { try { return JSON.parse(raw.get('tb.syncAt') || '{}'); } catch { return {}; } };
@@ -51,15 +52,55 @@ function onWrite(k, v) {
   clearTimeout(pushT);
   pushT = setTimeout(flush, 900);
 }
+// ---------------------------------------------------------------- zerar vale para todos os aparelhos
+// O perfil guarda uma "época" (history_gen) que sobe quando a pessoa zera o histórico.
+// Este aparelho guarda a época com que sincronizou (tb.syncGen). Se a da conta for mais nova,
+// os dados daqui são de antes do zerar: apaga tudo deste aparelho e recarrega, sem reenviar nada.
+const localGen = () => { const v = raw.get('tb.syncGen'); return v == null ? null : Number(v); };
+function hasLocal() { for (const k of KEYS) if (raw.get(k) != null) return true; return false; }
+function wipeLocal() {
+  try {
+    const ks = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('tb.') && !k.startsWith('tb.off.')) ks.push(k); }
+    ks.forEach((k) => localStorage.removeItem(k));
+  } catch {}
+  try { sessionStorage.clear(); } catch {}
+}
+export async function checkEpoch({ force = false } = {}) {
+  if (!uid) return true;
+  if (!force && Date.now() - epochAt < 5000) return epochOk;
+  const e = await api.profileEpoch();
+  epochAt = Date.now();
+  if (!e) return (epochOk = true); // banco sem a coluna: nada a conferir
+  const lg = localGen();
+  const last = Math.max(0, ...Object.values(stamps()).map((t) => Date.parse(t) || 0));
+  const resetAt = e.reset_at ? Date.parse(e.reset_at) : 0;
+  const stale = lg != null ? lg < e.gen : !!(resetAt && last && hasLocal() && last < resetAt);
+  if (stale) {
+    epochOk = false; stop();
+    wipeLocal();
+    raw.set('tb.syncGen', String(e.gen));
+    try { sessionStorage.setItem('tb.wipedElsewhere', '1'); } catch {}
+    location.replace(location.pathname);
+    return false;
+  }
+  raw.set('tb.syncGen', String(e.gen));
+  return (epochOk = true);
+}
+
 async function flush() {
   if (!queue.size || !uid) return;
+  if (!(await checkEpoch())) return;
   const rows = [...queue.values()]; queue.clear();
-  try { await api.statePush(rows); }
-  catch (e) { rows.forEach((r) => { if (!queue.has(r.key)) queue.set(r.key, r); }); console.warn('sync', e.message); }
+  try { await api.statePush(rows, localGen()); }
+  catch (e) {
+    if (/historico_zerado/.test(e.message)) { checkEpoch({ force: true }); return; } // a conta foi zerada em outro aparelho
+    rows.forEach((r) => { if (!queue.has(r.key)) queue.set(r.key, r); }); console.warn('sync', e.message);
+  }
 }
 api.onStoreWrite(onWrite);
 
 async function pull({ first = false } = {}) {
+  if (!(await checkEpoch({ force: true }))) return;
   let rows;
   try { rows = await api.stateLoad(); } catch (e) { if (e.code === 'sem_tabela') { stop(); } return; }
   if (!rows) return;
@@ -89,7 +130,8 @@ export async function start(userId) {
   if (!uid) return;
   try {
     stopRt = await api.stateChannel(uid, (row) => {
-      if (!row || row.device === device() || !KEYS.has(row.key)) return;
+      if (!row) { checkEpoch({ force: true }); return; } // linhas apagadas: pode ter sido um "zerar" em outro aparelho
+      if (row.device === device() || !KEYS.has(row.key)) return;
       if (row.updated_at <= (stamps()[row.key] || '')) return;
       apply(row.key, row.value, row.updated_at);
       hooks.afterSync?.([row.key]);
