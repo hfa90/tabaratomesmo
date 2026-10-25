@@ -79,7 +79,7 @@ export function render() {
         </form>
       </section>`}
 
-      ${c.items.length ? `${mode() === 'calc' ? '' : `<ul class="ck-list">${c.items.map(row).join('')}</ul>`}
+      ${c.items.length ? `<ul class="ck-list">${c.items.map(row).join('')}</ul>
         <div class="row-actions ck-actions">
           <button class="btn btn--ghost btn--sm" data-ck="compare">Comparar com outros mercados</button>
           <a class="btn btn--ghost btn--sm" href="#fila">Estou na fila do caixa</a>
@@ -269,20 +269,32 @@ function budgetSheet() {
     <button class="btn btn--primary btn--block">Salvar</button>${b ? '<button class="btn btn--text btn--block" type="button" data-ck-bset="0">Sem orçamento</button>' : ''}</form>`);
 }
 
+/** fecha a compra: guarda no histórico (com o valor que o caixa cobrou, se informado) e lembra da nota fiscal */
+function closePurchase({ paid = null } = {}) {
+  const c = st(); const mid = currentMarket(); const t = Math.round(total() * 100) / 100;
+  if (!c.items.length) return null;
+  const at = new Date().toISOString();
+  const sum = { at, market: mid, total: t, paid, items: c.items.length, budget: c.budget };
+  const list = api.store.get('tb.purchases', []);
+  list.unshift(sum); api.store.set('tb.purchases', list.slice(0, 100));
+  track('bought', { market_id: mid, value: paid ?? t });
+  api.store.set('tb.lastCart', { at, market: mid, items: c.items, total: t, paid });
+  api.store.set('tb.nfPending', sum); // Minhas notas lembra de mandar a nota desta compra
+  S.cart = { market: c.market, budget: c.budget, items: [], log: [], startedAt: null }; calc.reset(); save(); render();
+  return sum;
+}
+
 function finish() {
   const c = st(); const mid = currentMarket(); const t = total();
   if (!c.items.length) return;
-  const list = api.store.get('tb.purchases', []);
-  list.unshift({ at: new Date().toISOString(), market: mid, total: Math.round(t * 100) / 100, items: c.items.length, budget: c.budget });
-  api.store.set('tb.purchases', list.slice(0, 100));
-  track('bought', { market_id: mid, value: Math.round(t * 100) / 100 });
-  api.store.set('tb.lastCart', { at: new Date().toISOString(), market: mid, items: c.items, total: t });
+  const n = c.items.length; const b = c.budget;
+  closePurchase();
   sheet(`<div class="fx-done"><p class="fx-done__pts">${brl(t)}</p><h2 class="sheet__title">Compra registrada</h2>
-    <p>${c.items.length} itens no ${esc(S.markets.get(mid)?.name || '')}${c.budget ? `, ${t <= c.budget ? `${brl(c.budget - t)} abaixo do orçamento` : `${brl(t - c.budget)} acima do orçamento`}` : ''}.</p>
+    <p>${n} itens no ${esc(S.markets.get(mid)?.name || '')}${b ? `, ${t <= b ? `${brl(b - t)} abaixo do orçamento` : `${brl(t - b)} acima do orçamento`}` : ''}.</p>
     <button class="btn btn--primary btn--block" data-cupom="open">🧾 Conferir a nota do caixa</button>
+    <a class="btn btn--ghost btn--block" href="#notas" data-close>Mandar a nota e organizar meu rancho</a>
     <p class="muted small center">Leia o QR da nota e veja se o caixa cobrou o preço da etiqueta.</p>
     <button class="btn btn--text btn--block" data-close>Fechar</button></div>`);
-  S.cart = { market: c.market, budget: c.budget, items: [], log: [], startedAt: null }; calc.reset(); save(); render();
 }
 
 // ---------------------------------------------------------------- reconhecimento de fala
@@ -319,7 +331,7 @@ document.addEventListener('click', (e) => {
   if (d.ck === 'compare') return compareSheet();
   if (d.ck === 'finish') return finish();
   if (d.ck === 'clear') { if (confirm('Esvaziar o carrinho?')) { c.items = []; c.log = []; c.startedAt = null; calc.reset(); save(); render(); } return; }
-  if (d.ckMode) { api.store.set('tb.cartMode', d.ckMode); calc.reset(); return render(); }
+  if (d.ckMode) { api.store.set('tb.cartMode', d.ckMode); calc.reset(); render(); if (d.ckMode === 'calc') calc.openFull(); return; }
   if (d.ckMarket) {
     c.market = Number(d.ckMarket);
     for (const i of c.items) { // reconfere os preços no novo mercado
@@ -371,4 +383,4 @@ document.addEventListener('submit', (e) => {
 });
 
 export { total, currentMarket };
-calc.bind({ st, save, total, rerender: () => render() });
+calc.bind({ st, save, total, rerender: () => render(), closePurchase });

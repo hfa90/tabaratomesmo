@@ -15,12 +15,13 @@ const TOOLS = [
   { id: 'caminho', icon: '🗺️', name: 'Caminho no mercado', sub: 'Lista na ordem dos corredores', c: '#7048E8' },
   { id: 'fotopreco', icon: '📸', name: 'Foto do preço', sub: 'Fotografe a etiqueta e confira', c: '#C2255C' },
   { id: 'notas', icon: '🧾', name: 'Mandar nota', sub: 'Ganhe pontos com a sua compra', c: '#0B7285' },
+  { id: 'refeicoes', icon: '🍲', name: 'Planejar refeições', sub: 'Diga o que vai comer na semana: a gente calcula os ingredientes e o que comprar', c: '#E8590C', wide: true },
 ];
 
 /** fileira de ajudantes. compact = versão menor (carrinho) */
 export function hubHTML(compact = false) {
   return `<div class="hub ${compact ? 'hub--compact' : ''}" role="list">${TOOLS.map((t) => `
-    <button class="hub__t" role="listitem" data-tool="${t.id}" style="--c:${t.c}">
+    <button class="hub__t ${t.wide ? 'hub__t--wide' : ''}" role="listitem" data-tool="${t.id}" style="--c:${t.c}">
       <span class="hub__i" aria-hidden="true">${t.icon}</span>
       <b>${t.name}</b>${compact ? '' : `<small>${t.sub}</small>`}
     </button>`).join('')}</div>`;
@@ -239,6 +240,7 @@ document.addEventListener('click', (e) => {
     if (d.tool === 'scan') return scanner.open({ mode: location.hash === '#carrinho' ? 'carrinho' : 'preco' });
     if (d.tool === 'fotopreco') return import('./fotopreco.js').then((m) => m.open());
     if (d.tool === 'notas') { hooks.closeSheet?.('#toolSheet'); location.hash = '#notas'; return; }
+    if (d.tool === 'refeicoes') { hooks.closeSheet?.('#toolSheet'); location.hash = '#refeicoes'; return; }
     if (d.tool === 'tamanho') return openTamanho(p);
     if (d.tool === 'promo') return openPromo(p);
     if (d.tool === 'caminho') { if (!S.list.size) hooks.toast?.('Primeiro coloque os produtos no rancho. Depois eu mostro o caminho! 🗺️'); hooks.closeSheet?.('#toolSheet'); api.store.set('tb.rmode', 'shop'); hooks.ranchoMode?.('shop'); location.hash = '#lista'; return; }

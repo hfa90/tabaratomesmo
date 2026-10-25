@@ -2,6 +2,7 @@
 //   kind = "encarte"  → todos os produtos e preços de uma página de encarte/folheto
 //   kind = "etiqueta" → produto + preço de uma foto tirada na prateleira
 //   kind = "nota"     → itens de uma nota fiscal fotografada (quando o QR não lê)
+//   kind = "receita"  → ingredientes de um prato por pessoa (texto, sem imagem), para Planejar refeições
 //
 // Publicar:  supabase functions deploy leitor-ia
 // Segredo:   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
@@ -115,6 +116,30 @@ const TOOLS: Record<string, any> = {
       required: ['legivel', 'itens', 'confianca'],
     },
   },
+  receita: {
+    name: 'registrar_receita',
+    description: 'Registra os ingredientes de 1 porção (1 pessoa adulta) do prato pedido.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'Nome do prato, corrigido e curto' },
+        ingredientes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              nome: { type: 'string', description: 'Ingrediente como se compra no mercado, ex.: "Feijão preto", "Peito de frango"' },
+              quantidade: { type: 'number', description: 'Quantidade para 1 pessoa' },
+              unidade: { type: 'string', enum: ['g', 'ml', 'un'] },
+              busca: { type: 'string', description: 'Termo curto para achar no supermercado, sem acento, ex.: "feijao preto", "peito de frango"' },
+            },
+            required: ['nome', 'quantidade', 'unidade', 'busca'],
+          },
+        },
+      },
+      required: ['nome', 'ingredientes'],
+    },
+  },
 };
 
 function prompt(kind: string, categories: string[], hint: string) {
@@ -141,6 +166,13 @@ Regras:
 - Se a etiqueta não está visível, está cortada, desfocada, ou não dá para saber de qual produto é o preço, responda legivel=false com o motivo curto em português simples.
 - Não chute. Confiança alta só se nome e preço estão claros.${hint ? `\nO cliente disse: ${hint}` : ''}
 Responda chamando a ferramenta registrar_etiqueta.`;
+  if (kind === 'receita') return `Você é cozinheiro(a) de casa em Manaus (Brasil). Prato pedido: "${hint}".
+Liste os ingredientes que se compram no supermercado para 1 porção de adulto (almoço/jantar normal), com quantidades realistas de cozinha doméstica:
+- arroz cru ~80 g, feijão cru ~60 g, carne/frango/peixe 150–250 g (com osso, mais), massa seca ~100 g.
+- Use g para sólidos, ml para líquidos e un só para coisas contadas (ovos, pães, bananas, limões).
+- Inclua temperos básicos (sal, alho, cebola, óleo) em quantidades pequenas. Não inclua água.
+- Se o pedido não for comida, devolva ingredientes vazios.
+Responda chamando a ferramenta registrar_receita.`;
   return `Foto de uma nota fiscal de supermercado (NFC-e / cupom) do Brasil. Copie os dados exatamente como impressos.
 - itens: descrição, código, quantidade, unidade, valor unitário e total de cada linha. Desconto em linha separada: abata do item.
 - A chave de acesso tem 44 dígitos (pode estar em blocos de 4): devolva só os dígitos.
@@ -190,6 +222,9 @@ function tidy(kind: string, r: any) {
     r.preco = num(r.preco); r.preco_promocional = num(r.preco_promocional); r.ean = digits(r.ean);
     if (!r.preco && r.preco_promocional && !r.condicao) { r.preco = r.preco_promocional; r.preco_promocional = null; }
     if (!r.preco) r.legivel = false;
+  } else if (kind === 'receita') {
+    r.ingredientes = (r.ingredientes || []).map((i: any) => ({ ...i, quantidade: Math.round((Number(i.quantidade) || 0) * 100) / 100 }))
+      .filter((i: any) => i.nome && i.quantidade > 0 && i.quantidade < 5000 && ['g', 'ml', 'un'].includes(i.unidade)).slice(0, 25);
   } else {
     r.chave = (String(r.chave || '').replace(/\D/g, '').match(/\d{44}/) || [null])[0];
     r.cnpj = digits(r.cnpj);
@@ -217,7 +252,8 @@ Deno.serve(async (req: Request) => {
   if (!TOOLS[kind]) return fail('Tipo de leitura inválido.', 'pedido');
   const images = (Array.isArray(body.images) ? body.images : []).slice(0, kind === 'encarte' ? 4 : 2)
     .filter((i: any) => typeof i?.data === 'string' && i.data.length > 100);
-  if (!images.length) return fail('Envie pelo menos uma imagem.', 'pedido');
+  const text = String(body.text || '').trim().slice(0, 120);
+  if (kind === 'receita' ? text.length < 3 : !images.length) return fail(kind === 'receita' ? 'Diga qual é o prato.' : 'Envie pelo menos uma imagem.', 'pedido');
   const totalB64 = images.reduce((s: number, i: any) => s + i.data.length, 0);
   if (totalB64 > 24_000_000) return fail('Arquivo grande demais. Envie páginas menores.', 'tamanho', 413);
 
@@ -243,7 +279,7 @@ Deno.serve(async (req: Request) => {
     : ['mercearia', 'carnes', 'hortifruti', 'laticinios', 'bebidas', 'limpeza', 'higiene'];
 
   let res;
-  try { res = await askClaude(kind, images, categories, String(body.hint || '').slice(0, 300)); }
+  try { res = await askClaude(kind, images, categories, kind === 'receita' ? text : String(body.hint || '').slice(0, 300)); }
   catch (e: any) {
     console.error('IA', e?.message, e?.detail);
     const busy = e?.status === 429 || e?.status === 529;

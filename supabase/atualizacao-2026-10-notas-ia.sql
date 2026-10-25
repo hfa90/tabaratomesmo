@@ -579,3 +579,9 @@ begin
     where p_status = 'all' or r.status = p_status
     order by r.created_at desc limit greatest(1, least(p_limit, 500))) x), '[]');
 end $$;
+
+-- Planejar refeições: leitura "receita" (IA calcula ingredientes de um prato que a base não conhece)
+do $$ begin
+  alter table public.ia_readings drop constraint if exists ia_readings_kind_check;
+  alter table public.ia_readings add constraint ia_readings_kind_check check (kind in ('etiqueta', 'nota', 'encarte', 'receita'));
+end $$;

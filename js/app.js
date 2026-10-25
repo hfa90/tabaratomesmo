@@ -19,6 +19,7 @@ import * as deals from './deals.js';
 import * as off from './offline.js';
 import './cupom.js';
 import * as notas from './notas.js';
+import * as refeicoes from './refeicoes.js';
 import './fotopreco.js';
 
 
@@ -645,7 +646,7 @@ function route() {
   let v = (location.hash || '#ofertas').slice(1).split('?')[0];
   // vindo da confirmação de e-mail: abre "completar cadastro" assim que a conta carregar
   if (v === 'completar') { S.wantComplete = true; history.replaceState(null, '', '#conta'); v = 'conta'; if (S.user) { S.wantComplete = false; setTimeout(() => openAuth('complete'), 300); } }
-  const view = ['ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila', 'notas'].includes(v) ? v : 'ofertas';
+  const view = ['ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila', 'notas', 'refeicoes'].includes(v) ? v : 'ofertas';
   $$('.view').forEach((s) => (s.hidden = s.dataset.view !== view));
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === view));
   if (view === 'mapa') drawMap();
@@ -654,6 +655,7 @@ function route() {
   if (view === 'carrinho') carrinho.render();
   if (view === 'fila') fila.render();
   if (view === 'notas') notas.render();
+  if (view === 'refeicoes') refeicoes.render();
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === (view === 'fila' ? 'carrinho' : view)));
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
 }
@@ -809,6 +811,7 @@ async function boot() {
   if (S.pos) { computeNearest(); $('#locLabel').textContent = S.pos.label || 'Minha localização'; $('#locBtn').classList.add('is-set'); }
   rancho.meta();
   renderChips(); renderNearby(); renderDeals(); renderGrid(); route();
+  if (location.hash === '#refeicoes') refeicoes.render();
   fiscal.renderHome(); fiscal.checkAtStore();
   ajudantes.renderHub();
   deals.load().then(() => { deals.renderHome(); if (location.hash === '#lista') renderList(); });

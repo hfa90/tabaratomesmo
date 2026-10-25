@@ -235,6 +235,7 @@ function fixItem(i) {
 
 // ---------------------------------------------------------------- enviar
 function remember(extra = {}) {
+  api.store.del?.('tb.nfPending');
   const r = cur; const list = local().filter((x) => x.key !== r.key);
   list.unshift({ key: r.key, chave: r.chave || null, source: r.source, url: r.url || null, store: { name: r.store?.name || null, cnpj: r.store?.cnpj || null }, date: r.date, at: r.at, total: r.total == null ? null : Number(r.total), mid: r.mid,
     items: r.items.map((i) => ({ name: i.name, code: i.code || null, qty: i.qty, unit_price: i.unit_price, total: i.total ?? null, pid: i.pid || null })), savedAt: new Date().toISOString(), ...extra });
@@ -351,6 +352,7 @@ export function render() {
     <p class="muted">Mande a nota fiscal da sua compra. Você controla seus gastos e ganha pontos; o site fica com preços de verdade, na data e no mercado certos.</p>
   </header>
 
+  ${pendingCard()}
   <section class="notas-cta">
     <button class="notas-btn is-main" data-nota="qr"><span aria-hidden="true">🔳</span><b>Ler o QR da nota</b><small>Com a câmera, na hora</small></button>
     <button class="notas-btn" data-nota="file"><span aria-hidden="true">🖼️</span><b>Foto, print ou PDF</b><small>Da galeria ou do e-mail</small></button>
@@ -393,6 +395,16 @@ export function render() {
   <p class="muted small center notas-priv">🔒 Guardamos só o que está na nota (loja, data, itens e preços). Não pedimos nem guardamos o seu CPF.</p>`;
 }
 
+// compra fechada na calculadora/carrinho que ainda não teve a nota enviada
+function pendingCard() {
+  const p = api.store.get('tb.nfPending', null);
+  if (!p || Date.now() - new Date(p.at) > 10 * 864e5) return '';
+  const m = S.markets.get(p.market);
+  return `<section class="nf-pend"><span aria-hidden="true">🧾</span><div><b>Falta a nota da sua compra de ${brl(p.paid ?? p.total)}</b>
+    <small>${m ? `${esc(m.name)} · ` : ''}${new Date(p.at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}${p.paid != null && Math.abs(p.paid - p.total) >= 0.01 ? ` · sua conta deu ${brl(p.total)}, o caixa cobrou ${brl(p.paid)}` : ''}. Mande a nota para conferir item por item e organizar o seu rancho.</small></div>
+    <button class="btn btn--primary btn--sm" data-nota="qr">Mandar agora</button><button class="nf-pend__x" data-nota="nopend" aria-label="Dispensar">✕</button></section>`;
+}
+
 // ---------------------------------------------------------------- nota de exemplo (demonstração)
 function demoReceipt() {
   const mid = [...S.markets.keys()][0];
@@ -415,6 +427,7 @@ document.addEventListener('click', (e) => {
   if (d.nota === 'link') return pasteLink();
   if (d.nota === 'send') return send(t);
   if (d.nota === 'keep') return keep();
+  if (d.nota === 'nopend') { api.store.del('tb.nfPending'); return render(); }
   if (d.notaFix) return fixItem(Number(d.notaFix));
   if (d.notaSet) { const [i, pid] = d.notaSet.split(':').map(Number); const it = cur.items.find((x) => x.i === i); if (it) { it.pid = pid; it.by = 'usuario'; } return draw(); }
   if (d.notaNone) { const it = cur.items.find((x) => x.i === Number(d.notaNone)); if (it) it.pid = null; return draw(); }
