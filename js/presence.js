@@ -43,7 +43,7 @@ export function arrived(store, { force = false } = {}) {
   if (!force && seen[store.id] === todayKey(store.id)) return;
   seen[store.id] = todayKey(store.id); api.store.set('tb.welcomed', seen);
   const m = S.markets.get(store.supermarket_id); if (!m) return;
-  track('store_visit', { market_id: m.id });
+  track('store_visit', { market_id: m.id, store_id: store.id });
   // o carrinho passa a usar esta loja
   const cart = S.cart || api.store.get('tb.cart', null) || { items: [], budget: null };
   cart.market = m.id; S.cart = cart; api.store.set('tb.cart', cart);

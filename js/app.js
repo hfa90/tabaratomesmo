@@ -27,6 +27,8 @@ import * as alerts from './alerts.js';
 import './resumo.js';
 import * as familia from './familia.js';
 import './zerar.js';
+import * as sync from './sync.js';
+import * as campanhas from './campanhas.js';
 import { parse as parseSpeech, match as fuzzyMatch } from './voice.js';
 import './fotopreco.js';
 
@@ -192,6 +194,7 @@ function setPos(pos) {
   if (S.map) drawMap();
   if (location.hash === '#lista') renderList();
   fiscal.checkAtStore();
+  campanhas.onPosition();
 }
 
 // A mesma folha de localização serve para "onde estou" e "onde fica minha casa"
@@ -666,6 +669,25 @@ function renderProfileBanner() {
 
 function renderAccount() { account.render(); }
 
+/** chegou mudança de outro aparelho da mesma conta: recarrega o estado e redesenha a tela atual */
+function applySynced(keys) {
+  const has = (...k) => k.some((x) => keys.includes(x));
+  if (has('tb.list', 'tb.rancho')) { S.list = new Map(api.store.get('tb.list', [])); S.rancho = api.store.get('tb.rancho', null); updateListBadge(); }
+  if (has('tb.cart')) { S.cart = api.store.get('tb.cart', null); carrinho.badge(); }
+  if (has('tb.enabled')) { S.enabled = new Set((api.store.get('tb.enabled', []) || []).filter((id) => S.markets.has(id))); renderNearby(); }
+  if (has('tb.home')) S.home = api.store.get('tb.home', null);
+  if (has('tb.transport')) S.transport = api.store.get('tb.transport', S.transport);
+  if (has('tb.theme')) { const dark = api.store.get('tb.theme') === 'dark'; document.documentElement.dataset.theme = dark ? 'dark' : 'light'; $('meta[name=theme-color]').content = dark ? '#111513' : '#FFFFFF'; }
+  if (has('tb.watch', 'tb.drops')) alerts.render();
+  // redesenha só o que está na tela (sem animação de troca de página)
+  if (!$$('.sheet.is-open').length || !has('tb.cart')) {
+    renderGrid(); renderSaveStrip();
+    const v = currentView();
+    if (v === 'lista') renderList(); else if (v === 'carrinho' && !document.querySelector('#calcFull')) carrinho.render();
+    else if (v === 'conta') renderAccount(); else if (v === 'notas') notas.render();
+  }
+}
+
 /** faixa "quanto você economizou" no topo das ofertas: reforço positivo, ou o potencial para quem está começando */
 function renderSaveStrip() {
   const el = $('#saveStrip'); if (!el) return;
@@ -726,6 +748,7 @@ function routeNow() {
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === (view === 'fila' ? 'carrinho' : view)));
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
   lastView = view;
+  campanhas.onRoute();
 }
 
 // ---------------------------------------------------------------- tela de carregamento
@@ -878,6 +901,7 @@ Object.assign(hooks, {
   afterListLoad: () => { updateListBadge(); renderGrid(); if (location.hash === '#lista') renderList(); },
   openHome: (cb) => openLoc('home', cb),
   familyChanged: () => familia.changed(),
+  afterSync: (keys) => applySynced(keys),
   familyRender: () => familia.render(),
   ranchoMode: (m) => rancho.setMode(m),
   afterContribution: () => { fiscal.renderHome(); if (S.user) api.getProfile().then((p) => { S.profile = p; renderProfileBanner(); }).catch(() => {}); },
@@ -901,7 +925,7 @@ async function boot() {
   if (S.pos) { computeNearest(); $('#locLabel').textContent = S.pos.label || 'Minha localização'; $('#locBtn').classList.add('is-set'); }
   rancho.meta();
   renderChips(); renderNearby(); renderDeals(); renderGrid(); renderSaveStrip(); route(); hideSplash();
-  familia.init();
+  familia.init(); campanhas.init();
   if (location.hash === '#refeicoes') refeicoes.render();
   fiscal.renderHome(); fiscal.checkAtStore();
   ajudantes.renderHub();
@@ -935,6 +959,7 @@ async function boot() {
     renderProfileBanner(); renderAccount(); renderGrid(); fiscal.renderHome(); alerts.check();
     if (location.hash === '#notas') notas.render();
     if (user && S.wantComplete) { S.wantComplete = false; if (!S.profile?.completed_at) setTimeout(() => openAuth('complete'), 300); }
+    if (user) await sync.start(user.id); else sync.stop();
     if (user) await rancho.syncFromServer();
     if (location.hash === '#lista') renderList();
   });

@@ -363,8 +363,32 @@ document.addEventListener('click', (e) => {
 });
 
 // ================================================================ PUBLICIDADE
+// campanhas que os próprios mercados publicam (aviso, janela, vitrine): a administração vê e pode bloquear
+async function renderCampsAdmin() {
+  const box = $('#adm-camps'); if (!box) return;
+  let list = [];
+  try { const c = await api.sbClient(); const { data, error } = await c.rpc('campaigns_list', { p_market: null }); if (error) throw error; list = data || []; }
+  catch (e) { box.innerHTML = `<section class="panel"><div class="panel__head"><h2>Campanhas dos mercados</h2></div><p class="muted small">${/function|PGRST202/i.test(e.message) ? 'Ainda não ativadas no banco (rode supabase/atualizacao-2026-10-sync-clientes-campanhas.sql).' : esc(e.message)}</p></section>`; return; }
+  const K = { aviso: 'Aviso no celular', janela: 'Janela', vitrine: 'Vitrine' };
+  const A = { todos: 'todos', preferem: 'quem prefere o mercado', perto: 'perto da loja' };
+  box.innerHTML = `<section class="panel"><div class="panel__head"><h2>Campanhas dos mercados</h2><span class="muted small">aviso, janela e vitrine · ${list.length}</span></div>
+    ${list.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>Mercado</th><th>Campanha</th><th>Formato</th><th>Público</th><th class="r">Vistas</th><th class="r">Toques</th><th>Status</th><th></th></tr></thead><tbody>
+    ${list.map((c) => `<tr><td>${esc(c.market_name)}</td><td><b>${esc(c.title)}</b>${c.body ? `<small class="muted">${esc(c.body)}</small>` : ''}</td><td>${K[c.kind] || c.kind}</td>
+      <td>${A[c.audience] || c.audience}${c.audience === 'perto' ? ` (${c.radius_km} km)` : ''}</td><td class="r">${fmtN(c.views)}</td><td class="r">${fmtN(c.clicks)}</td>
+      <td><span class="pill ${c.status === 'ativa' ? 'pill--ok' : c.status === 'bloqueada' ? 'pill--warn' : 'pill--soft'}">${c.status}</span></td>
+      <td>${c.status === 'bloqueada' ? `<button class="btn btn--text btn--sm" data-camp-adm="${c.id}:pausada">Liberar</button>` : `<button class="btn btn--text btn--sm" data-camp-adm="${c.id}:bloqueada">Bloquear</button>`}</td></tr>`).join('')}
+    </tbody></table></div>` : '<p class="muted small">Nenhuma campanha criada pelos mercados ainda.</p>'}</section>`;
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-camp-adm]'); if (!b) return;
+  const [id, s] = b.dataset.campAdm.split(':');
+  try { const c = await api.sbClient(); const { error } = await c.rpc('campaign_status', { p_id: Number(id), p_status: s }); if (error) throw error; toast(s === 'bloqueada' ? 'Campanha bloqueada.' : 'Campanha liberada (fica pausada até o mercado pôr no ar).'); renderCampsAdmin(); }
+  catch (err) { toast(err.message, 'warn'); }
+});
+
 async function renderAdsAdmin() {
-  $('#ptMain').innerHTML = head('Publicidade', 'Pedidos dos supermercados, campanhas no ar, pagamentos, planos e espaços.') + '<div id="adm-ads"><div class="skeleton" style="height:320px"></div></div>';
+  $('#ptMain').innerHTML = head('Publicidade', 'Pedidos dos supermercados, campanhas no ar, pagamentos, planos e espaços.') + '<div id="adm-ads"><div class="skeleton" style="height:320px"></div></div><div id="adm-camps"></div>';
+  renderCampsAdmin();
   let D;
   try { D = await A.adsAdmin(st.adStatus); st.ads = D; } catch (e) { $('#adm-ads').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
   const R = D.revenue; const now = Date.now();

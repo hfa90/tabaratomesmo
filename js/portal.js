@@ -7,6 +7,8 @@ import { hbars, kpi, heatmap, fmtN, pctTxt, DOW } from './viz.js';
 import * as ads from './ads.js';
 import * as encarte from './encarte.js';
 import * as ff from './fotofinder.js';
+import * as clientes from './portal-clientes.js';
+import * as campanhas from './portal-campanhas.js';
 
 const st = {
   user: null, markets: [], mid: null, categories: [],
@@ -134,13 +136,17 @@ function renderPicker() {
     : `<span class="pt-picker">${logo(m, 'sm')}<b>${esc(m.name)}</b></span>`;
 }
 
+// contexto que as abas novas (Clientes, Campanhas) recebem
+const ctx = () => ({ main: $('#ptMain'), mid: st.mid, market, banner: banner(), toast, openSheet, closeSheet,
+  catalog: async () => { await loadCatalog(); return st.catalog; } });
+
 // ---------------------------------------------------------------- rotas
 function route() {
   if (!st.mid) return;
   const v = (location.hash || '#painel').slice(1);
-  const view = ['painel', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte'].includes(v) ? v : 'painel';
+  const view = ['painel', 'clientes', 'campanhas', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte'].includes(v) ? v : 'painel';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
-  ({ painel: renderDashboard, produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte })[view]();
+  ({ painel: renderDashboard, clientes: () => clientes.render(ctx()), campanhas: () => campanhas.render(ctx()), produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte })[view]();
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
@@ -1012,7 +1018,7 @@ document.addEventListener('submit', async (e) => {
 });
 // mostra o campo de código só para promoções exclusivas
 document.addEventListener('change', (e) => {
-  if (e.target.name === 'kind') $('#promoForm .excl-only').hidden = e.target.value !== 'exclusiva';
+  if (e.target.name === 'kind' && e.target.closest('#promoForm')) $('#promoForm .excl-only').hidden = e.target.value !== 'exclusiva';
 });
 
 // ================================================================ início

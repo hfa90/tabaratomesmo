@@ -405,3 +405,71 @@ export async function encarteApply(mid, rows, starts, ends, file) {
   if (error) throw new Error(error.message);
   return data;
 }
+
+// ---------------------------------------------------------------- clientes: de onde vêm, loja mais perto, dias (market_customers)
+export async function customers(mid, days = 90) {
+  if (MODE === 'demo') return demoCustomers(mid, days);
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc('market_customers', { p_market: mid, p_days: days });
+  if (error) { const e = new Error(isMissingFn(error) ? 'Esta análise ainda não foi ativada no banco (rode supabase/atualizacao-2026-10-sync-clientes-campanhas.sql).' : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
+  return data;
+}
+async function demoCustomers(mid, days) {
+  const { DEMO } = await import('./demo-data.js');
+  let seed = 11 + mid * 7 + days;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const stores = DEMO.stores.filter((s) => s.supermarket_id === mid);
+  const scale = days / 30;
+  const bairros = BAIRROS.map((b) => {
+    const near = stores.length ? Math.min(...stores.map((s) => Math.hypot(s.lat - b.lat, s.lng - b.lng))) : 0.1;
+    const v = Math.round((40 / (1 + near * 60)) * (0.6 + rnd()) * scale);
+    return { name: b.name, zone: b.zone, lat: b.lat, lng: b.lng, visits: v, people: Math.max(0, Math.round(v * 0.55)) };
+  }).filter((b) => b.people >= 3).sort((a, b) => b.visits - a.visits);
+  const zones = ZONE_NAMES.map((z) => { const xs = bairros.filter((b) => b.zone === z); return { zone: z, visits: xs.reduce((s, b) => s + b.visits, 0), people: xs.reduce((s, b) => s + b.people, 0) }; })
+    .filter((z) => z.visits).sort((a, b) => b.visits - a.visits);
+  const visits = bairros.reduce((s, b) => s + b.visits, 0);
+  const wk = [0.9, 0.55, 0.6, 0.7, 0.75, 1.05, 1.35];
+  const weekday = wk.map((w, dow) => ({ dow, visits: Math.round((visits / 6.0) * w * (0.9 + rnd() * 0.2)) }));
+  const monthday = Array.from({ length: 31 }, (_, i) => { const d = i + 1; const pay = (d >= 5 && d <= 10) ? 1.7 : (d >= 20 && d <= 22) ? 1.3 : d >= 28 ? 0.7 : 1; return { day: d, visits: Math.round((visits / 31) * pay * (0.8 + rnd() * 0.4)) }; });
+  const hours = Array.from({ length: 15 }, (_, i) => { const h = i + 7; const k = h >= 17 && h <= 19 ? 1.8 : h >= 10 && h <= 12 ? 1.2 : 0.6; return { h, visits: Math.round((visits / 15) * k * (0.85 + rnd() * 0.3)) }; });
+  const known = Math.round(visits * 0.62);
+  return {
+    visits, people: Math.round(visits * 0.48), fans: Math.round(visits * 0.3),
+    bairros, zones, weekday, monthday, hours,
+    nearest: { known, own_nearest: Math.round(known * 0.58), any_nearest: Math.round(known * 0.41), avg_km: Math.round((2.2 + rnd() * 2.5) * 10) / 10, passed_other: Math.round(known * 0.36) },
+    stores: stores.map((s, i) => ({ ...s, visits: Math.round(visits * (i === 0 ? 0.45 : 0.55 / Math.max(1, stores.length - 1))) })),
+  };
+}
+
+// ---------------------------------------------------------------- campanhas (aviso no celular, janela, vitrine)
+export async function campaigns(mid) {
+  if (MODE === 'demo') return (demoState().campaigns || []).filter((c) => c.supermarket_id === mid);
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc('campaigns_list', { p_market: mid });
+  if (error) { const e = new Error(isMissingFn(error) ? 'As campanhas ainda não foram ativadas no banco (rode supabase/atualizacao-2026-10-sync-clientes-campanhas.sql).' : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
+  return data;
+}
+export async function saveCampaign(p) {
+  if (MODE === 'demo') {
+    const d = demoState(); d.campaigns ||= [];
+    const live = d.campaigns.filter((c) => c.supermarket_id === p.supermarket_id && c.status === 'ativa' && new Date(c.ends_at) > new Date());
+    if (!p.id && live.length >= 3) throw new Error('Você já tem 3 campanhas ativas. Pause ou encerre uma para criar outra.');
+    if (p.id) { const i = d.campaigns.findIndex((c) => c.id === p.id); if (i >= 0) d.campaigns[i] = { ...d.campaigns[i], ...p, updated_at: new Date().toISOString() }; }
+    else d.campaigns.unshift({ ...p, id: (d.nextCamp = (d.nextCamp || 500) + 1), status: 'ativa', created_at: new Date().toISOString(), views: 0, clicks: 0, notified: 0, people: 0 });
+    saveDemo(d); return p.id || d.nextCamp;
+  }
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc('campaign_save', { p });
+  if (error) throw new Error(error.message);
+  return data;
+}
+export async function campaignStatus(id, status) {
+  if (MODE === 'demo') {
+    const d = demoState(); const x = (d.campaigns || []).find((c) => c.id === id);
+    if (status === 'ativa' && (d.campaigns || []).filter((c) => c.supermarket_id === x?.supermarket_id && c.status === 'ativa' && c.id !== id).length >= 3) throw new Error('Já há 3 campanhas ativas. Pause outra antes.');
+    if (x) x.status = status; saveDemo(d); return;
+  }
+  const c = await api.sbClient();
+  const { error } = await c.rpc('campaign_status', { p_id: id, p_status: status });
+  if (error) throw new Error(error.message);
+}

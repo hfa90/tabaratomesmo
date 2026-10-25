@@ -154,10 +154,13 @@ export async function onNewPrice(cb) {
 // ---------------------------------------------------------------- autenticação
 // Em modo demonstração, a conta fica só no navegador para permitir testar o fluxo.
 const DEMO_KEY = 'tb.demoUser';
+// toda gravação passa por aqui: o sync.js é avisado para levar a mudança aos outros aparelhos da conta
+let writeHook = null;
+export function onStoreWrite(fn) { writeHook = fn; }
 const ls = {
   get(k, d = null) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
-  del(k) { try { localStorage.removeItem(k); } catch {} },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} writeHook?.(k, v); },
+  del(k) { try { localStorage.removeItem(k); } catch {} writeHook?.(k, null); },
 };
 export const store = ls;
 
@@ -667,4 +670,49 @@ export async function resetHistory() {
     throw e;
   }
   return data;
+}
+
+// ---------------------------------------------------------------- sincronizar a conta entre aparelhos (user_state)
+export async function stateLoad() {
+  if (MODE !== 'live') return null;
+  const c = await client();
+  const { data, error } = await withTimeout(c.from('user_state').select('key, value, device, updated_at'));
+  if (error) { const e = new Error(error.message); e.code = /relation|PGRST205|42P01|does not exist/i.test(`${error.code} ${error.message}`) ? 'sem_tabela' : error.code; throw e; }
+  return data;
+}
+export async function statePush(rows) {
+  if (MODE !== 'live' || !rows.length) return;
+  const c = await client();
+  const { data: { user } } = await c.auth.getUser();
+  if (!user) return;
+  const { error } = await c.from('user_state').upsert(rows.map((r) => ({ ...r, user_id: user.id })), { onConflict: 'user_id,key' });
+  if (error) throw error;
+}
+export async function stateChannel(userId, onRow) {
+  if (MODE !== 'live') return null;
+  const c = await client();
+  const ch = c.channel(`state-${userId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'user_state', filter: `user_id=eq.${userId}` }, (p) => onRow(p.new && Object.keys(p.new).length ? p.new : null))
+    .subscribe();
+  return () => c.removeChannel(ch);
+}
+
+// ---------------------------------------------------------------- campanhas dos supermercados (só as que estão no ar)
+export async function loadCampaigns() {
+  if (MODE === 'demo') {
+    const now = Date.now();
+    const mine = (ls.get('tb.portalDemo', null)?.campaigns || []).filter((c) => c.status === 'ativa' && new Date(c.starts_at) <= now && new Date(c.ends_at) >= now);
+    const until = new Date(now + 5 * 864e5).toISOString(), since = new Date(now - 864e5).toISOString();
+    return mine.length ? mine : [
+      { id: 9001, supermarket_id: 1, kind: 'janela', title: 'Semana da carne no Nova Era', body: 'Picanha, frango e linguiça com preço de atacado até domingo.', product_ids: [], cta: 'ofertas', audience: 'todos', radius_km: 2, starts_at: since, ends_at: until, demo: true },
+      { id: 9002, supermarket_id: 5, kind: 'vitrine', title: 'Ofertas da semana do Coema', body: '', product_ids: [], cta: 'produtos', audience: 'todos', radius_km: 2, starts_at: since, ends_at: until, demo: true },
+      { id: 9003, supermarket_id: 3, kind: 'aviso', title: 'Você está perto do Veneza', body: 'Hoje tem hortifrúti com 15% off. Passa aqui!', product_ids: [], cta: 'rota', audience: 'perto', radius_km: 2, starts_at: since, ends_at: until, demo: true },
+    ];
+  }
+  if (MODE !== 'live') return [];
+  try {
+    const c = await client();
+    const { data, error } = await withTimeout(c.from('market_campaigns').select('id, supermarket_id, kind, title, body, image_url, product_ids, cta, audience, radius_km, starts_at, ends_at'));
+    return error ? [] : data;
+  } catch { return []; }
 }
