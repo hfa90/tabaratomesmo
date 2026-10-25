@@ -186,26 +186,36 @@ async function askClaude(kind: string, images: Array<{ data: string; media_type:
     : { type: 'image', source: { type: 'base64', media_type: im.media_type || 'image/jpeg', data: im.data } });
   content.push({ type: 'text', text: prompt(kind, categories, hint) });
   const tool = TOOLS[kind];
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: kind === 'encarte' ? 16000 : 2000,
-      temperature: 0,
-      tools: [tool],
-      tool_choice: { type: 'tool', name: tool.name },
-      messages: [{ role: 'user', content }],
-    }),
-  });
-  if (!r.ok) {
-    const t = await r.text();
-    throw Object.assign(new Error(`IA respondeu ${r.status}`), { detail: t.slice(0, 400), status: r.status });
+  // os modelos novos não aceitam forçar a ferramenta (tool_choice "tool") nem "temperature":
+  // pedimos a ferramenta no texto, com tool_choice "auto", e tentamos de novo se vier só texto
+  const call = async (msgs: any[]) => {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: MODEL, max_tokens: kind === 'encarte' ? 16000 : 2000, tools: [tool], tool_choice: { type: 'auto' }, messages: msgs }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      throw Object.assign(new Error(`IA respondeu ${r.status}`), { detail: t.slice(0, 400), status: r.status });
+    }
+    return r.json();
+  };
+  const msgs: any[] = [{ role: 'user', content }];
+  let out = await call(msgs);
+  let use = (out.content || []).find((c: any) => c.type === 'tool_use');
+  if (!use && out.stop_reason !== 'max_tokens') {
+    msgs.push({ role: 'assistant', content: out.content }, { role: 'user', content: [{ type: 'text', text: `Agora chame a ferramenta ${tool.name} com o resultado. Não responda em texto.` }] });
+    out = await call(msgs);
+    use = (out.content || []).find((c: any) => c.type === 'tool_use');
   }
-  const out = await r.json();
-  const use = (out.content || []).find((c: any) => c.type === 'tool_use');
-  if (!use) throw new Error('A IA não devolveu o formato esperado.');
-  return { result: use.input, usage: out.usage, truncated: out.stop_reason === 'max_tokens' };
+  let input = use?.input;
+  if (!input) { // último recurso: JSON escrito no texto
+    const txt = (out.content || []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n');
+    const m = txt.match(/\{[\s\S]*\}/);
+    try { input = m ? JSON.parse(m[0]) : null; } catch { input = null; }
+  }
+  if (!input) throw new Error('A IA não devolveu o formato esperado.');
+  return { result: input, usage: out.usage, truncated: out.stop_reason === 'max_tokens' };
 }
 
 // ---------------------------------------------------------------- limpeza do resultado
