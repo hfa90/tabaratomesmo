@@ -3,6 +3,11 @@
 Comparador de preços de supermercados de Manaus: Nova Era, Supermercados DB, Veneza, Baratão da Carne e Coema.
 
 - **Página inicial** (`#inicio`, `js/inicio.js`): na primeira visita mostra o que o site faz, um exemplo com preços reais do dia, "O que você quer fazer agora?", como usar em 3 momentos (em casa, no mercado, depois de pagar), confiança e perguntas rápidas. O logo leva de volta para ela.
+- **Marca e movimento**: logo da etiqueta com "visto", tela de carregamento animada, páginas que deslizam ao trocar de aba, aba ativa destacada e retorno ao toque (vibração curta e a bolinha que voa até a Lista; desliga em Você › Preferências).
+- **Avisos de preço** (`js/alerts.js`): o aparelho guarda o preço de cada favorito e avisa quando baixar, com o quadro "Baixou!" no topo das ofertas e notificação do celular (com o site aberto ou em segundo plano).
+- **Busca falando e tolerante a erro**: microfone na busca; palavras em qualquer ordem; quando nada bate, mostra os mais parecidos ("nescal" → achocolatado, "detergnte" → detergente).
+- **Meu mês** (`js/resumo.js`, botão em Você): cartão 1080×1350 com economia, mercado mais usado, maior diferença e o que mais subiu/baixou, para compartilhar no WhatsApp.
+- **Lista da família** (`js/familia.js`): a mesma Lista do mês em vários celulares, ao vivo, por código ou link. Precisa rodar uma vez [`supabase/atualizacao-2026-10-lista-familia.sql`](supabase/atualizacao-2026-10-lista-familia.sql) no SQL Editor; sem ele, o botão manda uma cópia da lista por link.
 - **Visual calmo**: ícones de traço (`js/icons.js`) no lugar de emojis, um único verde de destaque, uma faixa de aviso por vez no topo, localização pedida só quando a pessoa quer ver a loja mais perto, e a faixa "Você já economizou" no topo das ofertas.
 - Mostra primeiro o **menor preço** de cada produto, com as logomarcas e o preço de todos os mercados no mesmo card.
 - Usa a **localização** do usuário (ou o bairro escolhido) para indicar o mercado mais perto e a distância de cada loja.

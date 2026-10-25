@@ -22,6 +22,11 @@ import './cupom.js';
 import * as notas from './notas.js';
 import * as refeicoes from './refeicoes.js';
 import * as inicio from './inicio.js';
+import './fx.js';
+import * as alerts from './alerts.js';
+import './resumo.js';
+import * as familia from './familia.js';
+import { parse as parseSpeech, match as fuzzyMatch } from './voice.js';
 import './fotopreco.js';
 
 
@@ -64,7 +69,20 @@ function filtered() {
   let arr = S.products.filter((p) => visiblePrices(p).length);
   if (S.category === 'fav') arr = arr.filter((p) => S.favs.has(p.id));
   else if (S.category !== 'all') arr = arr.filter((p) => p.category_slug === S.category);
-  if (q) arr = arr.filter((p) => (p.name + ' ' + (p.brand || '') + ' ' + p.category_name).toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').includes(q));
+  S.fuzzy = false;
+  if (q) {
+    // todas as palavras, em qualquer ordem ("arroz tio joao" acha "Arroz Tio João")
+    const words = q.split(/\s+/).filter(Boolean);
+    const base = arr;
+    arr = arr.filter((p) => { const t = (p.name + ' ' + (p.brand || '') + ' ' + p.category_name + ' ' + (p.unit || '')).toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, ''); return words.every((w) => t.includes(w)); });
+    // nada exato: procura parecidos, do mesmo jeito que o carrinho por voz ("nescal" → Nescau, "toddy" → achocolatado)
+    if (!arr.length && q.length >= 3) {
+      const ok = new Set(base.map((p) => p.id));
+      arr = fuzzyMatch(parseSpeech(S.q), S.products, { limit: 12 }).map((r) => r.p).filter((p) => ok.has(p.id));
+      S.fuzzy = arr.length > 0;
+      if (S.fuzzy) return arr;
+    }
+  }
   const minOf = (p) => visiblePrices(p)[0].price;
   const spread = (p) => { const v = visiblePrices(p); return v[v.length - 1].price - v[0].price; };
   switch (S.sort) {
@@ -83,7 +101,7 @@ function renderGrid() {
   const cards = arr.map(card);
   // um card de curiosidade patrocinado depois do 8º produto (só na lista completa)
   if (gridAd && cards.length > 10) cards.splice(8, 0, gridAd);
-  grid.innerHTML = cards.join('');
+  grid.innerHTML = (S.fuzzy ? `<p class="fuzzy-note">${ic('search')} Não achei “${esc(S.q.trim())}” do jeito que foi escrito. Estes são os mais parecidos:</p>` : '') + cards.join('');
   ads.observeAll(grid);
   grid.classList.toggle('is-anim', !reduceMotion);
   $('#emptyState').hidden = arr.length > 0;
@@ -750,6 +768,7 @@ document.addEventListener('click', async (e) => {
     on ? S.favs.add(id) : S.favs.delete(id);
     $$(`[data-fav="${id}"]`).forEach((b) => { b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); });
     api.toggleFavorite(S.user.id, id, on).catch(() => toast('Não foi possível salvar o favorito.', 'warn'));
+    alerts.watchProduct(id, on); if (on) toast('Favorito salvo. Avisamos quando baixar.');
     return;
   }
   if (d.openProduct) return openProduct(Number(d.openProduct));
@@ -815,7 +834,11 @@ window.addEventListener('hashchange', route);
 //  Início
 // ======================================================================
 function skeleton() {
-  $('#productGrid').innerHTML = Array.from({ length: 6 }, () => `<div class="card card--skel"><div class="skeleton" style="height:48px"></div><div class="skeleton" style="height:64px;width:60%"></div><div class="skeleton" style="height:40px"></div></div>`).join('');
+  // cartões de espera com a etiqueta da marca (no lugar de blocos cinza)
+  const tag = '<svg viewBox="0 0 48 48" aria-hidden="true"><g transform="rotate(-14 24 24)"><path d="M11 24 L18.5 15.5 H35 a4 4 0 0 1 4 4 V28.5 a4 4 0 0 1 -4 4 H18.5 Z" fill="currentColor" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><circle cx="18" cy="24" r="2.1" fill="var(--surface)"/><path d="M24 24.3l3.6 3.6 7-7.8" fill="none" stroke="var(--surface)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></g></svg>';
+  $('#productGrid').innerHTML = Array.from({ length: 6 }, (_, i) => `<div class="card card--skel" style="--i:${i}" aria-hidden="true">
+    <div class="skel-row"><span class="skel-tag">${tag}</span><span class="skel-lines"><i class="skeleton" style="width:70%"></i><i class="skeleton" style="width:45%"></i></span></div>
+    <i class="skeleton skel-price"></i><i class="skeleton skel-foot"></i></div>`).join('');
 }
 
 function toggleTheme() {
@@ -844,7 +867,7 @@ function applySettings() {
 
 async function refreshCatalog() {
   const data = await api.loadCatalog();
-  S.products = data.products; renderGrid();
+  S.products = data.products; renderGrid(); alerts.check();
   document.body.classList.toggle('is-saved', api.MODE === 'offline');
   if (location.hash === '#lista') renderList();
 }
@@ -853,6 +876,8 @@ Object.assign(hooks, {
   onGps: (p) => { const near = BAIRROS.map((b) => ({ b, d: haversine(p, b) })).sort((a, b) => a.d - b.d)[0]; setPos({ ...p, label: near.d < 4 ? near.b.name : 'Sua localização', gps: true }); },
   afterListLoad: () => { updateListBadge(); renderGrid(); if (location.hash === '#lista') renderList(); },
   openHome: (cb) => openLoc('home', cb),
+  familyChanged: () => familia.changed(),
+  familyRender: () => familia.render(),
   ranchoMode: (m) => rancho.setMode(m),
   afterContribution: () => { fiscal.renderHome(); if (S.user) api.getProfile().then((p) => { S.profile = p; renderProfileBanner(); }).catch(() => {}); },
 });
@@ -875,6 +900,7 @@ async function boot() {
   if (S.pos) { computeNearest(); $('#locLabel').textContent = S.pos.label || 'Minha localização'; $('#locBtn').classList.add('is-set'); }
   rancho.meta();
   renderChips(); renderNearby(); renderDeals(); renderGrid(); renderSaveStrip(); route(); hideSplash();
+  familia.init();
   if (location.hash === '#refeicoes') refeicoes.render();
   fiscal.renderHome(); fiscal.checkAtStore();
   ajudantes.renderHub();
@@ -904,7 +930,7 @@ async function boot() {
     S.favs = new Set(user ? await api.loadFavorites().catch(() => []) : []);
     if (user && S.profile?.transport) { const m = rancho.MODES[S.profile.transport]; if (m && S.transport.mode !== S.profile.transport) S.transport = { mode: S.profile.transport, value: m.value }; }
     if (user && S.profile?.home_lat && !S.home) S.home = { lat: S.profile.home_lat, lng: S.profile.home_lng, label: S.profile.home_label || S.profile.neighborhood };
-    renderProfileBanner(); renderAccount(); renderGrid(); fiscal.renderHome();
+    renderProfileBanner(); renderAccount(); renderGrid(); fiscal.renderHome(); alerts.check();
     if (location.hash === '#notas') notas.render();
     if (user && S.wantComplete) { S.wantComplete = false; if (!S.profile?.completed_at) setTimeout(() => openAuth('complete'), 300); }
     if (user) await rancho.syncFromServer();
@@ -919,7 +945,7 @@ async function boot() {
     if (x) { x.price = price; x.at = row.collected_at; } else p.prices.push({ market_id: row.supermarket_id, price, prev: null, at: row.collected_at });
     p.prices.sort((a, b) => a.price - b.price);
     p.min_price = p.prices[0].price; p.max_price = p.prices[p.prices.length - 1].price;
-    renderGrid();
+    renderGrid(); alerts.check();
     toast(`Novo preço: ${p.name} a ${brl(price)} no ${S.markets.get(row.supermarket_id)?.name}.`);
   });
 
@@ -933,3 +959,27 @@ boot().catch((e) => {
 });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+
+// ======================================================================
+//  Busca falando (microfone dentro da busca)
+// ======================================================================
+(() => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = $('#searchMic'); if (!SR || !btn) return;
+  btn.hidden = false;
+  let rec = null;
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (rec) { rec.stop(); return; }
+    rec = new SR(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.maxAlternatives = 1;
+    const input = $('#searchInput'); const before = input.placeholder;
+    btn.classList.add('is-on'); input.placeholder = 'Pode falar: “café Três Corações”…';
+    rec.onresult = (ev) => {
+      const t = [...ev.results].map((r) => r[0].transcript).join(' ').trim();
+      input.value = t; input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const end = () => { btn.classList.remove('is-on'); input.placeholder = before; rec = null; };
+    rec.onend = end; rec.onerror = (ev) => { end(); if (ev.error === 'not-allowed') toast('Libere o microfone nas permissões do navegador para buscar falando.', 'warn'); };
+    try { rec.start(); } catch { end(); }
+  });
+})();

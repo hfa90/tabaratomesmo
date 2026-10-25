@@ -27,6 +27,13 @@ function entries() {
   return [...map.values()].sort((a, b) => b.month.localeCompare(a.month));
 }
 
+/** dados do cartão "meu mês" (resumo.js) */
+export function monthData() {
+  const st = stats(); const k = new Date().toISOString().slice(0, 7);
+  const month = st.es.filter((e) => e.month === k).reduce((s, e) => s + (e.savings || 0), 0);
+  return { total: st.total, month, top: st.markets[0] || null, ranchos: st.es.length };
+}
+
 /** resumo para a faixa de economia da página de ofertas */
 export function savingsSummary() {
   const es = entries();
@@ -77,6 +84,7 @@ function saveHero(st) {
       <label for="projRange">Mantendo a média de ${brl(st.avg)} por mês, em <b id="projM">${projMonths} meses</b> são <b id="projV">${brl(st.avg * projMonths)}</b>.</label>
       <input type="range" id="projRange" min="1" max="24" value="${projMonths}" aria-label="Meses" />
     </div>` : `<div class="row-actions"><a class="btn btn--tag btn--sm" href="#lista">Montar meu rancho</a></div>`}
+    <button class="save-hero__share" data-resumo>${ic('sparkle')} Compartilhar meu mês</button>
   </section>
   ${st.es.length ? '' : '<!--'}<section class="panel">
     <div class="panel__head"><h2>Economia por mês</h2><span class="muted small" id="mbarsInfo">Toque num mês</span></div>
@@ -184,6 +192,7 @@ export async function render() {
           </div>
           <div class="row-actions"><button class="btn btn--primary" data-auth="signup">Criar conta</button><button class="btn btn--ghost" data-auth="login">Já tenho conta</button></div>
         </section></div>
+      ${prefsPanel()}
     </div>`;
     return;
   }
@@ -232,10 +241,31 @@ export async function render() {
     box.innerHTML = `<div class="me"><div id="mysteryBox"></div><section class="panel"><div id="fiscalAcc"><div class="skeleton" style="height:120px"></div></div></section></div>`;
     fiscal.renderHome(); fiscal.renderAccount($('#fiscalAcc'));
   } else {
-    box.innerHTML = `<div class="me">${dataPanel()}</div>`;
+    box.innerHTML = `<div class="me">${dataPanel()}${prefsPanel()}</div>`;
     api.amIMaster().then((ok) => { const el = $('#adminLink'); if (ok && el) el.innerHTML = `<section class="panel"><div class="panel__head"><h2>Administração</h2></div><p class="small muted">Sua conta é administradora master.</p><div class="row-actions"><a class="btn btn--primary" href="admin.html">Abrir a administração</a><a class="btn btn--ghost" href="parceiros.html">Área do supermercado</a></div></section>`; }).catch(() => {});
   }
 }
+
+/** preferências do aparelho: vibração ao tocar e avisos de preço */
+function prefsPanel() {
+  let hap = true; try { hap = localStorage.getItem('tb.haptics') !== 'false'; } catch {}
+  const canN = 'Notification' in window;
+  const notif = canN && Notification.permission === 'granted' && api.store.get('tb.notify', true) !== false;
+  const row = (k, t, d, on, dis = false) => `<li><span><b>${t}</b><small class="muted">${d}</small></span>
+    <span class="switch"><input type="checkbox" data-pref="${k}" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''} aria-label="${t}" /><i></i></span></li>`;
+  return `<section class="panel"><div class="panel__head"><h2>Preferências</h2></div><ul class="pref-list">
+    ${row('haptics', 'Vibrar ao tocar', 'Uma vibração curta confirma cada ação (no Android).', hap)}
+    ${row('notify', 'Avisos de preço', canN ? (Notification.permission === 'denied' ? 'Bloqueado no navegador: libere nas permissões do site.' : 'Avisamos no celular quando um favorito baixar.') : 'Este navegador não mostra avisos.', notif, !canN || Notification.permission === 'denied')}
+  </ul></section>`;
+}
+document.addEventListener('change', async (e) => {
+  const k = e.target.dataset?.pref; if (!k) return;
+  if (k === 'haptics') { try { localStorage.setItem('tb.haptics', String(e.target.checked)); } catch {} if (e.target.checked) navigator.vibrate?.(12); }
+  if (k === 'notify') {
+    if (e.target.checked && Notification.permission !== 'granted') { const ok = await (await import('./alerts.js')).enable(); e.target.checked = ok; }
+    else api.store.set('tb.notify', e.target.checked);
+  }
+});
 
 function countUp(el) {
   if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return;

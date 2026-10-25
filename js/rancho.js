@@ -44,6 +44,7 @@ export function meta() {
 function persist(sync = true) {
   api.store.set('tb.rancho', S.rancho);
   api.store.set('tb.list', [...S.list]);
+  if (sync) hooks.familyChanged?.();
   if (sync && S.user) {
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => {
@@ -251,6 +252,7 @@ function shell() {
   v.innerHTML = `
     <div class="rx">
       <div id="rxNote"></div>
+      <div id="famBox"></div>
       <div class="rx-head" id="rxHead"></div>
       <div class="rx-layout">
         <div class="rx-main">
@@ -370,6 +372,7 @@ export function setMode(m) { mode = m; api.store.set('tb.rmode', mode); }
 
 export function render() {
   shell();
+  hooks.familyRender?.();
   const m = meta();
   const its = items();
   const cur = monthKey();

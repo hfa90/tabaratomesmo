@@ -623,3 +623,25 @@ off.handle('report', reportLive);
 off.handle('track', trackLive);
 off.handle('ean', eanLive);
 off.handle('photo', photoLive);
+
+// ---------------------------------------------------------------- lista da família (supabase/atualizacao-2026-10-lista-familia.sql)
+const famErr = (error) => { const e = new Error(error.message); e.code = /function|PGRST202|42883/i.test(`${error.code} ${error.message}`) ? 'sem_funcao' : error.code; return e; };
+const famRpc = async (fn, args) => {
+  if (MODE === 'demo') { const e = new Error('demo'); e.code = 'sem_funcao'; throw e; }
+  const c = await client();
+  const { data, error } = await withTimeout(c.rpc(fn, args));
+  if (error) throw famErr(error);
+  return data;
+};
+export const familyCreate = (name, month, items, checked, by) => famRpc('shared_list_create', { p_name: name, p_month: month, p_items: items, p_checked: checked, p_by: by });
+export const familyGet = (code) => famRpc('shared_list_get', { p_code: code });
+export const familyJoin = (code) => famRpc('shared_list_join', { p_code: code });
+export const familyPut = (code, name, month, items, checked, by) => famRpc('shared_list_put', { p_code: code, p_name: name, p_month: month, p_items: items, p_checked: checked, p_by: by });
+/** canal ao vivo (Realtime Broadcast): avisa quem está com a mesma lista aberta */
+export async function familyChannel(code, onMsg) {
+  if (MODE !== 'live') return null;
+  const c = await client();
+  const ch = c.channel(`familia-${code}`, { config: { broadcast: { self: false } } });
+  ch.on('broadcast', { event: 'sync' }, ({ payload }) => onMsg(payload)).subscribe();
+  return { send: (payload) => ch.send({ type: 'broadcast', event: 'sync', payload }), close: () => c.removeChannel(ch) };
+}

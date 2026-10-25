@@ -7,6 +7,7 @@
 // • "=" fecha a compra: confere se o caixa cobrou o valor previsto e lembra de mandar a nota fiscal.
 // Os valores entram no mesmo carrinho (um total só); lista com editar/excluir e histórico com desfazer.
 import { S, $, esc, brl, hooks } from './core.js';
+import { haptic } from './fx.js';
 
 let C = null;                 // { st, save, total, rerender, closePurchase }
 export function bind(ctx) { C = ctx; }
@@ -258,7 +259,7 @@ addEventListener('popstate', () => { if (open_) closeFull(true); });
 
 // ---------------------------------------------------------------- teclas
 function press(k) {
-  try { navigator.vibrate?.(6); } catch {}
+  haptic('tap');
   if (/^\d+$/.test(k)) {
     if (stage === 'qty' && mode === 'calc') { if (qtyTxt.length < 3) qtyTxt = (qtyTxt + k).replace(/^0+/, ''); }
     else if (price.length < 8) price = (price + k).replace(/^0+/, '');
@@ -294,7 +295,7 @@ function commit() {
     log('add', { item: { ...item } });
   }
   price = ''; qtyTxt = ''; stage = 'price'; name = '';
-  C.save(); draw();
+  C.save(); draw(); haptic('success');
   const v = $('#cfVal'); v?.classList.add('is-added'); setTimeout(() => v?.classList.remove('is-added'), 450);
   const w = wallet();
   if (w.b && w.t > w.b) { const s = fixSuggestion(w.t - w.b); flashHint(`Passou ${fmt(w.t - w.b)}.${s ? ` Tirando “${esc(s.name)}” (${fmt(s.price * s.qty)}) cabe.` : ''}`); }

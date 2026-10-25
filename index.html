@@ -98,10 +98,12 @@
         <label class="search">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 1 0 4.6 13.4l4.7 4.7 1.4-1.4-4.7-4.7A7.5 7.5 0 0 0 10.5 3zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z" fill="currentColor"/></svg>
           <input id="searchInput" type="search" placeholder="Buscar arroz, picanha, Baré…" autocomplete="off" enterkeyhint="search" aria-label="Buscar produto" />
+          <button class="search__mic" id="searchMic" type="button" aria-label="Buscar falando" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
         </label>
         <button class="compare-line" id="compareLine" type="button" data-open="markets"></button>
       </header>
 
+      <section class="drop-box" id="dropBox" aria-live="polite" hidden></section>
       <section class="save-strip" id="saveStrip" aria-live="polite" hidden></section>
       <section class="hub-wrap" id="toolHub" aria-label="Ferramentas para usar no mercado"></section>
       <section class="deals" id="deals" aria-label="Destaques" hidden></section>

@@ -7,6 +7,8 @@ import { parse, match, verdict, promoEffective } from './voice.js';
 import { track } from './track.js';
 import * as ads from './ads.js';
 import * as calc from './calc.js';
+import * as fx from './fx.js';
+const added = () => { fx.haptic('success'); fx.bump(document.querySelector('.tabbar .tab-mic__b')); };
 
 const KEY = 'tb.cart';
 const st = () => (S.cart ||= api.store.get(KEY, null) || { market: null, budget: null, items: [], startedAt: null });
@@ -145,7 +147,7 @@ export function addFromSpeech(alternatives, source = 'voz') {
   flash(item.id);
   if (item.price == null) return askPrice(item);
   if (['diferente', 'sem_preco', 'tamanho', 'novo'].includes(item.status)) return askPhoto(item, v);
-  hooks.toast?.(item.status === 'confere' ? `✓ ${item.name}: ${brl(item.price)}, confere com o site.` : `${item.name}: ${brl(item.price)} adicionado.`);
+  added(); hooks.toast?.(item.status === 'confere' ? `✓ ${item.name}: ${brl(item.price)}, confere com o site.` : `${item.name}: ${brl(item.price)} adicionado.`);
 }
 
 /** adiciona um produto conhecido (do leitor de código de barras ou da calculadora de promoção) */
@@ -165,7 +167,7 @@ export function addProduct(p, { price = null, qty = 1, note = '' } = {}) {
   track('cart_item', { product_id: p.id, market_id: mid, value: item.price });
   if (location.hash === '#carrinho') { render(); flash(item.id); }
   if (item.price == null) { askPrice(item); return item; }
-  hooks.toast?.(`${item.name}: ${brl(item.price)}${qty > 1 ? ` × ${qty}` : ''} no carrinho.`);
+  added(); hooks.toast?.(`${item.name}: ${brl(item.price)}${qty > 1 ? ` × ${qty}` : ''} no carrinho.`);
   return item;
 }
 
@@ -174,7 +176,7 @@ export function addCustom({ name, price, qty = 1, note = '' }) {
   const item = { id: uid(), spoken: name, qty, name, product_id: null, guess_id: null, price, status: 'manual', site_price: null, size: null, at: new Date().toISOString(), promo: note || null };
   const c = st(); c.startedAt ||= item.at; c.items.unshift(item); save();
   if (location.hash === '#carrinho') { render(); flash(item.id); }
-  hooks.toast?.(`${name}: ${brl(price)}${qty > 1 ? ` × ${qty}` : ''} no carrinho.`);
+  added(); hooks.toast?.(`${name}: ${brl(price)}${qty > 1 ? ` × ${qty}` : ''} no carrinho.`);
   return item;
 }
 
