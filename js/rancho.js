@@ -42,6 +42,7 @@ export function meta() {
 }
 
 function persist(sync = true) {
+  if (sync) linkedTplSync();
   api.store.set('tb.rancho', S.rancho);
   api.store.set('tb.list', [...S.list]);
   if (sync) hooks.familyChanged?.();
@@ -237,6 +238,117 @@ async function proteinInsights(its) {
   return { perProduct, combo, worst, fromList: inList.length > 0 };
 }
 
+// ---------------------------------------------------------------- minhas listas (modelos)
+// A pessoa cria listas com nome ("Rancho da família", "Churrasco"). A lista do mês fica ligada a uma delas:
+// o que ela põe ou tira atualiza o modelo. Uma lista pode ser o PADRÃO: no mês seguinte o rancho já
+// começa com ela. Tudo fica em tb.templates (acompanha a conta em outros aparelhos).
+const tpls = () => api.store.get('tb.templates', []);
+const saveTpls = (t) => api.store.set('tb.templates', t);
+const tplById = (id) => tpls().find((t) => t.id === id) || null;
+export const defaultTpl = () => tpls().find((t) => t.isDefault) || null;
+const listPairs = () => [...S.list].map(([id, q]) => [id, q]);
+function linkedTplSync() {
+  const id = S.rancho?.templateId; if (!id) return;
+  const all = tpls(); const t = all.find((x) => x.id === id); if (!t) { delete S.rancho.templateId; return; }
+  const items = listPairs();
+  if (JSON.stringify(items) === JSON.stringify(t.items)) return;
+  t.items = items; t.updatedAt = new Date().toISOString(); saveTpls(all);
+}
+function applyTpl(t, how = 'replace') {
+  if (how === 'replace') { S.list.clear(); meta().checked = []; }
+  for (const [pid, q] of t.items) if (S.products.some((p) => p.id === pid)) S.list.set(pid, Math.max(S.list.get(pid) || 0, q));
+  meta().templateId = t.id; meta().status = 'aberta';
+  onListChange(); hooks.afterListLoad?.();
+}
+function tplSheet(html) { openTool('listas', `<div class="tool tpl">${html}</div>`); }
+function openCreate() {
+  const its = S.list.size;
+  tplSheet(`<h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${ic('list')}</span> Criar minha lista</h2>
+    <p class="tool__lead">Monte o seu rancho do seu jeito e use de base todo mês.</p>
+    <form class="form" id="tplForm">
+      <label>Nome da lista<input name="name" maxlength="40" required placeholder="Ex.: Rancho da família, Churrasco, Café da manhã" /></label>
+      ${its ? `<fieldset class="tpl-start"><legend>Começar com</legend>
+        <label class="radio-row"><input type="radio" name="start" value="atual" checked /> Os ${its} itens da lista atual</label>
+        <label class="radio-row"><input type="radio" name="start" value="vazia" /> Uma lista vazia</label></fieldset>` : '<input type="hidden" name="start" value="vazia" />'}
+      <label class="tpl-def"><input type="checkbox" name="def" ${tpls().some((t) => t.isDefault) ? '' : 'checked'} />
+        <span><b>Usar como padrão</b><small>Todo mês o rancho já começa com esta lista. Você pode mudar quando quiser.</small></span></label>
+      <div class="tool__actions"><button class="btn btn--primary btn--xl">${ic('check')} Criar lista</button><button class="btn btn--text" type="button" data-close>Cancelar</button></div>
+    </form>`);
+  setTimeout(() => $('#tplForm [name=name]')?.focus(), 320);
+}
+function openManage() {
+  const all = tpls(); const cur = S.rancho?.templateId;
+  tplSheet(`<h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${ic('list')}</span> Minhas listas</h2>
+    ${all.length ? `<ul class="tpl-list">${all.map((t) => `<li class="${t.id === cur ? 'is-cur' : ''}">
+      <div class="tpl-list__t"><b>${esc(t.name)}</b><small>${t.items.length} ${t.items.length === 1 ? 'item' : 'itens'}${t.isDefault ? ' · padrão do mês' : ''}${t.id === cur ? ' · em uso agora' : ''}</small></div>
+      <div class="tpl-list__a">
+        ${t.id === cur ? '' : `<button class="btn btn--primary btn--sm" data-tpl-use="${t.id}">Usar</button>`}
+        <button class="tpl-star ${t.isDefault ? 'is-on' : ''}" data-tpl-def="${t.id}" aria-pressed="${!!t.isDefault}" title="${t.isDefault ? 'É o padrão do mês' : 'Tornar padrão do mês'}">${ic('star')}</button>
+        <button class="btn btn--text btn--sm" data-tpl-ren="${t.id}">Renomear</button>
+        <button class="btn btn--text btn--sm" data-tpl-del="${t.id}">Excluir</button></div></li>`).join('')}</ul>` : '<p class="muted">Você ainda não criou nenhuma lista.</p>'}
+    <div class="tool__actions"><button class="btn btn--ghost btn--block" data-tpl="new">${ic('plus')} Criar outra lista</button>
+      ${cur ? '<button class="btn btn--text" data-tpl="unlink">Parar de atualizar o modelo com a lista do mês</button>' : ''}</div>`);
+}
+function askUse(t) {
+  if (!S.list.size) { applyTpl(t); hooks.closeSheet?.('#toolSheet'); hooks.toast?.(`Lista “${t.name}” no rancho.`); return; }
+  tplSheet(`<h2 class="sheet__title" id="toolTitle">Usar “${esc(t.name)}”</h2>
+    <p class="tool__lead">Seu rancho já tem ${S.list.size} itens. O que fazer com eles?</p>
+    <div class="tool__actions"><button class="btn btn--primary btn--xl" data-tpl-apply="${t.id}:replace">Trocar pela lista “${esc(t.name)}”</button>
+      <button class="btn btn--ghost btn--xl" data-tpl-apply="${t.id}:merge">Juntar as duas</button><button class="btn btn--text" data-close>Cancelar</button></div>`);
+}
+/** chips do topo da lista */
+function tplQuickHTML(n) {
+  const all = tpls(); const cur = S.rancho?.templateId; const t = cur && tplById(cur);
+  return [
+    `<button class="chip chip--new" data-tpl="new">${ic('plus')} Criar lista</button>`,
+    ...all.filter((x) => x.id !== cur).slice(0, 3).map((x) => `<button class="chip" data-tpl-use="${x.id}">${x.isDefault ? ic('star') + ' ' : ''}${esc(x.name)}</button>`),
+    all.length ? `<button class="chip" data-tpl="manage">${ic('list')} Minhas listas</button>` : '',
+    t ? '' : (n ? `<button class="chip" data-tpl="save">${ic('save')} Salvar como lista</button>` : ''),
+  ].join('');
+}
+/** virou o mês: com uma lista padrão, o rancho novo já começa com ela */
+function newMonthFromDefault() {
+  const m = meta(); const cur = monthKey(); const d = defaultTpl();
+  if (!d || m.month === cur) return false;
+  if (S.list.size && m.status !== 'concluida') return false; // deixa a pessoa decidir (aviso no topo)
+  S.rancho = { name: `Rancho de ${monthName(cur)}`, month: cur, status: 'aberta', checked: [], templateId: d.id };
+  S.list = new Map(d.items.filter(([pid]) => S.products.some((p) => p.id === pid)));
+  persist(); hooks.afterListLoad?.();
+  hooks.toast?.(`O rancho de ${monthName(cur)} já começou com a sua lista “${d.name}”.`);
+  return true;
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-tpl], [data-tpl-use], [data-tpl-def], [data-tpl-ren], [data-tpl-del], [data-tpl-apply]'); if (!t) return;
+  const d = t.dataset;
+  if (d.tpl === 'new') return openCreate();
+  if (d.tpl === 'manage') return openManage();
+  if (d.tpl === 'save') { openCreate(); return; }
+  if (d.tpl === 'unlink') { delete meta().templateId; persist(false); render(); hooks.closeSheet?.('#toolSheet'); hooks.toast?.('A lista do mês não muda mais o modelo.'); return; }
+  if (d.tplUse) { const x = tplById(d.tplUse); if (x) askUse(x); return; }
+  if (d.tplApply) { const [id, how] = d.tplApply.split(':'); const x = tplById(id); if (x) { applyTpl(x, how); hooks.closeSheet?.('#toolSheet'); hooks.toast?.(how === 'merge' ? `Itens de “${x.name}” juntados ao rancho.` : `Lista “${x.name}” no rancho.`); } return; }
+  if (d.tplDef) { const all = tpls(); const on = !all.find((x) => x.id === d.tplDef)?.isDefault; all.forEach((x) => { x.isDefault = on && x.id === d.tplDef; }); saveTpls(all); openManage(); render(); hooks.toast?.(on ? 'Pronto: todo mês o rancho começa com esta lista.' : 'Sem lista padrão.'); return; }
+  if (d.tplRen) { const all = tpls(); const x = all.find((y) => y.id === d.tplRen); const n = x && prompt('Novo nome da lista:', x.name); if (n && n.trim()) { x.name = n.trim().slice(0, 40); saveTpls(all); openManage(); render(); } return; }
+  if (d.tplDel) { const all = tpls(); const x = all.find((y) => y.id === d.tplDel); if (!x || !confirm(`Excluir a lista “${x.name}”? O rancho do mês continua como está.`)) return;
+    saveTpls(all.filter((y) => y.id !== d.tplDel)); if (S.rancho?.templateId === d.tplDel) { delete S.rancho.templateId; persist(false); } openManage(); render(); }
+});
+document.addEventListener('submit', (e) => {
+  if (e.target.id !== 'tplForm') return;
+  e.preventDefault();
+  const f = e.target; const name = f.name.value.trim().slice(0, 40); if (!name) return;
+  const empty = f.start.value === 'vazia';
+  if (empty && S.list.size && !confirm('Começar uma lista vazia tira os itens do rancho atual. Continuar?')) return;
+  if (empty) { S.list.clear(); meta().checked = []; }
+  const all = tpls(); const def = f.def.checked;
+  if (def) all.forEach((x) => { x.isDefault = false; });
+  const t = { id: Math.random().toString(36).slice(2, 10), name, items: listPairs(), isDefault: def, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  all.unshift(t); saveTpls(all);
+  meta().templateId = t.id; meta().status = 'aberta';
+  onListChange(); hooks.afterListLoad?.(); hooks.closeSheet?.('#toolSheet');
+  hooks.toast?.(empty ? `Lista “${name}” criada. Agora é só adicionar os produtos.` : `Lista “${name}” criada com ${t.items.length} itens.`);
+  setTimeout(() => $('#ranchoSearch')?.focus(), 350);
+});
+
 // ---------------------------------------------------------------- histórico (página "Você")
 export function history() { return api.store.get('tb.history', {}); }
 function saveHistory(entry) {
@@ -381,9 +493,12 @@ export function render() {
   const checked = new Set(m.checked);
   const done = its.filter(({ p }) => checked.has(p.id)).length;
   const lastMonth = Object.values(history()).filter((h) => h.month !== m.month && h.items?.length).sort((a, b) => b.month.localeCompare(a.month))[0];
+  if (newMonthFromDefault()) return render();
+  const dtpl = defaultTpl(); const linked = m.templateId && tplById(m.templateId);
 
   $('#rxNote').innerHTML = m.month !== cur
-    ? `<div class="note">Começou ${esc(monthName(cur))}. <button class="linkish" data-rancho="newmonth">Montar o rancho de ${esc(monthName(cur))} com os mesmos itens</button></div>` : '';
+    ? `<div class="note">Começou ${esc(monthName(cur))}. ${dtpl ? `<button class="linkish" data-tpl-apply="${dtpl.id}:replace">Montar o rancho de ${esc(monthName(cur))} com a sua lista “${esc(dtpl.name)}”</button> ou ` : ''}<button class="linkish" data-rancho="newmonth">${dtpl ? 'repetir os mesmos itens' : `Montar o rancho de ${esc(monthName(cur))} com os mesmos itens`}</button></div>`
+    : linked ? `<div class="tpl-bar">${ic('list')}<span>Lista <b>${esc(linked.name)}</b>${linked.isDefault ? ' · padrão do mês' : ''}<small>o que você muda aqui atualiza esta lista</small></span><button class="btn btn--text btn--sm" data-tpl="manage">Minhas listas</button></div>` : '';
 
   $('#rxHead').innerHTML = `
     <div class="rx-title">
@@ -399,14 +514,15 @@ export function render() {
     </div>` : ''}`;
 
   $('#rxQuick').innerHTML = [
-    its.length < 6 ? `<button class="chip" data-rancho="basic">+ Cesta básica</button>` : '',
+    tplQuickHTML(its.length),
     lastMonth && its.length < 3 ? `<button class="chip" data-rancho="repeat" data-month="${lastMonth.month}">Repetir ${esc(monthName(lastMonth.month))}</button>` : '',
     S.favs.size && its.length < 6 ? `<button class="chip" data-rancho="favs">+ Meus favoritos</button>` : '',
   ].join('');
 
   if (!its.length) {
     $('#rxGroups').innerHTML = `<div class="rx-empty"><span class="big" aria-hidden="true">${ic('cart')}</span><b>Seu rancho está vazio</b>
-      <p class="muted small">Busque acima, comece pela cesta básica ou toque no + dos produtos em Ofertas.</p></div>`;
+      <p class="muted small">Crie a sua lista e use de base todo mês, busque produtos acima ou toque no + dos produtos em Ofertas.</p>
+      <div class="row-actions" style="justify-content:center;margin-top:10px"><button class="btn btn--primary" data-tpl="new">${ic('plus')} Criar minha lista</button>${dtpl ? `<button class="btn btn--ghost" data-tpl-use="${dtpl.id}">Usar “${esc(dtpl.name)}”</button>` : ''}</div></div>`;
     $('#rxSide').innerHTML = ''; $('#ranchoReport').innerHTML = ''; $('#ranchoBar').hidden = true;
     $('#ranchoView .rx').classList.remove('is-done');
     return;

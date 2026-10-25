@@ -18,8 +18,59 @@ const minOf = (p) => { const v = visiblePrices(p); return v.length ? { price: v[
 export const canNotify = () => 'Notification' in window && 'serviceWorker' in navigator;
 export const notifyOn = () => canNotify() && Notification.permission === 'granted' && api.store.get('tb.notify', true) !== false;
 
-/** confere todos os favoritos (chame depois de carregar catálogo e favoritos) */
+// ---------------------------------------------------------------- produtos que a pessoa COMPROU
+// Ranchos concluídos, a última compra do carrinho, notas fiscais e o que foi marcado "já peguei".
+// Para cada um, guarda o preço em cada supermercado (tb.watchB) e avisa quando sobe ou desce.
+const MIN_CHANGE = 0.10, MIN_PCT = 0.03;
+const watchB = () => api.store.get('tb.watchB', {});
+const changes = () => api.store.get('tb.changes', []);
+export function boughtIds() {
+  const ids = new Set();
+  for (const h of Object.values(api.store.get('tb.history', {}))) for (const [pid] of h.items || []) ids.add(pid);
+  for (const i of api.store.get('tb.lastCart', null)?.items || []) if (i.product_id) ids.add(i.product_id);
+  for (const r of api.store.get('tb.receipts', [])) for (const i of r.items || []) if (i.pid) ids.add(i.pid);
+  for (const pid of S.rancho?.checked || []) ids.add(pid);
+  return [...ids].filter((id) => S.products.some((p) => p.id === id)).slice(0, 80);
+}
+function checkBought() {
+  const ids = boughtIds(); if (!ids.length) return [];
+  const w = watchB(); const list = changes(); const fresh = [];
+  for (const pid of ids) {
+    const p = S.products.find((x) => x.id === pid); if (!p) continue;
+    for (const x of p.prices) {
+      const k = `${pid}:${x.market_id}`; const ref = w[k];
+      if (ref == null) { w[k] = x.price; continue; }
+      const diff = x.price - ref;
+      if (Math.abs(diff) >= MIN_CHANGE && Math.abs(diff) / ref >= MIN_PCT) {
+        const c = { pid, mid: x.market_id, from: ref, to: x.price, at: Date.now() };
+        fresh.push(c);
+        const i = list.findIndex((y) => y.pid === pid && y.mid === x.market_id);
+        if (i >= 0) list[i] = { ...c, from: list[i].from }; else list.unshift(c);
+        w[k] = x.price;
+      }
+    }
+  }
+  const keep = list.filter((c) => Date.now() - c.at < 7 * 864e5 && Math.abs(c.to - c.from) >= 0.009).slice(0, 12);
+  api.store.set('tb.watchB', w); api.store.set('tb.changes', keep);
+  return fresh;
+}
+async function notifyChanges(list) {
+  if (!notifyOn() || !list.length) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const up = list.filter((c) => c.to > c.from), down = list.filter((c) => c.to < c.from);
+    const one = list[0]; const p = S.products.find((x) => x.id === one.pid); const m = S.markets.get(one.mid);
+    const title = list.length > 1 ? `Preços do que você compra mudaram${down.length ? `: ${down.length} baixaram` : ''}${up.length ? `${down.length ? ',' : ':'} ${up.length} subiram` : ''}`
+      : `${p?.name || 'Um produto'} ${one.to < one.from ? 'baixou' : 'subiu'} no ${m?.name || 'mercado'}`;
+    const body = list.length > 1 ? list.slice(0, 3).map((c) => `${S.products.find((x) => x.id === c.pid)?.name} ${c.to < c.from ? '↓' : '↑'} ${brl(c.to)}`).join(' · ')
+      : `De ${brl(one.from)} para ${brl(one.to)}.`;
+    reg.showNotification(title, { body, icon: 'assets/icon-192.png', badge: 'assets/icon-192.png', tag: 'tb-change', renotify: true, data: { url: './#ofertas' } });
+  } catch {}
+}
+
+/** confere favoritos e itens comprados (chame depois de carregar catálogo e favoritos) */
 export function check() {
+  if (S.products.length) notifyChanges(checkBought());
   if (!S.favs.size || !S.products.length) { render(); return; }
   const w = watch(); const list = drops(); const fresh = [];
   for (const pid of S.favs) {
@@ -85,7 +136,7 @@ export async function enable() {
 }
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-notify], [data-drop-x]'); if (!b) return;
-  if (b.dataset.dropX !== undefined) { api.store.set('tb.drops', []); render(); return; }
+  if (b.dataset.dropX !== undefined) { api.store.set('tb.drops', []); api.store.set('tb.changes', []); render(); return; }
   const box = b.closest('.notify-ask');
   if (b.dataset.notify === 'yes') await enable(); else api.store.set('tb.notifyAsked', true);
   if (box) { box.classList.remove('is-in'); setTimeout(() => box.remove(), 300); }
@@ -95,12 +146,19 @@ document.addEventListener('click', async (e) => {
 export function render() {
   const el = $('#dropBox'); if (!el) return;
   const list = drops().filter((d) => S.products.some((p) => p.id === d.pid));
-  if (!list.length) { el.hidden = true; el.innerHTML = ''; return; }
+  const ch = changes().filter((c) => S.products.some((p) => p.id === c.pid) && S.markets.has(c.mid) && !list.some((d) => d.pid === c.pid && d.mid === c.mid));
+  if (!list.length && !ch.length) { el.hidden = true; el.innerHTML = ''; return; }
   el.hidden = false;
-  el.innerHTML = `<div class="drop-head"><span class="drop-head__i">${ic('down')}</span><b>Baixou! ${list.length > 1 ? `${list.length} favoritos seus` : 'Um favorito seu'} ficou mais barato</b>
-      <button class="drop-head__x" data-drop-x aria-label="Dispensar">${ic('close')}</button></div>
-    <ul class="drop-list">${list.map((d) => { const p = S.products.find((x) => x.id === d.pid); const m = S.markets.get(d.mid); return `<li><button data-open-product="${p.id}">
+  const nDown = ch.filter((c) => c.to < c.from).length, nUp = ch.length - nDown;
+  const row = (d) => { const p = S.products.find((x) => x.id === d.pid); const m = S.markets.get(d.mid); const down = d.to < d.from;
+    return `<li><button data-open-product="${p.id}">
       <span class="drop-list__t"><b>${esc(p.name)}</b><small>${m ? `${logo(m, 'xs')} ${esc(m.name)}` : ''}</small></span>
-      <span class="drop-list__v"><s>${brl(d.from)}</s><b>${brl(d.to)}</b><em>−${brl(d.from - d.to)}</em></span></button></li>`; }).join('')}</ul>
+      <span class="drop-list__v ${down ? '' : 'is-up'}"><s>${brl(d.from)}</s><b>${brl(d.to)}</b><em>${down ? '−' : '+'}${brl(Math.abs(d.from - d.to))}</em></span></button></li>`; };
+  el.innerHTML = `<div class="drop-head"><span class="drop-head__i">${ic(list.length || nDown >= nUp ? 'down' : 'up')}</span>
+      <b>${list.length ? `Baixou! ${list.length > 1 ? `${list.length} favoritos seus` : 'Um favorito seu'} ficou mais barato` : 'O preço do que você compra mudou'}</b>
+      <button class="drop-head__x" data-drop-x aria-label="Dispensar">${ic('close')}</button></div>
+    ${list.length ? `<ul class="drop-list">${list.map(row).join('')}</ul>` : ''}
+    ${ch.length ? `${list.length ? `<p class="drop-sub">O que você compra: ${nDown ? `${nDown} ${nDown > 1 ? 'baixaram' : 'baixou'}` : ''}${nDown && nUp ? ', ' : ''}${nUp ? `${nUp} ${nUp > 1 ? 'subiram' : 'subiu'}` : ''}</p>` : ''}
+      <ul class="drop-list">${ch.slice(0, 6).map(row).join('')}</ul>` : ''}
     ${canNotify() && Notification.permission === 'default' ? `<button class="btn btn--text drop-on" data-notify="yes">${ic('bell')} Avisar também no celular</button>` : ''}`;
 }

@@ -729,3 +729,20 @@ export async function profileEpoch() {
     return { gen: Number(data.history_gen), reset_at: data.history_reset_at };
   } catch { return null; }
 }
+
+// ---------------------------------------------------------------- datas especiais (páginas temáticas ligadas pela administração)
+export async function loadEvent() {
+  if (MODE === 'demo') {
+    const d = ls.get('tb.portalDemo', null);
+    const ev = (d?.events || []).find((e) => e.active && new Date(e.starts_at) <= new Date() && new Date(e.ends_at) >= new Date());
+    return ev ? { event: ev, items: (d.eventProducts || []).filter((x) => x.event_slug === ev.slug) } : null;
+  }
+  if (MODE !== 'live') return null;
+  try {
+    const c = await client();
+    const { data: evs, error } = await withTimeout(c.from('special_events').select('*').order('starts_at', { ascending: false }).limit(1));
+    if (error || !evs?.length) return null;
+    const { data: items } = await withTimeout(c.from('special_event_products').select('supermarket_id, product_id, special_price, sort').eq('event_slug', evs[0].slug));
+    return { event: evs[0], items: items || [] };
+  } catch { return null; }
+}

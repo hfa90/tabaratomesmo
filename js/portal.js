@@ -9,6 +9,7 @@ import * as encarte from './encarte.js';
 import * as ff from './fotofinder.js';
 import * as clientes from './portal-clientes.js';
 import * as campanhas from './portal-campanhas.js';
+import * as especiais from './portal-especiais.js';
 
 const st = {
   user: null, markets: [], mid: null, categories: [],
@@ -144,9 +145,9 @@ const ctx = () => ({ main: $('#ptMain'), mid: st.mid, market, banner: banner(), 
 function route() {
   if (!st.mid) return;
   const v = (location.hash || '#painel').slice(1);
-  const view = ['painel', 'clientes', 'campanhas', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte'].includes(v) ? v : 'painel';
+  const view = ['painel', 'clientes', 'campanhas', 'datas', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte'].includes(v) ? v : 'painel';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
-  ({ painel: renderDashboard, clientes: () => clientes.render(ctx()), campanhas: () => campanhas.render(ctx()), produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte })[view]();
+  ({ painel: renderDashboard, clientes: () => clientes.render(ctx()), campanhas: () => campanhas.render(ctx()), datas: () => especiais.render(ctx()), produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte })[view]();
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);

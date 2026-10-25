@@ -11,7 +11,7 @@ import { hooks } from './core.js';
 // o que acompanha a conta (o resto é do aparelho: localização, cópia offline, avisos já vistos…)
 const KEYS = new Set(['tb.list', 'tb.rancho', 'tb.rmode', 'tb.rgroups', 'tb.cart', 'tb.cartMode', 'tb.lastCart', 'tb.history', 'tb.purchases',
   'tb.enabled', 'tb.home', 'tb.transport', 'tb.theme', 'tb.watch', 'tb.drops', 'tb.family', 'tb.famName', 'tb.receipts', 'tb.nfPending',
-  'tb.filaBest', 'tb.welcomeOff', 'tb.adHide', 'tb.campHide', 'tb.notify', 'tb.calcHelp', 'tb.seenHome']);
+  'tb.filaBest', 'tb.templates', 'tb.watchB', 'tb.changes', 'tb.welcomeOff', 'tb.adHide', 'tb.campHide', 'tb.notify', 'tb.calcHelp', 'tb.seenHome']);
 
 let uid = null, stopRt = null, pushT = null, applying = false;
 let epochAt = 0, epochOk = true;

@@ -473,3 +473,40 @@ export async function campaignStatus(id, status) {
   const { error } = await c.rpc('campaign_status', { p_id: id, p_status: status });
   if (error) throw new Error(error.message);
 }
+
+// ---------------------------------------------------------------- datas especiais: o mercado escolhe os produtos
+function demoEvents() {
+  const d = demoState();
+  if (!d.events) {
+    const now = new Date(); const y = now.getFullYear();
+    d.events = [
+      { slug: `halloween-${y}`, theme: 'halloween', title: 'Halloween do Tá Barato', subtitle: 'Doces, fantasias e festa com preço que não assusta.', banner_text: 'Halloween: doces com preço que não assusta', starts_at: new Date(Date.now() - 2 * 864e5).toISOString(), ends_at: new Date(Date.now() + 6 * 864e5).toISOString(), active: true },
+      { slug: `blackfriday-${y}`, theme: 'blackfriday', title: 'Black Friday do Tá Barato', subtitle: 'Os maiores descontos do ano.', banner_text: 'Black Friday: descontos de verdade', starts_at: new Date(y, 10, 20).toISOString(), ends_at: new Date(y, 10, 30, 23, 59).toISOString(), active: true },
+    ];
+    d.eventProducts = [];
+    saveDemo(d);
+  }
+  return d;
+}
+export async function marketEvents(mid) {
+  if (MODE === 'demo') {
+    const d = demoEvents();
+    return d.events.filter((e) => e.active && new Date(e.ends_at) > new Date()).map((e) => ({ ...e, items: d.eventProducts.filter((x) => x.event_slug === e.slug && x.supermarket_id === mid).map((x) => ({ product_id: x.product_id, special_price: x.special_price })) }));
+  }
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc('market_events', { p_market: mid });
+  if (error) { const e = new Error(isMissingFn(error) ? 'As datas especiais ainda não foram ativadas no banco (rode supabase/atualizacao-2026-10-datas-especiais.sql).' : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
+  return data;
+}
+export async function setEventProducts(slug, mid, items) {
+  if (MODE === 'demo') {
+    const d = demoEvents();
+    d.eventProducts = d.eventProducts.filter((x) => !(x.event_slug === slug && x.supermarket_id === mid))
+      .concat(items.map((x, i) => ({ event_slug: slug, supermarket_id: mid, product_id: x.product_id, special_price: x.special_price ?? null, sort: i })));
+    saveDemo(d); return items.length;
+  }
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc('market_event_products_set', { p_slug: slug, p_market: mid, p_items: items });
+  if (error) throw new Error(error.message);
+  return data;
+}

@@ -29,6 +29,7 @@ import * as familia from './familia.js';
 import './zerar.js';
 import * as sync from './sync.js';
 import * as campanhas from './campanhas.js';
+import * as especial from './especial.js';
 import { parse as parseSpeech, match as fuzzyMatch } from './voice.js';
 import './fotopreco.js';
 
@@ -713,19 +714,21 @@ function renderSaveStrip() {
 //  Rotas
 // ======================================================================
 // ordem das telas: define se a nova página entra pela direita (avançar) ou pela esquerda (voltar)
-const VIEW_ORDER = { inicio: 0, ofertas: 1, refeicoes: 2, lista: 3, carrinho: 4, fila: 5, notas: 6, mapa: 7, conta: 8 };
+const VIEW_ORDER = { inicio: 0, especial: 0.5, ofertas: 1, refeicoes: 2, lista: 3, carrinho: 4, fila: 5, notas: 6, mapa: 7, conta: 8 };
 let lastView = null;
 function route() {
   const next = currentView();
   // desliza entre páginas (View Transitions); onde não houver, troca na hora
   if (lastView && next !== lastView && document.startViewTransition && !reduceMotion && !document.hidden) {
     document.documentElement.dataset.dir = (VIEW_ORDER[next] ?? 1) >= (VIEW_ORDER[lastView] ?? 1) ? 'fwd' : 'back';
-    document.startViewTransition(() => routeNow());
+    const vt = document.startViewTransition(() => routeNow());
+    // a animação pode ser interrompida (tela girou, outra troca de página): não é erro
+    vt.ready?.catch(() => {}); vt.finished?.catch(() => {}); vt.updateCallbackDone?.catch(() => {});
   } else routeNow();
 }
 function currentView() {
   const v = (location.hash || S.firstView || (api.store.get('tb.seenHome', null) ? '#ofertas' : '#inicio')).slice(1).split('?')[0];
-  return ['inicio', 'ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila', 'notas', 'refeicoes'].includes(v) ? v : (v === 'completar' ? 'conta' : 'ofertas');
+  return ['inicio', 'especial', 'ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila', 'notas', 'refeicoes'].includes(v) ? v : (v === 'completar' ? 'conta' : 'ofertas');
 }
 function routeNow() {
   // sem endereço: quem chega pela primeira vez vê a página inicial; quem já conhece vai direto às ofertas
@@ -733,7 +736,7 @@ function routeNow() {
   let v = (location.hash || S.firstView).slice(1).split('?')[0];
   // vindo da confirmação de e-mail: abre "completar cadastro" assim que a conta carregar
   if (v === 'completar') { S.wantComplete = true; history.replaceState(null, '', '#conta'); v = 'conta'; if (S.user) { S.wantComplete = false; setTimeout(() => openAuth('complete'), 300); } }
-  const view = ['inicio', 'ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila', 'notas', 'refeicoes'].includes(v) ? v : 'ofertas';
+  const view = ['inicio', 'especial', 'ofertas', 'mapa', 'lista', 'conta', 'carrinho', 'fila', 'notas', 'refeicoes'].includes(v) ? v : 'ofertas';
   $$('.view').forEach((s) => (s.hidden = s.dataset.view !== view));
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === view));
   if (view === 'mapa') drawMap();
@@ -744,6 +747,7 @@ function routeNow() {
   if (view === 'notas') notas.render();
   if (view === 'refeicoes') refeicoes.render();
   if (view === 'inicio') inicio.render();
+  if (view === 'especial') especial.render(); else if (lastView === 'especial') especial.leave();
   if (view === 'ofertas') renderSaveStrip();
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === (view === 'fila' ? 'carrinho' : view)));
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
@@ -926,7 +930,7 @@ async function boot() {
   if (S.pos) { computeNearest(); $('#locLabel').textContent = S.pos.label || 'Minha localização'; $('#locBtn').classList.add('is-set'); }
   rancho.meta();
   renderChips(); renderNearby(); renderDeals(); renderGrid(); renderSaveStrip(); route(); hideSplash();
-  familia.init(); campanhas.init();
+  familia.init(); campanhas.init(); especial.init();
   try { if (sessionStorage.getItem('tb.wipedElsewhere')) { sessionStorage.removeItem('tb.wipedElsewhere'); toast('O histórico desta conta foi zerado em outro aparelho. Este aparelho também recomeçou do zero.'); } } catch {}
   if (location.hash === '#refeicoes') refeicoes.render();
   fiscal.renderHome(); fiscal.checkAtStore();

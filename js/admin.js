@@ -6,6 +6,7 @@ import { $, $$, esc, brl, logo, reduceMotion } from './core.js';
 import { hbars, kpi, heatmap, fmtN, downloadCSV } from './viz.js';
 import * as adsUI from './ads.js';
 import * as encarte from './encarte.js';
+import { THEMES, nextDates } from './temas.js';
 
 const st = { user: null, days: 30, usersQ: '', usersFilter: 'all', usersPage: 0, repStatus: 'pendente', modTab: 'precos', prodQ: '', overview: null, markets: null, adStatus: 'pendente', ads: null };
 const PAGE = 50;
@@ -83,7 +84,7 @@ async function enter() {
 
 function route() {
   const v = (location.hash || '#geral').slice(1);
-  const views = { geral: renderOverview, encartes: renderEncartes, mercados: renderMarkets, usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
+  const views = { geral: renderOverview, encartes: renderEncartes, mercados: renderMarkets, usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, datas: renderEventos, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
   const view = views[v] ? v : 'geral';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
   views[view]();
@@ -363,6 +364,77 @@ document.addEventListener('click', (e) => {
 });
 
 // ================================================================ PUBLICIDADE
+// ================================================================ DATAS ESPECIAIS (só a administração liga)
+const toLocal = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 16); };
+async function renderEventos() {
+  $('#ptMain').innerHTML = head('Datas especiais', 'Páginas temáticas em 3D (Black Friday, Natal, Halloween…). Só a administração liga e desliga; os supermercados escolhem os produtos no portal deles.',
+    '<button class="btn btn--primary" data-ev-new>+ Nova data especial</button>') + '<div id="evBox"><div class="skeleton" style="height:240px"></div></div>';
+  let list = [];
+  try { const c = await api.sbClient(); const { data, error } = await c.rpc('admin_events'); if (error) throw error; list = data || []; }
+  catch (e) { $('#evBox').innerHTML = `<p class="note">${/function|PGRST202/i.test(e.message) ? 'Ainda não ativado no banco: rode supabase/atualizacao-2026-10-datas-especiais.sql no SQL Editor.' : esc(e.message)}</p>${themeGallery()}`; return; }
+  const now = Date.now();
+  $('#evBox').innerHTML = `${list.length ? `<div class="ev-list">${list.map((e) => { const t = THEMES[e.theme]; const live = e.active && new Date(e.starts_at) <= now && new Date(e.ends_at) >= now;
+    return `<article class="panel ev-card" style="--t-bg1:${t.c.bg1};--t-bg2:${t.c.bg2};--t-acc:${t.c.acc};--t-acc2:${t.c.acc2}">
+      <div class="ev-card__top"><span class="esp-emb esp-emb--${t.object} ev-emb"><span></span></span><div><small>${t.name}</small><b>${esc(e.title)}</b></div>
+        <span class="pill ${live ? 'pill--ok' : e.active ? 'pill--promo' : 'pill--soft'}">${live ? 'No ar' : e.active ? 'Ligada (fora do período)' : 'Desligada'}</span></div>
+      <p class="muted small">${new Date(e.starts_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} até ${new Date(e.ends_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · ${fmtN(e.products)} produtos de ${fmtN(e.markets)} mercados</p>
+      <div class="row-actions">
+        <label class="switch-row"><span class="switch"><input type="checkbox" data-ev-toggle="${esc(e.slug)}" ${e.active ? 'checked' : ''} aria-label="Ligar ${esc(e.title)}" /><i></i></span> ${e.active ? 'Ligada' : 'Ligar'}</label>
+        <button class="btn btn--ghost btn--sm" data-ev-edit="${esc(e.slug)}">Editar</button>
+        <a class="btn btn--ghost btn--sm" href="index.html#especial?tema=${e.theme}&previa=1" target="_blank" rel="noopener">Ver prévia</a>
+        <button class="btn btn--text btn--sm" data-ev-del="${esc(e.slug)}">Excluir</button></div></article>`; }).join('')}</div>` : '<p class="muted">Nenhuma data especial criada ainda.</p>'}
+    ${themeGallery()}`;
+  st.events = list;
+}
+function themeGallery() {
+  return `<section class="panel"><div class="panel__head"><h2>Temas disponíveis</h2><span class="muted small">toque para criar · “prévia” abre a página com produtos de exemplo</span></div>
+    <div class="ev-themes">${Object.entries(THEMES).map(([k, t]) => { const [s, e] = nextDates(k); return `<div class="ev-theme" style="--t-bg1:${t.c.bg1};--t-bg2:${t.c.bg2};--t-acc:${t.c.acc};--t-acc2:${t.c.acc2}">
+      <span class="esp-emb esp-emb--${t.object} ev-emb"><span></span></span><b>${t.name}</b><small>${s.toLocaleDateString('pt-BR')} a ${e.toLocaleDateString('pt-BR')}</small>
+      <div class="ev-theme__a"><button class="btn btn--sm" data-ev-new="${k}">Criar</button><a class="btn btn--sm btn--ghost" href="index.html#especial?tema=${k}&previa=1" target="_blank" rel="noopener">Prévia</a></div></div>`; }).join('')}</div></section>`;
+}
+function eventForm(ev = null, themeKey = 'blackfriday') {
+  const k = ev?.theme || themeKey; const t = THEMES[k]; const [s, e] = ev ? [new Date(ev.starts_at), new Date(ev.ends_at)] : nextDates(k);
+  openSheet(`<form class="form" id="evForm">
+    <h2 class="sheet__title" id="ptSheetTitle">${ev ? 'Editar data especial' : 'Nova data especial'}</h2>
+    <label>Tema<select name="theme" ${ev ? 'disabled' : ''}>${Object.entries(THEMES).map(([kk, tt]) => `<option value="${kk}" ${kk === k ? 'selected' : ''}>${tt.name}</option>`).join('')}</select></label>
+    <label>Título da página<input name="title" maxlength="60" required value="${esc(ev?.title || t.title)}" /></label>
+    <label>Frase abaixo do título<input name="subtitle" maxlength="140" value="${esc(ev?.subtitle || t.subtitle)}" /></label>
+    <label>Texto do banner na página inicial<input name="banner_text" maxlength="80" value="${esc(ev?.banner_text || t.banner)}" /></label>
+    <div class="row2"><label>Começa<input type="datetime-local" name="starts_at" required value="${toLocal(s)}" /></label><label>Termina<input type="datetime-local" name="ends_at" required value="${toLocal(e)}" /></label></div>
+    <label class="switch-row"><span class="switch"><input type="checkbox" name="active" ${ev?.active ? 'checked' : ''} /><i></i></span> Ligada (aparece no site dentro do período)</label>
+    <p class="muted small">Os supermercados veem a data no portal assim que ela estiver ligada e podem escolher os produtos antes de começar.</p>
+    <input type="hidden" name="slug" value="${esc(ev?.slug || `${k}-${s.getFullYear()}`)}" />
+    <p class="form__err" role="alert"></p>
+    <div class="row-actions"><button class="btn btn--primary">Salvar</button><button class="btn btn--ghost" type="button" data-close>Cancelar</button></div></form>`);
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-ev-new], [data-ev-edit], [data-ev-del]'); if (!b) return;
+  if (b.dataset.evNew !== undefined) return eventForm(null, b.dataset.evNew || 'blackfriday');
+  if (b.dataset.evEdit) return eventForm((st.events || []).find((x) => x.slug === b.dataset.evEdit));
+  if (b.dataset.evDel) {
+    if (!confirm('Excluir esta data especial? Os produtos escolhidos pelos mercados para ela também saem.')) return;
+    try { const c = await api.sbClient(); const { error } = await c.rpc('admin_event_delete', { p_slug: b.dataset.evDel }); if (error) throw error; toast('Data especial excluída.'); renderEventos(); } catch (err) { toast(err.message, 'warn'); }
+  }
+});
+document.addEventListener('change', async (e) => {
+  const slug = e.target.dataset?.evToggle;
+  if (e.target.name === 'theme' && e.target.closest('#evForm')) { const f = e.target.form; const t = THEMES[e.target.value]; const [s, en] = nextDates(e.target.value);
+    f.title.value = t.title; f.subtitle.value = t.subtitle; f.banner_text.value = t.banner; f.starts_at.value = toLocal(s); f.ends_at.value = toLocal(en); f.slug.value = `${e.target.value}-${s.getFullYear()}`; return; }
+  if (!slug) return;
+  const ev = (st.events || []).find((x) => x.slug === slug); if (!ev) return;
+  try { const c = await api.sbClient(); const { error } = await c.rpc('admin_event_save', { p: { ...ev, active: e.target.checked } }); if (error) throw error;
+    toast(e.target.checked ? 'Data especial ligada.' : 'Data especial desligada.'); renderEventos(); } catch (err) { e.target.checked = !e.target.checked; toast(err.message, 'warn'); }
+});
+document.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'evForm') return;
+  e.preventDefault(); const f = e.target;
+  const p = { slug: f.slug.value, theme: f.theme.value, title: f.title.value.trim(), subtitle: f.subtitle.value.trim(), banner_text: f.banner_text.value.trim(),
+    starts_at: new Date(f.starts_at.value).toISOString(), ends_at: new Date(f.ends_at.value).toISOString(), active: f.active.checked };
+  if (new Date(p.ends_at) <= new Date(p.starts_at)) { f.querySelector('.form__err').textContent = 'O fim precisa ser depois do começo.'; return; }
+  try { const c = await api.sbClient(); const { error } = await c.rpc('admin_event_save', { p }); if (error) throw error; closeSheet(); toast('Data especial salva.'); renderEventos(); }
+  catch (err) { f.querySelector('.form__err').textContent = err.message; }
+});
+
 // campanhas que os próprios mercados publicam (aviso, janela, vitrine): a administração vê e pode bloquear
 async function renderCampsAdmin() {
   const box = $('#adm-camps'); if (!box) return;
