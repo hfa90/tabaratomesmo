@@ -4,6 +4,7 @@
 //  Para o site: preços reais, na data e no supermercado certos (lidos da Sefaz pelo servidor),
 //              CNPJ de cada loja, códigos de barras e produtos que a galera compra e ainda não temos.
 import * as api from './api.js';
+import { ic } from './icons.js';
 import { S, $, $$, esc, brl, logo, hooks, isOn } from './core.js';
 import { parse, match } from './voice.js';
 import * as scanner from './scanner.js';
@@ -95,18 +96,18 @@ function openTool(html) {
   body().innerHTML = html;
   if ($('#toolSheet').hidden) hooks.openSheet('#toolSheet');
 }
-const wait = (title, text, icon = '🧾') => openTool(`<div class="tool"><h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${icon}</span> ${title}</h2>
+const wait = (title, text, icon = ic('receipt')) => openTool(`<div class="tool"><h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${icon}</span> ${title}</h2>
   <div class="cupom-wait"><span class="cupom-wait__i" aria-hidden="true">${icon}</span><p id="notaWait">${text}</p></div></div>`);
 const waitMsg = (t) => { const el = $('#notaWait'); if (el) el.textContent = t; };
 
 function oops(face, title, text, again = true) {
   openTool(`<div class="tool"><div class="verdict is-meh"><span class="verdict__face" aria-hidden="true">${face}</span><b class="verdict__t" id="toolTitle">${title}</b><span class="verdict__l">${text}</span></div>
-    <div class="tool__actions">${again ? '<button class="btn btn--primary btn--xl" data-nota="qr">🔳 Ler o QR com a câmera</button><button class="btn btn--ghost btn--xl" data-nota="file">🖼️ Escolher foto ou PDF</button>' : ''}<button class="btn btn--text" data-close>Fechar</button></div></div>`);
+    <div class="tool__actions">${again ? ('<button class="btn btn--primary btn--xl" data-nota="qr">' + ic('qr') + ' Ler o QR com a câmera</button><button class="btn btn--ghost btn--xl" data-nota="file">' + ic('image') + ' Escolher foto ou PDF</button>') : ''}<button class="btn btn--text" data-close>Fechar</button></div></div>`);
 }
 
 export function openQR() {
   scanner.open({ kind: 'qr', demo: api.MODE !== 'live', onCode: readUrl });
-  $('#toolTitle') && ($('#toolTitle').innerHTML = '<span aria-hidden="true">🧾</span> Ler a nota fiscal');
+  $('#toolTitle') && ($('#toolTitle').innerHTML = ('<span aria-hidden="true">' + ic('receipt') + '</span> Ler a nota fiscal'));
 }
 
 export function pickFile() {
@@ -116,7 +117,7 @@ export function pickFile() {
 }
 
 function pasteLink() {
-  openTool(`<div class="tool"><h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">🔗</span> Colar o link da nota</h2>
+  openTool(`<div class="tool"><h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${ic('link')}</span> Colar o link da nota</h2>
     <p class="tool__lead">Leia o QR da nota com a câmera do celular, copie o link que aparece e cole aqui.</p>
     <form class="scan__form" id="notaLink" autocomplete="off"><input name="u" inputmode="url" placeholder="https://sistemas.sefaz.am.gov.br/…" aria-label="Link da nota" required /><button class="btn btn--primary">Ler</button></form></div>`);
   $('#notaLink').addEventListener('submit', (e) => { e.preventDefault(); const u = e.target.u.value.trim(); if (/^https?:\/\//i.test(u)) readUrl(u); });
@@ -125,16 +126,16 @@ function pasteLink() {
 
 // ---------------------------------------------------------------- ler pelo link do QR (Sefaz)
 async function readUrl(url) {
-  if (!/^https?:\/\//i.test(url) && url !== 'demo') return oops('🤔', 'Esse QR não é de nota fiscal', 'Aponte para o quadradinho que fica no fim da nota do caixa.');
+  if (!/^https?:\/\//i.test(url) && url !== 'demo') return oops(ic('question'), 'Esse QR não é de nota fiscal', 'Aponte para o quadradinho que fica no fim da nota do caixa.');
   wait('Lendo a nota…', 'Buscando os itens na Sefaz. Leva alguns segundos.');
   let r;
   try { r = url === 'demo' || api.MODE !== 'live' ? demoReceipt() : await api.readNfce(url); }
   catch (e) {
     const why = {
-      offline: ['📴', 'Sem internet agora', 'A nota é lida na Sefaz. Guarde o papel e mande quando o sinal voltar.'],
-      sem_funcao: ['🛠️', 'Função ainda não instalada', 'O administrador precisa publicar a função "nfce" no Supabase.'],
-      host: ['🤔', 'Esse QR não é de nota fiscal', 'Aponte para o quadradinho que fica no fim da nota do caixa.'],
-    }[e.code] || ['😕', 'A Sefaz não respondeu', `${esc(e.message || 'Erro')}. Tente de novo em alguns minutos.`];
+      offline: [ic('offline'), 'Sem internet agora', 'A nota é lida na Sefaz. Guarde o papel e mande quando o sinal voltar.'],
+      sem_funcao: [ic('tool'), 'Função ainda não instalada', 'O administrador precisa publicar a função "nfce" no Supabase.'],
+      host: [ic('question'), 'Esse QR não é de nota fiscal', 'Aponte para o quadradinho que fica no fim da nota do caixa.'],
+    }[e.code] || [ic('alert'), 'A Sefaz não respondeu', `${esc(e.message || 'Erro')}. Tente de novo em alguns minutos.`];
     return oops(...why);
   }
   review({ key: r.chave || `qr-${Date.now()}`, chave: r.chave, source: 'qr', url: url === 'demo' ? null : url, store: r.store || {}, date: r.date, at: parseDate(r.date)?.toISOString() || new Date().toISOString(), total: r.total, items: r.items || [], demo: r.demo });
@@ -142,11 +143,11 @@ async function readUrl(url) {
 
 // ---------------------------------------------------------------- ler foto, print ou PDF
 async function fromFile(file) {
-  if (file.size > 25e6) return oops('📦', 'Arquivo grande demais', 'Mande uma foto ou PDF com menos de 25 MB.');
+  if (file.size > 25e6) return oops(ic('box'), 'Arquivo grande demais', 'Mande uma foto ou PDF com menos de 25 MB.');
   wait('Lendo a nota…', ia.isPdf(file) ? 'Abrindo o PDF…' : 'Procurando o QR da nota na imagem…');
   let pages;
   try { pages = await ia.fileCanvases(file, { maxPages: 3, onPage: (i, n) => waitMsg(`Abrindo a página ${i} de ${n}…`) }); }
-  catch (e) { return oops('😕', 'Não consegui abrir o arquivo', esc(e.message || 'Tente outra foto ou PDF.')); }
+  catch (e) { return oops(ic('alert'), 'Não consegui abrir o arquivo', esc(e.message || 'Tente outra foto ou PDF.')); }
   waitMsg('Procurando o QR da nota…');
   for (const cv of pages) {
     const qr = await ia.decodeQR(cv);
@@ -162,9 +163,9 @@ async function fromFile(file) {
   try {
     const out = await ia.iaRead('nota', pages.slice(0, 2));
     const r = out.result || {};
-    if (!r.legivel || !r.itens?.length) return oops('🔍', 'Não deu para ler essa nota', 'Tire outra foto com a nota esticada, bem iluminada e inteira no quadro (principalmente o QR no fim).');
+    if (!r.legivel || !r.itens?.length) return oops(ic('search'), 'Não deu para ler essa nota', 'Tire outra foto com a nota esticada, bem iluminada e inteira no quadro (principalmente o QR no fim).');
     review({ key: r.chave || `foto-${Date.now()}`, chave: r.chave, source: 'foto', reading: out.reading_id, store: { name: r.loja, cnpj: r.cnpj }, date: r.data, at: parseDate(r.data)?.toISOString() || new Date().toISOString(), total: r.total, items: r.itens });
-  } catch (e) { oops(e.code === 'limite' ? '⏳' : '😕', e.code === 'limite' ? 'Limite de hoje atingido' : 'Não consegui ler agora', esc(e.message)); }
+  } catch (e) { oops(e.code === 'limite' ? ic('hourglass') : ic('alert'), e.code === 'limite' ? 'Limite de hoje atingido' : 'Não consegui ler agora', esc(e.message)); }
 }
 
 // ---------------------------------------------------------------- revisar
@@ -182,8 +183,8 @@ function itemRow(it) {
   return `<li class="nr ${p ? '' : 'is-off'}" data-i="${it.i}">
     <div class="nr__main"><span class="nr__n">${esc(it.name)}</span>
       ${p ? `<button class="nr__p" data-nota-fix="${it.i}" aria-label="Trocar o produto">${p.emoji || '🛒'} ${esc(pname(p))} <u>trocar</u></button>`
-          : `<button class="nr__p is-none" data-nota-fix="${it.i}">❔ Não reconheci · <u>escolher</u></button>`}
-      ${cheaper ? `<small class="nr__tip">💡 hoje ${brl(b.price)} no ${esc(S.markets.get(b.mid)?.name || '')}</small>` : ''}
+          : `<button class="nr__p is-none" data-nota-fix="${it.i}">${ic('question')} Não reconheci · <u>escolher</u></button>`}
+      ${cheaper ? `<small class="nr__tip">${ic('bulb')} hoje ${brl(b.price)} no ${esc(S.markets.get(b.mid)?.name || '')}</small>` : ''}
     </div>
     <span class="nr__v">${it.qty !== 1 ? `<small>${String(it.qty).replace('.', ',')} ×</small>` : ''}<b>${brl(it.unit_price)}</b></span>
   </li>`;
@@ -196,23 +197,23 @@ function draw() {
   const est = 20 + 2 * known;
   const isFoto = r.source === 'foto';
   openTool(`<div class="tool nota">
-    <div class="cupom-head">${m ? logo(m, 'md') : '<span class="nota-ic" aria-hidden="true">🧾</span>'}<span><b id="toolTitle">${esc(r.store?.name || m?.name || 'Nota fiscal')}</b><small>${esc(r.date || '')}${r.demo ? ' · nota de exemplo' : ''}${isFoto ? ' · lida pela foto' : ''}</small></span>${r.total != null ? `<em>${brl(Number(r.total))}</em>` : ''}</div>
+    <div class="cupom-head">${m ? logo(m, 'md') : ('<span class="nota-ic" aria-hidden="true">' + ic('receipt') + '</span>')}<span><b id="toolTitle">${esc(r.store?.name || m?.name || 'Nota fiscal')}</b><small>${esc(r.date || '')}${r.demo ? ' · nota de exemplo' : ''}${isFoto ? ' · lida pela foto' : ''}</small></span>${r.total != null ? `<em>${brl(Number(r.total))}</em>` : ''}</div>
 
     ${!r.sureMarket ? `<div class="nota-mk"><b>Em qual mercado foi esta compra?</b>
       <div class="chips chips--wrap" role="radiogroup">${[...S.markets.values()].map((x) => `<button class="chip ${x.id === r.mid ? 'is-on' : ''}" role="radio" aria-checked="${x.id === r.mid}" data-nota-mk="${x.id}">${logo(x, 'xs')} ${esc(x.name)}</button>`).join('')}</div></div>` : ''}
 
     <div class="nota-sum"><span><b>${known}</b> de ${r.items.length} itens reconhecidos</span>${known < r.items.length ? '<small>Toque em “escolher” para ajudar o site a aprender.</small>' : ''}</div>
 
-    ${wb && wb.save > 0.5 && wb.best.m.id !== r.mid ? `<div class="nota-tip">💸 Estes ${wb.known} itens hoje sairiam <b>${brl(wb.save)} mais baratos</b> no ${logo(wb.best.m, 'xs')} <b>${esc(wb.best.m.name)}</b>.</div>`
-      : wb ? '<div class="nota-tip is-good">😀 Boa! Você comprou no mercado mais barato para estes itens.</div>' : ''}
+    ${wb && wb.save > 0.5 && wb.best.m.id !== r.mid ? `<div class="nota-tip">${ic('coins')} Estes ${wb.known} itens hoje sairiam <b>${brl(wb.save)} mais baratos</b> no ${logo(wb.best.m, 'xs')} <b>${esc(wb.best.m.name)}</b>.</div>`
+      : wb ? ('<div class="nota-tip is-good">' + ic('good') + ' Boa! Você comprou no mercado mais barato para estes itens.</div>') : ''}
 
     <ul class="nota-list">${r.items.map(itemRow).join('')}</ul>
 
     <div class="tool__actions">
       ${r.already ? '<p class="ok-box">✓ Você já enviou esta nota. Ela está em Minhas notas.</p>'
-        : `<button class="btn btn--primary btn--xl" data-nota="send" ${!r.mid ? 'disabled' : ''}>📤 ${isFoto ? 'Enviar os preços' : 'Enviar nota'} e ganhar ${isFoto ? 'pontos' : `até +${Math.min(150, est)} pts`}</button>
+        : `<button class="btn btn--primary btn--xl" data-nota="send" ${!r.mid ? 'disabled' : ''}>${ic('send')} ${isFoto ? 'Enviar os preços' : 'Enviar nota'} e ganhar ${isFoto ? 'pontos' : `até +${Math.min(150, est)} pts`}</button>
            <p class="muted small center">${!r.mid ? 'Escolha o mercado acima para enviar.' : isFoto ? 'Sem o QR, os preços passam pela confirmação da comunidade.' : `Você ganha pontos e +10 comparações. O site atualiza ${known} ${known === 1 ? 'preço' : 'preços'} com a data da compra.`}</p>`}
-      <button class="btn btn--ghost btn--block" data-nota="keep">💾 Só guardar no meu controle de gastos</button>
+      <button class="btn btn--ghost btn--block" data-nota="keep">${ic('save')} Só guardar no meu controle de gastos</button>
     </div>
   </div>`);
 }
@@ -255,8 +256,8 @@ async function send(btn) {
     remoteFor = null; // recarrega a lista do servidor
     done(sv);
   } catch (e) {
-    if (e.code === 'duplicada') { remember({ sent: { points: 0, dup: true } }); return oops('🧾', 'Esta nota já foi enviada', 'Outra pessoa mandou esta mesma nota antes. Ela ficou no seu controle de gastos, mas sem pontos.', false); }
-    btn.disabled = false; btn.textContent = '📤 Tentar enviar de novo';
+    if (e.code === 'duplicada') { remember({ sent: { points: 0, dup: true } }); return oops(ic('receipt'), 'Esta nota já foi enviada', 'Outra pessoa mandou esta mesma nota antes. Ela ficou no seu controle de gastos, mas sem pontos.', false); }
+    btn.disabled = false; btn.textContent = 'Tentar enviar de novo';
     hooks.toast?.(e.message || 'Não consegui enviar agora.', 'warn');
   }
 }
@@ -278,16 +279,16 @@ function done(sv) {
     <p class="fx-done__pts">+${sv.points || 0} pts</p>
     <h2 class="sheet__title" id="toolTitle">${sv.foto ? 'Preços enviados!' : 'Nota enviada!'}</h2>
     <ul class="nota-done">
-      ${sv.foto ? `<li>📤 <span><b>${sv.reports || 0}</b> preços foram para a confirmação da comunidade</span></li>${sv.old ? '<li>📅 <span>A nota tem mais de 3 dias: os preços ficaram só no seu controle de gastos.</span></li>' : ''}`
-        : `<li>✅ <span><b>${sv.prices_added || 0}</b> ${sv.prices_added === 1 ? 'preço atualizado' : 'preços atualizados'} no site com a data da sua compra</span></li>
+      ${sv.foto ? `<li>${ic('send')} <span><b>${sv.reports || 0}</b> preços foram para a confirmação da comunidade</span></li>${sv.old ? ('<li>' + ic('calendar') + ' <span>A nota tem mais de 3 dias: os preços ficaram só no seu controle de gastos.</span></li>') : ''}`
+        : `<li>${ic('good')} <span><b>${sv.prices_added || 0}</b> ${sv.prices_added === 1 ? 'preço atualizado' : 'preços atualizados'} no site com a data da sua compra</span></li>
            ${sv.stale_updated ? `<li>⏱️ <span>${sv.stale_updated} estavam desatualizados: você ajudou muita gente!</span></li>` : ''}
-           ${sv.market_confirmed === false ? '<li>🔎 <span>Ainda não conhecemos o CNPJ desta loja: os preços entram assim que confirmarmos o mercado.</span></li>' : ''}
-           ${sv.old ? '<li>📅 <span>Nota com mais de 30 dias: guardada no histórico, sem atualizar preços.</span></li>' : ''}
-           ${lvlUp ? '<li>🔓 <span><b>+10 comparações</b> liberadas para você</span></li>' : ''}`}
-      <li>📊 <span>A compra entrou no seu <b>controle de gastos</b></span></li>
+           ${sv.market_confirmed === false ? ('<li>' + ic('search') + ' <span>Ainda não conhecemos o CNPJ desta loja: os preços entram assim que confirmarmos o mercado.</span></li>') : ''}
+           ${sv.old ? ('<li>' + ic('calendar') + ' <span>Nota com mais de 30 dias: guardada no histórico, sem atualizar preços.</span></li>') : ''}
+           ${lvlUp ? ('<li>' + ic('unlock') + ' <span><b>+10 comparações</b> liberadas para você</span></li>') : ''}`}
+      <li>${ic('chart')} <span>A compra entrou no seu <b>controle de gastos</b></span></li>
     </ul>
     <div class="tool__actions"><a class="btn btn--primary btn--xl" href="#notas" data-close>Ver minhas notas</a>
-      <button class="btn btn--ghost btn--block" data-nota="qr">🧾 Mandar outra nota</button></div>
+      <button class="btn btn--ghost btn--block" data-nota="qr">${ic('receipt')} Mandar outra nota</button></div>
   </div></div>`);
   hooks.afterContribution?.();
   if (location.hash === '#notas') render();
@@ -348,51 +349,55 @@ export function render() {
   const list = all(); const st = stats(list);
   el.innerHTML = `
   <header class="page-head notas-head">
-    <h1>🧾 Minhas notas</h1>
-    <p class="muted">Mande a nota fiscal da sua compra. Você controla seus gastos e ganha pontos; o site fica com preços de verdade, na data e no mercado certos.</p>
+    <h1>${ic('receipt')} Minhas notas</h1>
+    <p class="muted">Mande a nota da compra: seus gastos se organizam sozinhos e você ganha pontos.</p>
   </header>
 
   ${pendingCard()}
   <section class="notas-cta">
-    <button class="notas-btn is-main" data-nota="qr"><span aria-hidden="true">🔳</span><b>Ler o QR da nota</b><small>Com a câmera, na hora</small></button>
-    <button class="notas-btn" data-nota="file"><span aria-hidden="true">🖼️</span><b>Foto, print ou PDF</b><small>Da galeria ou do e-mail</small></button>
-    <button class="notas-btn" data-nota="link"><span aria-hidden="true">🔗</span><b>Colar o link</b><small>Do QR lido em outro app</small></button>
+    <button class="notas-btn is-main" data-nota="qr"><span aria-hidden="true">${ic('qr')}</span><b>Ler o QR da nota</b><small>Com a câmera, na hora</small></button>
+    <button class="notas-btn" data-nota="file"><span aria-hidden="true">${ic('image')}</span><b>Foto, print ou PDF</b><small>Da galeria ou do e-mail</small></button>
+    <button class="notas-btn" data-nota="link"><span aria-hidden="true">${ic('link')}</span><b>Colar o link</b><small>Do QR lido em outro app</small></button>
   </section>
 
+  <details class="more">
+  <summary>O que você ganha com cada nota ${ic('down')}</summary>
   <section class="notas-why" aria-label="O que você ganha">
-    <div><span aria-hidden="true">⭐</span><b>20 a 150 pontos</b><small>por nota, mais se os preços estavam velhos</small></div>
-    <div><span aria-hidden="true">🔓</span><b>+10 comparações</b><small>a cada nota, para quem tem cadastro rápido</small></div>
-    <div><span aria-hidden="true">📊</span><b>Gastos organizados</b><small>por mês, mercado e categoria, sem digitar nada</small></div>
-    <div><span aria-hidden="true">💸</span><b>Onde sairia mais barato</b><small>e aviso dos produtos que você compra sempre</small></div>
+    <div><span aria-hidden="true">${ic('star')}</span><b>20 a 150 pontos</b><small>por nota, mais se os preços estavam velhos</small></div>
+    <div><span aria-hidden="true">${ic('unlock')}</span><b>+10 comparações</b><small>a cada nota, para quem tem cadastro rápido</small></div>
+    <div><span aria-hidden="true">${ic('chart')}</span><b>Gastos organizados</b><small>por mês, mercado e categoria, sem digitar nada</small></div>
+    <div><span aria-hidden="true">${ic('coins')}</span><b>Onde sairia mais barato</b><small>e aviso dos produtos que você compra sempre</small></div>
   </section>
+  <p class="muted small">Os preços da sua nota também ajudam o site a mostrar valores de verdade, na data e no mercado certos.</p>
+  </details>
 
-  ${!list.length ? `<div class="notas-empty"><span aria-hidden="true">🧾</span><p><b>Nenhuma nota ainda.</b> Na próxima compra, guarde a nota e leia o QR que fica no fim dela.</p></div>` : `
+  ${!list.length ? `<div class="notas-empty"><span aria-hidden="true">${ic('receipt')}</span><p><b>Nenhuma nota ainda.</b> Na próxima compra, guarde a nota e leia o QR que fica no fim dela.</p></div>` : `
   <div class="notas-grid">
     <section class="save-hero notas-hero">
       <span class="save-hero__k">Gasto em ${MES[new Date().getMonth()]} (notas enviadas)</span>
       <span class="save-hero__v">${brl(st.monthTotal)}</span>
       <span class="save-hero__sub">${st.monthSave > 0.5 ? `Dava para economizar <b>${brl(st.monthSave)}</b> comprando cada item onde está mais barato hoje.` : 'Você está comprando bem: quase tudo no menor preço.'}</span>
-      <div class="proj"><span>⭐ ${st.points} pontos com notas · ${list.length} ${list.length === 1 ? 'nota' : 'notas'}</span></div>
+      <div class="proj"><span>${ic('star')} ${st.points} pontos com notas · ${list.length} ${list.length === 1 ? 'nota' : 'notas'}</span></div>
     </section>
     <section class="panel"><div class="panel__head"><h2>Últimos 6 meses</h2></div>${bars(st.months.map((m) => ({ label: m.label, v: m.v })))}</section>
     ${st.byMarket.size ? `<section class="panel"><div class="panel__head"><h2>Por mercado (este mês)</h2></div>${bars([...st.byMarket].sort((a, b) => b[1] - a[1]).map(([mid, v]) => ({ label: S.markets.get(mid) ? `${logo(S.markets.get(mid), 'xs')} ${esc(S.markets.get(mid).name)}` : 'Outro', v })))}</section>` : ''}
     ${st.byCat.size ? `<section class="panel"><div class="panel__head"><h2>Por categoria (este mês)</h2></div>${bars([...st.byCat].sort((a, b) => b[1] - a[1]).slice(0, 7).map(([c, v]) => ({ label: esc(c), v })))}</section>` : ''}
   </div>
 
-  ${st.usual.length ? `<section class="panel notas-usual"><div class="panel__head"><h2>O que você sempre compra</h2><small class="muted">toque na ⭐ para ser avisado quando baixar</small></div>
+  ${st.usual.length ? `<section class="panel notas-usual"><div class="panel__head"><h2>O que você sempre compra</h2><small class="muted">toque na ${ic('star')} para ser avisado quando baixar</small></div>
     <ul>${st.usual.map((u) => { const cheaper = u.best && u.best.price < u.last - 0.009; return `<li>
       <button class="nu__p" data-open-product="${u.p.id}">${u.p.emoji || '🛒'} <span><b>${esc(pname(u.p))}</b><small>comprou ${u.n}× · última vez ${brl(u.last)}</small></span></button>
       <span class="nu__b ${cheaper ? 'is-cheaper' : ''}">${u.best ? `<small>${cheaper ? 'hoje' : 'menor hoje'}</small><b>${brl(u.best.price)}</b><small>${esc(S.markets.get(u.best.mid)?.name || '')}</small>` : ''}</span>
-      <button class="nu-fav ${S.favs.has(u.p.id) ? 'is-on' : ''}" data-fav="${u.p.id}" aria-pressed="${S.favs.has(u.p.id)}" aria-label="Avisar quando baixar">⭐</button></li>`; }).join('')}</ul></section>` : ''}
+      <button class="nu-fav ${S.favs.has(u.p.id) ? 'is-on' : ''}" data-fav="${u.p.id}" aria-pressed="${S.favs.has(u.p.id)}" aria-label="Avisar quando baixar">${ic('star')}</button></li>`; }).join('')}</ul></section>` : ''}
 
   <section class="panel"><div class="panel__head"><h2>Notas</h2></div>
     <ul class="notas-list">${list.slice(0, 60).map((r) => { const m = S.markets.get(r.mid); const t = totalOf(r); return `<li><details>
-      <summary>${m ? logo(m, 'sm') : '<span class="nota-ic">🧾</span>'}<span><b>${esc(m?.name || r.store?.name || 'Nota')}</b><small>${fmtDate(r.at ? new Date(r.at) : null)} · ${r.items.length} itens${r.sent?.points ? ` · +${r.sent.points} pts` : r.sent?.dup ? ' · já enviada por outra pessoa' : r.sent ? '' : ' · <i>não enviada</i>'}</small></span><em>${brl(t)}</em></summary>
+      <summary>${m ? logo(m, 'sm') : ('<span class="nota-ic">' + ic('receipt') + '</span>')}<span><b>${esc(m?.name || r.store?.name || 'Nota')}</b><small>${fmtDate(r.at ? new Date(r.at) : null)} · ${r.items.length} itens${r.sent?.points ? ` · +${r.sent.points} pts` : r.sent?.dup ? ' · já enviada por outra pessoa' : r.sent ? '' : ' · <i>não enviada</i>'}</small></span><em>${brl(t)}</em></summary>
       <ul class="nl-items">${r.items.map((i) => { const p = productOf(i.pid); const b = bestToday(i); return `<li><span>${esc(p ? pname(p) : i.name)}</span><span>${i.qty !== 1 ? `${String(i.qty).replace('.', ',')} × ` : ''}${brl(i.unit_price)}${b && b.price < i.unit_price - 0.009 ? ` <small class="down">hoje ${brl(b.price)}</small>` : ''}</span></li>`; }).join('')}</ul>
-      ${!r.sent && r.url ? `<button class="btn btn--sm btn--primary" data-nota-resend="${esc(r.key)}">📤 Enviar e ganhar pontos</button>` : ''}
+      ${!r.sent && r.url ? `<button class="btn btn--sm btn--primary" data-nota-resend="${esc(r.key)}">${ic('send')} Enviar e ganhar pontos</button>` : ''}
     </details></li>`; }).join('')}</ul>
   </section>`}
-  <p class="muted small center notas-priv">🔒 Guardamos só o que está na nota (loja, data, itens e preços). Não pedimos nem guardamos o seu CPF.</p>`;
+  <p class="muted small center notas-priv">${ic('lock')} Guardamos só o que está na nota (loja, data, itens e preços). Não pedimos nem guardamos o seu CPF.</p>`;
 }
 
 // compra fechada na calculadora/carrinho que ainda não teve a nota enviada
@@ -400,7 +405,7 @@ function pendingCard() {
   const p = api.store.get('tb.nfPending', null);
   if (!p || Date.now() - new Date(p.at) > 10 * 864e5) return '';
   const m = S.markets.get(p.market);
-  return `<section class="nf-pend"><span aria-hidden="true">🧾</span><div><b>Falta a nota da sua compra de ${brl(p.paid ?? p.total)}</b>
+  return `<section class="nf-pend"><span aria-hidden="true">${ic('receipt')}</span><div><b>Falta a nota da sua compra de ${brl(p.paid ?? p.total)}</b>
     <small>${m ? `${esc(m.name)} · ` : ''}${new Date(p.at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}${p.paid != null && Math.abs(p.paid - p.total) >= 0.01 ? ` · sua conta deu ${brl(p.total)}, o caixa cobrou ${brl(p.paid)}` : ''}. Mande a nota para conferir item por item e organizar o seu rancho.</small></div>
     <button class="btn btn--primary btn--sm" data-nota="qr">Mandar agora</button><button class="nf-pend__x" data-nota="nopend" aria-label="Dispensar">✕</button></section>`;
 }

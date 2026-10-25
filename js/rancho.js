@@ -1,5 +1,6 @@
 // Rancho do mês: lista mensal, relatório "onde comprar", distância de casa e dias das proteínas.
 import * as api from './api.js';
+import { ic } from './icons.js';
 import { track } from './track.js';
 import * as ads from './ads.js';
 let adRanchoHTML = '';
@@ -289,14 +290,14 @@ function itemRow({ p, qty }, checked) {
 // ---------------------------------------------------------------- caminho no mercado (lista na ordem dos corredores)
 // Ordem padrão de uma volta só: hortifrúti na entrada, secos no meio, refrigerados e congelados por último.
 export const AISLES = [
-  { id: 'hortifruti', icon: '🥬', name: 'Frutas e verduras' },
-  { id: 'mercearia', icon: '🥫', name: 'Mercearia', hint: 'arroz, feijão, café, biscoito' },
-  { id: 'bebidas', icon: '🥤', name: 'Bebidas' },
-  { id: 'limpeza', icon: '🧴', name: 'Limpeza' },
-  { id: 'higiene', icon: '🧼', name: 'Higiene' },
-  { id: 'laticinios', icon: '🧀', name: 'Frios e laticínios', hint: 'leite, queijo, manteiga' },
-  { id: 'carnes', icon: '🥩', name: 'Açougue e peixaria' },
-  { id: 'congelados', icon: '🧊', name: 'Congelados', hint: 'por último, para não derreter' },
+  { id: 'hortifruti', icon: ic('leaf'), name: 'Frutas e verduras' },
+  { id: 'mercearia', icon: ic('can'), name: 'Mercearia', hint: 'arroz, feijão, café, biscoito' },
+  { id: 'bebidas', icon: ic('cup'), name: 'Bebidas' },
+  { id: 'limpeza', icon: ic('spray'), name: 'Limpeza' },
+  { id: 'higiene', icon: ic('drop'), name: 'Higiene' },
+  { id: 'laticinios', icon: ic('milk'), name: 'Frios e laticínios', hint: 'leite, queijo, manteiga' },
+  { id: 'carnes', icon: ic('meat'), name: 'Açougue e peixaria' },
+  { id: 'congelados', icon: ic('snow'), name: 'Congelados', hint: 'por último, para não derreter' },
 ];
 const sectionOf = (p) => (/congelad|sorvete|\bgelo\b|picol/.test((p.name || '').toLowerCase()) ? 'congelados' : p.category_slug);
 const aisleKey = () => `tb.aisle.${currentMarket() ?? 'all'}`;
@@ -327,12 +328,12 @@ function trailHTML(its, checked) {
   return `
     <div class="trail">
       <div class="trail__head">
-        <p><span aria-hidden="true">🗺️</span> <b>Caminho no mercado</b>${m ? ` <span class="trail__m">${logo(m, 'xs')} ${esc(m.name)}</span>` : ''}</p>
+        <p><span aria-hidden="true">${ic('map')}</span> <b>Caminho no mercado</b>${m ? ` <span class="trail__m">${logo(m, 'xs')} ${esc(m.name)}</span>` : ''}</p>
         <button class="btn btn--text btn--sm" data-aisle="edit">Mudar a ordem</button>
       </div>
       <ol class="trail__map" aria-label="Paradas">${stops.map((x, i) => `<li class="${x.done ? 'is-done' : x === cur ? 'is-cur' : ''}">
         <button type="button" data-stop="${esc(x.id)}" aria-label="Parada ${i + 1}: ${esc(x.name)}${x.done ? ', pronto' : ''}"><span class="trail__dot">${x.done ? '✓' : x.icon}</span><small>${i + 1}</small></button></li>`).join('')}</ol>
-      ${all ? `<div class="trail__now is-done"><span aria-hidden="true">🎉</span><span><b>Pegou tudo!</b> Agora é só ir para o caixa.</span><a class="btn btn--primary btn--sm" href="#fila">Estou na fila</a></div>`
+      ${all ? `<div class="trail__now is-done"><span aria-hidden="true">${ic('sparkle')}</span><span><b>Pegou tudo!</b> Agora é só ir para o caixa.</span><a class="btn btn--primary btn--sm" href="#fila">Estou na fila</a></div>`
         : `<div class="trail__now"><span class="trail__big" aria-hidden="true">${cur.icon}</span><span><small>Agora vá para</small><b>${esc(cur.name)}</b><small>pegue ${cur.left} ${cur.left > 1 ? 'coisas' : 'coisa'}${cur.hint ? ` · ${esc(cur.hint)}` : ''}</small></span></div>`}
     </div>
     ${stops.map((x, i) => `<details class="rx-group stop ${x.done ? 'is-done' : x === cur ? 'is-cur' : ''}" id="stop-${esc(x.id)}" ${x.done ? '' : 'open'}>
@@ -353,7 +354,7 @@ function aisleEditor() {
   const m = S.markets.get(currentMarket());
   openTool('caminho', `
     <div class="tool">
-      <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">🗺️</span> Ordem do caminho</h2>
+      <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${ic('map')}</span> Ordem do caminho</h2>
       <p class="tool__lead">Cada mercado é diferente. Arrume na ordem em que você anda${m ? ` no <b>${esc(m.name)}</b>` : ''}: o app lembra.</p>
       <ol class="aisles">${order.map((id, i) => { const a = aisleInfo(id); return `<li><span class="stop__n">${i + 1}</span><span class="stop__i" aria-hidden="true">${a.icon}</span><b>${esc(a.name)}</b>
         <span class="aisles__b"><button data-aisle-up="${esc(id)}" ${i === 0 ? 'disabled' : ''} aria-label="Subir ${esc(a.name)}">▲</button><button data-aisle-down="${esc(id)}" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Descer ${esc(a.name)}">▼</button></span></li>`; }).join('')}</ol>
@@ -399,7 +400,7 @@ export function render() {
   ].join('');
 
   if (!its.length) {
-    $('#rxGroups').innerHTML = `<div class="rx-empty"><span class="big" aria-hidden="true">🛒</span><b>Seu rancho está vazio</b>
+    $('#rxGroups').innerHTML = `<div class="rx-empty"><span class="big" aria-hidden="true">${ic('cart')}</span><b>Seu rancho está vazio</b>
       <p class="muted small">Busque acima, comece pela cesta básica ou toque no + dos produtos em Ofertas.</p></div>`;
     $('#rxSide').innerHTML = ''; $('#ranchoReport').innerHTML = ''; $('#ranchoBar').hidden = true;
     $('#ranchoView .rx').classList.remove('is-done');
@@ -430,10 +431,10 @@ export function render() {
     const max = Math.max(...r.ranked.map((x) => x.total));
     const min = r.best.total;
     const save = r.base && r.base !== r.best ? `<b>${brl(r.savings)}</b> a menos que no ${esc(r.base.m.name)}, o mais perto${r.home?.source === 'pos' ? ' de você' : ' de casa'}.`
-      : r.base ? 'O mais perto também é o mais barato. 🎉' : `Até <b>${brl(r.savings)}</b> a menos que no mais caro.`;
+      : r.base ? ('O mais perto também é o mais barato. ' + ic('sparkle')) : `Até <b>${brl(r.savings)}</b> a menos que no mais caro.`;
     $('#rxSide').innerHTML = `
       ${done2 ? '' : `<div class="rx-sum">
-        <p class="rx-sum__k">🏆 Mais barato para esta lista</p>
+        <p class="rx-sum__k">${ic('trophy')} Mais barato para esta lista</p>
         <div class="rx-sum__win"><span class="lf">${logoFull(r.best.m)}</span><b>${esc(r.best.m.name)}</b><span class="rx-sum__v">${brl(r.best.total)}</span></div>
         <p class="rx-sum__save">${save}${r.home ? ' Já conta o deslocamento.' : ''}</p>
         <details class="rx-sum__all"><summary>Ver os ${r.ranked.length} mercados</summary>
@@ -498,7 +499,7 @@ export async function renderReport(scroll = true) {
         ${priceTag(r.best.total, 'xl')}
         <p class="rep__lead">${r.base && r.base !== r.best
           ? `Você economiza <b>${brl(r.savings)}</b> em relação ao ${esc(r.base.m.name)}, o mais perto ${r.home?.source === 'pos' ? 'de você' : 'de casa'}, já contando o deslocamento.`
-          : r.base ? `O mais perto ${r.home?.source === 'pos' ? 'de você' : 'de casa'} também é o mais barato: economia e menos trânsito. 🎉`
+          : r.base ? `O mais perto ${r.home?.source === 'pos' ? 'de você' : 'de casa'} também é o mais barato: economia e menos trânsito. ${ic('sparkle')}`
           : 'É o menor total para a sua lista.'}</p>
         <ul class="facts">
           <li><b>${r.qty}</b> itens</li>
@@ -516,7 +517,7 @@ export async function renderReport(scroll = true) {
 
       <p class="rep__more">Quer economizar mais? Toque para abrir:</p>
       <div class="rep__secs">
-      ${sec('repFar', '🚗', 'Vale a pena ir mais longe?', farLine, `
+      ${sec('repFar', ic('car'), 'Vale a pena ir mais longe?', farLine, `
         <div class="rep__cfg">
           <div class="rep__home"><span class="muted small">Saindo de</span>
             ${r.home ? `<b>${esc(r.home.label || 'sua casa')}</b>${r.home.source === 'pos' ? ' <small class="muted">(onde você está)</small>' : ''}` : '<b>local não definido</b>'}
@@ -538,18 +539,18 @@ export async function renderReport(scroll = true) {
           </li>`).join('')}
         </ol>`)}
 
-      ${r.split ? sec('repSplit', '✂️', 'Dividir entre 2 mercados', `${brl(r.best.total - r.split.total)} a mais de economia`, `
+      ${r.split ? sec('repSplit', ic('scissors'), 'Dividir entre 2 mercados', `${brl(r.best.total - r.split.total)} a mais de economia`, `
         <p>Parte no <b>${esc(r.split.A.m.name)}</b> e parte no <b>${esc(r.split.B.m.name)}</b>, numa volta só: o rancho sai por <b>${brl(r.split.total)}</b>, com ~${Math.round(r.split.trip.minutes)} min de deslocamento.</p>
         <div class="split2">
           <div>${logo(r.split.A.m, 'sm')}<b>${esc(r.split.A.m.name)}</b><span>${r.split.inA.map((p) => esc(p.name)).join(', ')}</span></div>
           <div>${logo(r.split.B.m, 'sm')}<b>${esc(r.split.B.m.name)}</b><span>${r.split.inB.map((p) => esc(p.name)).join(', ')}</span></div>
         </div>`) : ''}
 
-      ${bd ? sec('repDeals', '💳', 'Melhor dia para ir', `${DOW[bd.best.dow]} no ${esc(bd.best.m.name)}${bd.best.off > 0.5 ? `: −${brl(bd.best.off)}` : ''}`, deals.bestDayHTML(bd)) : ''}
+      ${bd ? sec('repDeals', ic('card'), 'Melhor dia para ir', `${DOW[bd.best.dow]} no ${esc(bd.best.m.name)}${bd.best.off > 0.5 ? `: −${brl(bd.best.off)}` : ''}`, deals.bestDayHTML(bd)) : ''}
 
-      ${sec('repProt', '🥩', 'Melhores dias para as proteínas', 'carne, frango, peixe e ovos', '<div class="skeleton" style="height:120px"></div>')}
+      ${sec('repProt', ic('meat'), 'Melhores dias para as proteínas', 'carne, frango, peixe e ovos', '<div class="skeleton" style="height:120px"></div>')}
 
-      ${stale ? sec('repStale', '🔎', 'Ajude a deixar o cálculo certo', `${stale} ${stale > 1 ? 'preços' : 'preço'} sem confirmação recente`, `
+      ${stale ? sec('repStale', ic('search'), 'Ajude a deixar o cálculo certo', `${stale} ${stale > 1 ? 'preços' : 'preço'} sem confirmação recente`, `
         <p class="small">Quando passar no ${esc(r.best.m.name)}, confira em 1 minuto: você ganha pontos e o cálculo fica mais preciso para todo mundo.</p>
         <button class="btn btn--ghost btn--sm" style="margin-top:10px" data-fiscal-market="${r.best.m.id}">Conferir preços no ${esc(r.best.m.name)}</button>`) : ''}
       </div>

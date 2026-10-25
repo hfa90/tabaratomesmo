@@ -6,7 +6,7 @@ export const CONFIG = {
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5Z3F5bGlpZWJjeHd4aW94YnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDUyOTIsImV4cCI6MjEwNzUyMTI5Mn0.U5B6Z4zugyfX7bIJYagBE5EcUESZdxRHkvUoI6TeIdo',
 
   // Comparações (abrir o detalhe de um produto) sem cadastro
-  ANON_COMPARISONS: 3,
+  ANON_COMPARISONS: 10,
   // Com cadastro rápido, até concluir o cadastro completo (mesmo valor da função SQL)
   QUICK_COMPARISONS: 15,
 

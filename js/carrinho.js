@@ -1,6 +1,7 @@
 // Carrinho: a compra de agora, dentro da loja. A pessoa fala o item ("Nescau 370 gramas 9 e 49"),
 // o site anota, soma, compara com o orçamento e confere o preço com o do site.
 import * as api from './api.js';
+import { ic } from './icons.js';
 import { S, $, $$, esc, brl, logo, hooks, haversine, isOn, media } from './core.js';
 import { parse, match, verdict, promoEffective } from './voice.js';
 import { track } from './track.js';
@@ -42,13 +43,13 @@ export function render() {
   el.innerHTML = `
     <div class="ck">
       <header class="ck-head">
-        <div><h1>Carrinho</h1><p class="muted small">O que você está pegando agora, com o preço da etiqueta.</p></div>
+        <div><h1>No mercado</h1><p class="muted small">Some o que você pega e não passe do orçamento.</p></div>
         <button class="ck-market" data-ck="market" aria-label="Trocar o mercado">${m ? logo(m, 'sm') : ''}<span><small>Você está no</small><b>${esc(m?.name || 'mercado')}</b></span><em>Trocar</em></button>
       </header>
 
       <div class="ck-mode" role="tablist" aria-label="Como anotar">
-        <button role="tab" aria-selected="${mode() === 'voz'}" data-ck-mode="voz">🎤 Falar o item</button>
-        <button role="tab" aria-selected="${mode() === 'calc'}" data-ck-mode="calc">🧮 Digitar preços</button>
+        <button role="tab" aria-selected="${mode() === 'voz'}" data-ck-mode="voz">${ic('mic')} Falar o item</button>
+        <button role="tab" aria-selected="${mode() === 'calc'}" data-ck-mode="calc">${ic('calc')} Digitar preços</button>
       </div>
 
       ${mode() === 'calc' ? calc.html() : `<section class="ck-total ${state}" aria-live="polite">
@@ -68,9 +69,9 @@ export function render() {
             <span><b>${listening ? 'Ouvindo… fale o item' : 'Toque e fale o item'}</b><small>Ex.: “Nescau 370 gramas 9 e 49”</small></span>
           </button>` : '<p class="note small">Seu navegador não reconhece fala. Digite como você falaria, por exemplo “arroz 5 quilos 25,75”.</p>'}
         <div class="ck-tools">
-          <button class="ck-tool ck-tool--scan" data-tool="scan"><span aria-hidden="true">📷</span><b>Ler código</b></button>
-          <button class="ck-tool" data-tool="promo"><span aria-hidden="true">🏷️</span><b>Promoção vale?</b></button>
-          <button class="ck-tool" data-tool="tamanho"><span aria-hidden="true">⚖️</span><b>Qual compensa?</b></button>
+          <button class="ck-tool ck-tool--scan" data-tool="scan"><span aria-hidden="true">${ic('camera')}</span><b>Ler código</b></button>
+          <button class="ck-tool" data-tool="promo"><span aria-hidden="true">${ic('tag')}</span><b>Promoção vale?</b></button>
+          <button class="ck-tool" data-tool="tamanho"><span aria-hidden="true">${ic('scale')}</span><b>Qual compensa?</b></button>
         </div>
         <div class="ck-heard" id="ckHeard" ${listening ? '' : 'hidden'}></div>
         <form class="ck-type" id="ckType" autocomplete="off">
@@ -83,11 +84,11 @@ export function render() {
         <div class="row-actions ck-actions">
           <button class="btn btn--ghost btn--sm" data-ck="compare">Comparar com outros mercados</button>
           <a class="btn btn--ghost btn--sm" href="#fila">Estou na fila do caixa</a>
-          <button class="btn btn--ghost btn--sm" data-cupom="open">🧾 Conferir a nota</button>
+          <button class="btn btn--ghost btn--sm" data-cupom="open">${ic('receipt')} Conferir a nota</button>
           <button class="btn btn--primary btn--sm" data-ck="finish">Finalizar compra</button>
           <button class="btn btn--text btn--sm" data-ck="clear">Esvaziar</button>
         </div>`
-      : mode() === 'calc' ? '' : `<div class="rx-empty"><span class="big" aria-hidden="true">🛒</span><b>Seu carrinho está vazio</b><p class="muted small">Toque no microfone e fale o nome, o tamanho e o preço da etiqueta. A gente soma e confere com o site.</p></div>`}
+      : mode() === 'calc' ? '' : `<div class="rx-empty"><span class="big" aria-hidden="true">${ic('cart')}</span><b>Seu carrinho está vazio</b><p class="muted small">Toque no microfone e fale o nome, o tamanho e o preço da etiqueta. A gente soma e confere com o site.</p></div>`}
       <div id="adCarrinho"></div>
     </div>`;
   ads.render('carrinho', $('#adCarrinho'));
@@ -99,12 +100,12 @@ const STATUS = {
   tamanho: ['soft', '?', 'Tamanho novo'], novo: ['soft', '+', 'Produto novo'], manual: ['soft', '', ''], sem_valor: ['soft', '', 'Preço do site'],
 };
 function row(i) {
-  const [cls, ic, tip] = STATUS[i.status] || STATUS.manual;
+  const [cls, stIc, tip] = STATUS[i.status] || STATUS.manual;
   const p = i.product_id ? S.products.find((x) => x.id === i.product_id) : null;
   return `<li class="ck-item" data-ci="${i.id}">
-    ${p ? media(p, 'rx-media') : '<span class="rx-media" aria-hidden="true">🛒</span>'}
+    ${p ? media(p, 'rx-media') : ('<span class="rx-media" aria-hidden="true">' + ic('cart') + '</span>')}
     <div class="rx-txt"><span class="rx-name">${esc(i.name)}</span>
-      <span class="rx-meta">${ic ? `<span class="ck-st ck-st--${cls}" title="${tip}">${ic} ${tip}</span>` : ''}${i.site_price != null && i.status === 'diferente' ? ` <span>site: ${brl(i.site_price)}</span>` : ''}${i.photo ? ' <span>· foto enviada</span>' : ''}${i.promo ? ` <span class="pill pill--promo">🏷️ ${esc(i.promo)}</span>` : ''}</span></div>
+      <span class="rx-meta">${stIc ? `<span class="ck-st ck-st--${cls}" title="${tip}">${stIc} ${tip}</span>` : ''}${i.site_price != null && i.status === 'diferente' ? ` <span>site: ${brl(i.site_price)}</span>` : ''}${i.photo ? ' <span>· foto enviada</span>' : ''}${i.promo ? ` <span class="pill pill--promo">${ic('tag')} ${esc(i.promo)}</span>` : ''}</span></div>
     <label class="price-in ck-price"><span>R$</span><input inputmode="decimal" value="${i.price != null ? i.price.toFixed(2).replace('.', ',') : ''}" placeholder="0,00" data-ck-price="${i.id}" aria-label="Preço de ${esc(i.name)}" /></label>
     <span class="stepper"><button data-ck-dec="${i.id}" aria-label="Menos">−</button><output>${i.qty}</output><button data-ck-inc="${i.id}" aria-label="Mais">+</button></span>
     <b class="rx-sub">${brl((i.price || 0) * i.qty)}</b>
@@ -140,7 +141,7 @@ export function addFromSpeech(alternatives, source = 'voz') {
   const c = st(); c.startedAt ||= item.at; c.items.unshift(item); save(); lastAdded = item.id;
   track('cart_item', { product_id: item.product_id, market_id: mid, value: item.price });
   render();
-  if (pe) { flash(item.id); hooks.toast?.(`🏷️ ${item.promo}: cada um sai ${brl(pe.unit)}. Você economiza ${brl(pe.save)}.`); return; }
+  if (pe) { flash(item.id); hooks.toast?.(`${item.promo}: cada um sai ${brl(pe.unit)}. Você economiza ${brl(pe.save)}.`); return; }
   flash(item.id);
   if (item.price == null) return askPrice(item);
   if (['diferente', 'sem_preco', 'tamanho', 'novo'].includes(item.status)) return askPhoto(item, v);
@@ -164,7 +165,7 @@ export function addProduct(p, { price = null, qty = 1, note = '' } = {}) {
   track('cart_item', { product_id: p.id, market_id: mid, value: item.price });
   if (location.hash === '#carrinho') { render(); flash(item.id); }
   if (item.price == null) { askPrice(item); return item; }
-  hooks.toast?.(`🛒 ${item.name}: ${brl(item.price)}${qty > 1 ? ` × ${qty}` : ''} no carrinho.`);
+  hooks.toast?.(`${item.name}: ${brl(item.price)}${qty > 1 ? ` × ${qty}` : ''} no carrinho.`);
   return item;
 }
 
@@ -173,7 +174,7 @@ export function addCustom({ name, price, qty = 1, note = '' }) {
   const item = { id: uid(), spoken: name, qty, name, product_id: null, guess_id: null, price, status: 'manual', site_price: null, size: null, at: new Date().toISOString(), promo: note || null };
   const c = st(); c.startedAt ||= item.at; c.items.unshift(item); save();
   if (location.hash === '#carrinho') { render(); flash(item.id); }
-  hooks.toast?.(`🛒 ${name}: ${brl(price)}${qty > 1 ? ` × ${qty}` : ''} no carrinho.`);
+  hooks.toast?.(`${name}: ${brl(price)}${qty > 1 ? ` × ${qty}` : ''} no carrinho.`);
   return item;
 }
 
@@ -201,7 +202,7 @@ function askPhoto(item, v) {
       ${item.site_price != null ? `<div><small>No site (${esc(m?.name || '')})</small><b>${brl(item.site_price)}</b><span>${item.price > item.site_price ? `+${brl(item.price - item.site_price)}` : `−${brl(item.site_price - item.price)}`}</span></div>` : ''}
     </div>
     <p class="small">${v.text} Tire uma foto da etiqueta com o preço para conferirmos. Se estiver certo, o preço entra no site e ajuda todo mundo${S.user ? '' : ' (precisa estar com a conta aberta)'}.</p>
-    <label class="btn btn--primary btn--block ck-cam"><input type="file" accept="image/*" capture="environment" data-ck-photo="${item.id}" hidden />📷 Tirar foto da etiqueta</label>
+    <label class="btn btn--primary btn--block ck-cam"><input type="file" accept="image/*" capture="environment" data-ck-photo="${item.id}" hidden />${ic('camera')} Tirar foto da etiqueta</label>
     <button class="btn btn--text btn--block" data-close>Agora não</button>
     <p class="muted small center">O item já está no seu carrinho com ${brl(item.price)}.</p>`);
 }
@@ -229,7 +230,7 @@ async function sendPhoto(id, file) {
     const sent = await api.sendShelfPhoto(blob, { supermarket_id: currentMarket(), product_id: item.product_id || item.guess_id || null, spoken: item.spoken, name: item.name,
       size: item.size, price: item.price, site_price: item.site_price, lat: S.pos?.gps ? S.pos.lat : null, lng: S.pos?.gps ? S.pos.lng : null });
     item.photo = true; save(); render();
-    if (sent?.queued) { $('#cartSheetBody').innerHTML = `<div class="fx-done"><p class="fx-done__pts">📴</p><h2 class="sheet__title">Foto guardada</h2><p>Você está sem internet. A foto fica no celular e é enviada sozinha quando o sinal voltar.</p><button class="btn btn--primary btn--block" data-close>Voltar ao carrinho</button></div>`; return; }
+    if (sent?.queued) { $('#cartSheetBody').innerHTML = `<div class="fx-done"><p class="fx-done__pts">${ic('offline')}</p><h2 class="sheet__title">Foto guardada</h2><p>Você está sem internet. A foto fica no celular e é enviada sozinha quando o sinal voltar.</p><button class="btn btn--primary btn--block" data-close>Voltar ao carrinho</button></div>`; return; }
     $('#cartSheetBody').innerHTML = `<div class="fx-done"><p class="fx-done__pts">✓</p><h2 class="sheet__title">Foto enviada</h2><p>A equipe confere a etiqueta e, se estiver certo, o preço entra no site. Obrigado!</p><button class="btn btn--primary btn--block" data-close>Voltar ao carrinho</button></div>`;
   } catch (e) {
     $('#cartSheetBody').innerHTML = `<p class="note">${esc(e.message)}</p><button class="btn btn--ghost btn--block" data-close style="margin-top:12px">Fechar</button>`;
@@ -291,7 +292,7 @@ function finish() {
   closePurchase();
   sheet(`<div class="fx-done"><p class="fx-done__pts">${brl(t)}</p><h2 class="sheet__title">Compra registrada</h2>
     <p>${n} itens no ${esc(S.markets.get(mid)?.name || '')}${b ? `, ${t <= b ? `${brl(b - t)} abaixo do orçamento` : `${brl(t - b)} acima do orçamento`}` : ''}.</p>
-    <button class="btn btn--primary btn--block" data-cupom="open">🧾 Conferir a nota do caixa</button>
+    <button class="btn btn--primary btn--block" data-cupom="open">${ic('receipt')} Conferir a nota do caixa</button>
     <a class="btn btn--ghost btn--block" href="#notas" data-close>Mandar a nota e organizar meu rancho</a>
     <p class="muted small center">Leia o QR da nota e veja se o caixa cobrou o preço da etiqueta.</p>
     <button class="btn btn--text btn--block" data-close>Fechar</button></div>`);

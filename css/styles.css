@@ -1811,3 +1811,97 @@ html.cf-lock, html.cf-lock body { overflow: hidden !important; overscroll-behavi
   .in-final { justify-items: center; text-align: center; padding: 44px 24px; }
 }
 @media (prefers-reduced-motion: reduce) { .in-ex, .in-tools, .in-bars__b i { animation: none; } }
+
+/* =====================================================================
+   Ícones de traço (js/icons.js) no lugar dos emojis: um verde só;
+   vermelho e amarelo apenas para alerta e atenção.
+   ===================================================================== */
+svg.i { width: 1.15em; height: 1.15em; display: inline-block; vertical-align: -.2em; flex: none; }
+.btn svg.i { width: 18px; height: 18px; vertical-align: middle; }
+/* selos de ícone (passo a passo, botões de ferramenta, vazios) */
+.how__i, .ck-tool > span:first-child, .notas-btn > span:first-child, .stop__i, .nota-ic, .nf-pend > span:first-child,
+.notas-empty > span:first-child, .rx-empty .big, .scan__big, .cupom-wait__i, .notas-perks > div > span:first-child, .bdg > span:first-child {
+  display: inline-grid; place-items: center; flex: none; color: var(--brand);
+}
+.how__i { width: 40px; height: 40px; border-radius: 12px; background: var(--brand-soft); font-size: 20px; }
+.how__i--l { font: 800 1.05rem var(--display); }
+.ck-tool > span:first-child { width: 40px; height: 40px; border-radius: 12px; background: var(--brand-soft); font-size: 20px; }
+.notas-btn > span:first-child { width: 42px; height: 42px; border-radius: 12px; background: var(--brand-soft); font-size: 22px; }
+.notas-btn.is-main > span:first-child { background: rgba(255,255,255,.16); color: inherit; font-size: 26px; width: 52px; height: 52px; }
+.notas-empty > span:first-child, .rx-empty .big, .scan__big, .cupom-wait__i { width: 64px; height: 64px; border-radius: 50%; background: var(--brand-soft); font-size: 30px; margin-inline: auto; }
+.stop__i { width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2); color: var(--ink-2); font-size: 18px; }
+.nota-ic { width: 36px; height: 36px; border-radius: 10px; background: var(--brand-soft); font-size: 18px; }
+.nf-pend > span:first-child { width: 44px; height: 44px; border-radius: 12px; background: rgba(0,0,0,.06); color: inherit; font-size: 22px; }
+.trail__dot svg.i { width: 20px; height: 20px; }
+.bdg > span:first-child { font-size: 22px; color: var(--muted); }
+.bdg.is-on > span:first-child { color: var(--brand); }
+.fx-done__pts svg.i { width: 56px; height: 56px; }
+/* rostos de resultado viram selos coloridos */
+.verdict__face, .tz-res__face { display: inline-grid; place-items: center; border-radius: 50%; background: var(--surface-2); color: var(--ink-2); flex: none; }
+.verdict__face { width: 68px; height: 68px; font-size: 32px; margin-inline: auto; }
+.tz-res__face { width: 48px; height: 48px; font-size: 24px; }
+.is-good .verdict__face, .is-good .tz-res__face, .is-win .tz-res__face { background: var(--brand-soft); color: var(--down); }
+.is-bad .verdict__face, .is-bad .tz-res__face, .is-warn .tz-res__face { background: color-mix(in srgb, var(--up) 14%, var(--surface)); color: var(--up); }
+.is-meh .verdict__face, .is-tie .tz-res__face { background: var(--tag-soft); color: var(--tag-ink); }
+.pk__crown svg.i { width: 26px; height: 26px; }
+.sheet__title > span[aria-hidden] svg.i, .page-head h1 svg.i, .notas-head h1 svg.i { color: var(--brand); }
+.pres__list li > span:first-child { color: var(--brand); }
+.sec-head h2 svg.i, .pd__h svg.i { color: var(--brand); }
+
+/* =====================================================================
+   Ofertas mais leve: ferramentas em faixa, descontos recolhidos, economia
+   ===================================================================== */
+.hub-wrap { margin: 0 0 20px; max-width: none !important; }
+.tools-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.tools-head h2 { font: 700 .95rem var(--display); color: var(--ink-2); }
+.tools-head__how { font-size: .82rem; font-weight: 600; color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
+.tools-row { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x proximity; padding: 2px 16px 6px; margin: 0 -16px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.tools-row::-webkit-scrollbar { display: none; }
+.tool-chip { flex: none; scroll-snap-align: start; display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px 0 6px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-weight: 600; font-size: .88rem; color: var(--ink); white-space: nowrap; transition: border-color .15s, background .15s; }
+.tool-chip:hover { border-color: var(--brand); }
+.tool-chip:active { background: var(--surface-2); }
+.tool-chip__i { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); font-size: 16px; }
+@media (min-width: 900px) { .tools-row { flex-wrap: wrap; overflow: visible; margin: 0; padding: 2px 0; } }
+
+.deals-week { margin: 0 0 20px; }
+.dw { border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); }
+.dw[open] { padding-bottom: 12px; }
+.dw > :not(summary) { margin-inline: 12px; }
+.dw__sum { list-style: none; display: flex; align-items: center; gap: 12px; padding: 12px; cursor: pointer; }
+.dw__sum::-webkit-details-marker { display: none; }
+.dw__i { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); font-size: 20px; flex: none; }
+.dw__t { flex: 1; display: grid; gap: 1px; min-width: 0; line-height: 1.25; }
+.dw__t small { color: var(--muted); font-size: .84rem; }
+.dw__go { color: var(--muted); transition: transform .2s; }
+.dw[open] .dw__go { transform: rotate(180deg); }
+
+.save-strip { display: flex; align-items: center; gap: 12px; margin: -4px 0 18px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--brand-soft); color: var(--ink); }
+.save-strip[hidden] { display: none; }
+.save-strip__i { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--brand); font-size: 22px; flex: none; }
+.save-strip__t { flex: 1; display: grid; gap: 1px; line-height: 1.25; min-width: 0; }
+.save-strip__t small { font-size: .82rem; color: var(--ink-2); }
+.save-strip.is-won .save-strip__t b { font: 700 1.4rem/1.1 var(--display); color: var(--brand); }
+.save-strip__go { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: .88rem; color: var(--brand); text-decoration: none; white-space: nowrap; }
+.save-strip__go svg.i { width: 16px; height: 16px; }
+
+/* ---------- uma faixa por vez no topo: sem internet > aviso do site > cadastro ---------- */
+.site-banner { position: relative; }
+.site-banner p { padding-inline: 44px; }
+.site-banner__x { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: inherit; opacity: .7; }
+.site-banner__x:hover { opacity: 1; background: rgba(0,0,0,.06); }
+body:has(#netPill:not([hidden])) #siteBanner,
+body:has(#netPill:not([hidden])) #profileBanner,
+body:has(#siteBanner) #profileBanner { display: none !important; }
+/* convite para localização (no lugar da janela automática) */
+.loc-cta { justify-self: start; width: fit-content; display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 12px 6px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font-weight: 600; font-size: .85rem; }
+.loc-cta svg.i { width: 16px; height: 16px; }
+
+/* "saiba mais": detalhe recolhido para textos de apoio */
+.more { margin: 4px 0 18px; border-radius: var(--r-md); }
+.more > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 0; font-weight: 600; font-size: .9rem; color: var(--brand); cursor: pointer; }
+.more > summary::-webkit-details-marker { display: none; }
+.more > summary svg.i { transition: transform .2s; }
+.more[open] > summary svg.i { transform: rotate(180deg); }
+.more[open] > summary { margin-bottom: 8px; }
+.kind__i { background: var(--brand-soft) !important; color: var(--brand) !important; }
+.kind__i svg.i { width: 24px; height: 24px; }

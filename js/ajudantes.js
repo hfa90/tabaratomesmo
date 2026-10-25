@@ -1,6 +1,7 @@
 // Ajudantes do mercado: ferramentas de toque grande, com figuras e quase sem texto.
 //  📷 Ler código   ⚖️ Qual pacote compensa?   🏷️ Promoção vale?   🗺️ Caminho no mercado
 import * as api from './api.js';
+import { ic } from './icons.js';
 import { S, $, $$, esc, brl, logo, media, hooks, isOn } from './core.js';
 import { perUnit, compareTwo, sizeOf } from './unitprice.js';
 import { promoEffective, strip, parseUnit } from './voice.js';
@@ -9,27 +10,27 @@ import * as scanner from './scanner.js';
 import { track } from './track.js';
 
 const TOOLS = [
-  { id: 'scan', icon: '📷', name: 'Ler código', sub: 'Aponte e veja o preço', c: '#2E6BE6' },
-  { id: 'tamanho', icon: '⚖️', name: 'Qual compensa?', sub: 'Pacote grande ou pequeno', c: '#0F8A5F' },
-  { id: 'promo', icon: '🏷️', name: 'Promoção vale?', sub: 'Leve 3, pague 2…', c: '#D9480F' },
-  { id: 'caminho', icon: '🗺️', name: 'Caminho no mercado', sub: 'Lista na ordem dos corredores', c: '#7048E8' },
-  { id: 'fotopreco', icon: '📸', name: 'Foto do preço', sub: 'Fotografe a etiqueta e confira', c: '#C2255C' },
-  { id: 'notas', icon: '🧾', name: 'Mandar nota', sub: 'Ganhe pontos com a sua compra', c: '#0B7285' },
-  { id: 'refeicoes', icon: '🍲', name: 'Planejar refeições', sub: 'Diga o que vai comer na semana: a gente calcula os ingredientes e o que comprar', c: '#E8590C', wide: true },
+  { id: 'scan', icon: ic('camera'), name: 'Ler código', sub: 'Aponte e veja o preço', c: '#2E6BE6' },
+  { id: 'tamanho', icon: ic('scale'), name: 'Qual compensa?', sub: 'Pacote grande ou pequeno', c: '#0F8A5F' },
+  { id: 'promo', icon: ic('tag'), name: 'Promoção vale?', sub: 'Leve 3, pague 2…', c: '#D9480F' },
+  { id: 'caminho', icon: ic('map'), name: 'Caminho na loja', sub: 'Lista na ordem dos corredores', c: '#7048E8' },
+  { id: 'fotopreco', icon: ic('camera'), name: 'Foto do preço', sub: 'Fotografe a etiqueta e confira', c: '#C2255C' },
+  { id: 'notas', icon: ic('receipt'), name: 'Mandar nota', sub: 'Ganhe pontos com a sua compra', c: '#0B7285' },
+  { id: 'mapa', icon: ic('pin'), name: 'Lojas no mapa', sub: 'A loja mais perto e a rota', c: '#0F5A3E' },
+  { id: 'refeicoes', icon: ic('pot'), name: 'Planejar refeições', sub: 'Diga o que vai comer na semana', c: '#E8590C' },
 ];
 
 /** fileira de ajudantes. compact = versão menor (carrinho) */
-export function hubHTML(compact = false) {
-  return `<div class="hub ${compact ? 'hub--compact' : ''}" role="list">${TOOLS.map((t) => `
-    <button class="hub__t ${t.wide ? 'hub__t--wide' : ''}" role="listitem" data-tool="${t.id}" style="--c:${t.c}">
-      <span class="hub__i" aria-hidden="true">${t.icon}</span>
-      <b>${t.name}</b>${compact ? '' : `<small>${t.sub}</small>`}
+export function hubHTML() {
+  return `<div class="tools-row" role="list">${TOOLS.map((t) => `
+    <button class="tool-chip" role="listitem" data-tool="${t.id}" title="${t.sub.split(':')[0]}">
+      <span class="tool-chip__i" aria-hidden="true">${t.icon}</span><span>${t.name}</span>
     </button>`).join('')}</div>`;
 }
 
 export function renderHub() {
   const el = $('#toolHub'); if (!el) return;
-  el.innerHTML = `<h2 class="hub__h">Ajudantes do mercado</h2>${hubHTML()}`;
+  el.innerHTML = `<div class="tools-head"><h2>Ferramentas para o mercado</h2><a href="#inicio" class="tools-head__how">como usar</a></div>${hubHTML()}`;
 }
 
 const body = () => $('#toolBody');
@@ -66,7 +67,7 @@ function pack(k) {
   const x = T[k]; const L = k.toUpperCase();
   return `<div class="pk pk--${k}" data-pk="${k}">
     <span class="pk__badge" aria-hidden="true">${L}</span>
-    <span class="pk__crown" aria-hidden="true">👑</span>
+    <span class="pk__crown" aria-hidden="true">${ic('crown')}</span>
     <p class="pk__h">Pacote ${L}</p>
     <label class="big-in"><span>R$</span><input inputmode="decimal" placeholder="0,00" value="${fmt(x.price)}" data-tz="${k}.price" aria-label="Preço do pacote ${L}" /></label>
     <p class="pk__q">Tamanho</p>
@@ -83,11 +84,11 @@ export function openTamanho(p = null) {
   tamanhoState(p);
   openTool('tamanho', `
     <div class="tool">
-      <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">⚖️</span> Qual pacote compensa?</h2>
+      <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${ic('scale')}</span> Qual pacote compensa?</h2>
       <ol class="how">
-        <li><span class="how__i" aria-hidden="true">🅰️</span><span>Preço e tamanho do <b>pacote A</b></span></li>
-        <li><span class="how__i" aria-hidden="true">🅱️</span><span>Preço e tamanho do <b>pacote B</b></span></li>
-        <li><span class="how__i" aria-hidden="true">👑</span><span>A <b>coroa</b> mostra o que compensa</span></li>
+        <li><span class="how__i how__i--l" aria-hidden="true">A</span><span>Preço e tamanho do <b>pacote A</b></span></li>
+        <li><span class="how__i how__i--l" aria-hidden="true">B</span><span>Preço e tamanho do <b>pacote B</b></span></li>
+        <li><span class="how__i" aria-hidden="true">${ic('crown')}</span><span>A <b>coroa</b> mostra o que compensa</span></li>
       </ol>
       <div class="pks" id="pks">${pack('a')}<span class="pks__vs" aria-hidden="true">ou</span>${pack('b')}</div>
       <div class="tz-res" id="tzRes" aria-live="polite"></div>
@@ -107,24 +108,24 @@ function tamanhoCalc() {
   const ready = (x) => x.price > 0 && x.amount > 0;
   if (!ready(T.a) || !ready(T.b)) {
     res.className = 'tz-res is-wait';
-    res.innerHTML = `<span class="tz-res__face" aria-hidden="true">🤔</span><span>${!ready(T.a) ? 'Escreva o <b>preço</b> e o <b>tamanho</b> do pacote A' : 'Agora escreva o <b>preço</b> e o <b>tamanho</b> do pacote B'}</span>`;
+    res.innerHTML = `<span class="tz-res__face" aria-hidden="true">${ic('question')}</span><span>${!ready(T.a) ? 'Escreva o <b>preço</b> e o <b>tamanho</b> do pacote A' : 'Agora escreva o <b>preço</b> e o <b>tamanho</b> do pacote B'}</span>`;
     return;
   }
   const r = compareTwo(T.a, T.b);
   if (!r) {
     res.className = 'tz-res is-warn';
-    res.innerHTML = `<span class="tz-res__face" aria-hidden="true">🙃</span><span>Compare coisas iguais: <b>peso com peso</b> (g, kg), <b>líquido com líquido</b> (ml, L) ou <b>unidade com unidade</b>.</span>`;
+    res.innerHTML = `<span class="tz-res__face" aria-hidden="true">${ic('question')}</span><span>Compare coisas iguais: <b>peso com peso</b> (g, kg), <b>líquido com líquido</b> (ml, L) ou <b>unidade com unidade</b>.</span>`;
     return;
   }
   if (!r.win) {
     res.className = 'tz-res is-tie';
-    res.innerHTML = `<span class="tz-res__face" aria-hidden="true">🤝</span><span><b>Empate!</b> Os dois saem ${r.pa.text}. Leve o que for usar.</span>`;
+    res.innerHTML = `<span class="tz-res__face" aria-hidden="true">${ic('equal')}</span><span><b>Empate!</b> Os dois saem ${r.pa.text}. Leve o que for usar.</span>`;
     return;
   }
   const W = r.win.toUpperCase(); const w = r.win === 'a' ? r.pa : r.pb;
   $(`.pk--${r.win}`)?.classList.add('is-win'); $(`.pk--${r.win === 'a' ? 'b' : 'a'}`)?.classList.add('is-lose');
   res.className = 'tz-res is-win';
-  res.innerHTML = `<span class="tz-res__face" aria-hidden="true">🎉</span>
+  res.innerHTML = `<span class="tz-res__face" aria-hidden="true">${ic('sparkle')}</span>
     <span><b class="tz-res__big">O pacote ${W} compensa!</b>
     Cada ${w.kind === 'un' ? 'unidade' : w.word} sai <b>${brl(r.diff)} mais barato</b> (${Math.round(r.pct)}% a menos).</span>`;
 }
@@ -135,8 +136,8 @@ function tamanhoCalc() {
 const KINDS = [
   { id: 'leve', icon: '3→2', name: 'Leve 3, pague 2', ex: 'Leva mais e paga menos' },
   { id: 'segunda', icon: '½', name: '2ª unidade com desconto', ex: 'A segunda sai mais barata' },
-  { id: 'atacado', icon: '📦', name: 'Levando vários, cada um sai menos', ex: '“A partir de 3 un.: R$ 4,99”' },
-  { id: 'depor', icon: '✂️', name: 'De R$… por R$…', ex: 'Preço riscado na etiqueta' },
+  { id: 'atacado', icon: ic('box'), name: 'Levando vários, cada um sai menos', ex: '“A partir de 3 un.: R$ 4,99”' },
+  { id: 'depor', icon: ic('scissors'), name: 'De R$… por R$…', ex: 'Preço riscado na etiqueta' },
 ];
 let P = null;
 
@@ -149,7 +150,7 @@ function promoStep() {
   if (!P.kind) {
     return openTool('promo', `
       <div class="tool">
-        <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">🏷️</span> A promoção vale a pena?</h2>
+        <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${ic('tag')}</span> A promoção vale a pena?</h2>
         <p class="tool__lead">Qual é a promoção da etiqueta?</p>
         <div class="kinds">${KINDS.map((k) => `<button class="kind" data-pk-kind="${k.id}"><span class="kind__i" aria-hidden="true">${k.icon}</span><b>${k.name}</b><small>${k.ex}</small></button>`).join('')}</div>
       </div>`);
@@ -194,29 +195,29 @@ function promoCalc() {
   $$('[data-pout]').forEach((o) => (o.textContent = P[o.dataset.pout]));
   const pr = promoNumbers();
   const r = pr && promoEffective(pr, P.price);
-  if (!r) { el.className = 'pres is-wait'; el.innerHTML = `<span class="tz-res__face" aria-hidden="true">✍️</span><span>Escreva os <b>preços</b> da etiqueta.</span>`; return; }
-  if (r.save <= 0.004) { el.className = 'pres is-bad'; el.innerHTML = `<span class="tz-res__face" aria-hidden="true">😐</span><span><b>Não tem desconto nenhum.</b> Confira os valores da etiqueta.</span>`; return; }
+  if (!r) { el.className = 'pres is-wait'; el.innerHTML = `<span class="tz-res__face" aria-hidden="true">${ic('pencil')}</span><span>Escreva os <b>preços</b> da etiqueta.</span>`; return; }
+  if (r.save <= 0.004) { el.className = 'pres is-bad'; el.innerHTML = `<span class="tz-res__face" aria-hidden="true">${ic('minus')}</span><span><b>Não tem desconto nenhum.</b> Confira os valores da etiqueta.</span>`; return; }
   // compara com o preço normal em outros mercados, se o produto foi escolhido
   let other = '';
   const p = P.product;
   if (p) {
     const mid = currentMarket();
     const cheaper = p.prices.filter((x) => isOn(x.market_id) && x.market_id !== mid && x.price < r.unit - 0.009)[0];
-    if (cheaper) other = `<div class="pres__warn">😬 Mas no <b>${esc(S.markets.get(cheaper.market_id).name)}</b> cada um custa <b>${brl(cheaper.price)}</b> sem promoção.</div>`;
-    else other = `<div class="pres__ok">👍 Nenhum outro mercado tem mais barato que isso.</div>`;
+    if (cheaper) other = `<div class="pres__warn">${ic('warn')} Mas no <b>${esc(S.markets.get(cheaper.market_id).name)}</b> cada um custa <b>${brl(cheaper.price)}</b> sem promoção.</div>`;
+    else other = `<div class="pres__ok">${ic('thumb')} Nenhum outro mercado tem mais barato que isso.</div>`;
   }
   const many = r.qty > 1;
   el.className = 'pres is-good';
   el.innerHTML = `
-    <div class="pres__top"><span class="tz-res__face" aria-hidden="true">🎉</span>
+    <div class="pres__top"><span class="tz-res__face" aria-hidden="true">${ic('sparkle')}</span>
       <span><small>Cada um sai por</small><b class="pres__big">${brl(r.unit)}</b></span></div>
     <ul class="pres__list">
-      ${many ? `<li><span aria-hidden="true">🛍️</span><span>Você leva <b>${r.qty}</b> e paga <b>${brl(r.total)}</b></span></li>` : ''}
-      <li><span aria-hidden="true">💰</span><span>Economiza <b>${brl(r.save)}</b> (${Math.round(r.pct)}% a menos)</span></li>
-      ${many ? `<li><span aria-hidden="true">💡</span><span>Só vale se você for usar os <b>${r.qty}</b>. Se precisa de 1, paga ${brl(P.price)}.</span></li>` : ''}
+      ${many ? `<li><span aria-hidden="true">${ic('bag')}</span><span>Você leva <b>${r.qty}</b> e paga <b>${brl(r.total)}</b></span></li>` : ''}
+      <li><span aria-hidden="true">${ic('coins')}</span><span>Economiza <b>${brl(r.save)}</b> (${Math.round(r.pct)}% a menos)</span></li>
+      ${many ? `<li><span aria-hidden="true">${ic('bulb')}</span><span>Só vale se você for usar os <b>${r.qty}</b>. Se precisa de 1, paga ${brl(P.price)}.</span></li>` : ''}
     </ul>
     ${other}
-    <button class="btn btn--primary btn--xl btn--block" data-pcart>🛒 Pôr ${many ? r.qty + ' ' : ''}no carrinho</button>`;
+    <button class="btn btn--primary btn--xl btn--block" data-pcart>${ic('cart')} Pôr ${many ? r.qty + ' ' : ''}no carrinho</button>`;
 }
 
 function prodList(q) {
@@ -240,10 +241,11 @@ document.addEventListener('click', (e) => {
     if (d.tool === 'scan') return scanner.open({ mode: location.hash === '#carrinho' ? 'carrinho' : 'preco' });
     if (d.tool === 'fotopreco') return import('./fotopreco.js').then((m) => m.open());
     if (d.tool === 'notas') { hooks.closeSheet?.('#toolSheet'); location.hash = '#notas'; return; }
+    if (d.tool === 'mapa') { location.hash = '#mapa'; return; }
     if (d.tool === 'refeicoes') { hooks.closeSheet?.('#toolSheet'); location.hash = '#refeicoes'; return; }
     if (d.tool === 'tamanho') return openTamanho(p);
     if (d.tool === 'promo') return openPromo(p);
-    if (d.tool === 'caminho') { if (!S.list.size) hooks.toast?.('Primeiro coloque os produtos no rancho. Depois eu mostro o caminho! 🗺️'); hooks.closeSheet?.('#toolSheet'); api.store.set('tb.rmode', 'shop'); hooks.ranchoMode?.('shop'); location.hash = '#lista'; return; }
+    if (d.tool === 'caminho') { if (!S.list.size) hooks.toast?.('Primeiro coloque os produtos no rancho. Depois eu mostro o caminho!'); hooks.closeSheet?.('#toolSheet'); api.store.set('tb.rmode', 'shop'); hooks.ranchoMode?.('shop'); location.hash = '#lista'; return; }
   }
   if (!t.closest('#toolSheet')) return;
   // tamanho

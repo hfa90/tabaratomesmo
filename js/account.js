@@ -1,6 +1,7 @@
 // Página "Você": quanto a pessoa já economizou, onde mais compra, histórico,
 // conquistas, colaboração e dados da conta.
 import * as api from './api.js';
+import { ic } from './icons.js';
 import { CONFIG } from './config.js';
 import { S, $, $$, esc, brl, logo, hooks, initials } from './core.js';
 import * as rancho from './rancho.js';
@@ -24,6 +25,13 @@ function entries() {
   }
   for (const h of Object.values(rancho.history())) map.set(h.month, { ...map.get(h.month), ...h, itemsCount: h.items?.length });
   return [...map.values()].sort((a, b) => b.month.localeCompare(a.month));
+}
+
+/** resumo para a faixa de economia da página de ofertas */
+export function savingsSummary() {
+  const es = entries();
+  const k = new Date().toISOString().slice(0, 7);
+  return { total: es.reduce((s, e) => s + (e.savings || 0), 0), month: es.filter((e) => e.month === k).reduce((s, e) => s + (e.savings || 0), 0), n: es.length };
 }
 
 function stats() {
@@ -93,7 +101,7 @@ function donut(markets) {
 
 function favMarket(st) {
   if (!st.markets.length) return `<section class="panel"><div class="panel__head"><h2>Seu supermercado</h2></div>
-    <p class="muted small">Quando você concluir um rancho e marcar onde comprou, mostramos aqui o mercado que você mais usa e quanto gastou em cada um.</p></section>`;
+    <p class="muted small">Conclua um rancho para ver onde você mais compra e quanto gasta em cada mercado.</p></section>`;
   const top = st.markets[0];
   return `<section class="panel">
     <div class="panel__head"><h2>Seu supermercado</h2><span class="muted small">${top.confirmed ? 'pelas compras que você registrou' : 'pelos ranchos concluídos'}</span></div>
@@ -106,21 +114,21 @@ function favMarket(st) {
 
 function badges(st, imp) {
   const list = [
-    ['🧺', 'Primeiro rancho', 'Concluiu um rancho', st.es.length >= 1],
-    ['📅', 'Três meses', '3 ranchos concluídos', st.es.length >= 3],
-    ['💰', 'R$ 100 no bolso', 'Economizou R$ 100', st.total >= 100],
-    ['🏆', 'R$ 500 no bolso', 'Economizou R$ 500', st.total >= 500],
-    ['🧭', 'Explorador', 'Comprou em 3 mercados', st.markets.length >= 3],
-    ['🔎', 'Fiscal', 'Informou um preço', (imp?.reports || 0) >= 1],
-    ['🏠', 'Casa definida', 'Calcula o deslocamento', rancho.homePos()?.source === 'home'],
-    ['✅', 'Cadastro completo', 'Comparações sem limite', !!S.profile?.completed_at],
+    [ic('basket'), 'Primeiro rancho', 'Concluiu um rancho', st.es.length >= 1],
+    [ic('calendar'), 'Três meses', '3 ranchos concluídos', st.es.length >= 3],
+    [ic('coins'), 'R$ 100 no bolso', 'Economizou R$ 100', st.total >= 100],
+    [ic('trophy'), 'R$ 500 no bolso', 'Economizou R$ 500', st.total >= 500],
+    [ic('compass'), 'Explorador', 'Comprou em 3 mercados', st.markets.length >= 3],
+    [ic('search'), 'Fiscal', 'Informou um preço', (imp?.reports || 0) >= 1],
+    [ic('home'), 'Casa definida', 'Calcula o deslocamento', rancho.homePos()?.source === 'home'],
+    [ic('good'), 'Cadastro completo', 'Comparações sem limite', !!S.profile?.completed_at],
   ];
   return `<section class="panel"><div class="panel__head"><h2>Conquistas</h2><span class="muted small">${list.filter((b) => b[3]).length} de ${list.length}</span></div>
     <div class="badges">${list.map(([i, t, d, on]) => `<div class="bdg ${on ? 'is-on' : ''}"><span aria-hidden="true">${i}</span><b>${t}</b>${d}</div>`).join('')}</div></section>`;
 }
 
 function historyList(st) {
-  if (!st.es.length) return `<section class="panel"><p class="muted">Nenhum rancho concluído ainda. Monte o do mês na aba Rancho e toque em “Concluir”.</p><a class="btn btn--primary" href="#lista">Ir para o rancho</a></section>`;
+  if (!st.es.length) return `<section class="panel"><p class="muted">Nenhum rancho concluído ainda. Monte a lista do mês e toque em “Concluir”.</p><a class="btn btn--primary" href="#lista">Ir para o rancho</a></section>`;
   return `<section class="panel"><div class="panel__head"><h2>Seus ranchos</h2><span class="muted small">economia em relação ao mercado mais perto</span></div>
     <ul class="hist">${st.es.map((e) => {
       const bm = S.markets.get(e.bought || e.best);
@@ -148,7 +156,7 @@ function dataPanel() {
   </section>
   <section class="panel">
     <div class="panel__head"><h2>Casa e deslocamento</h2></div>
-    <p class="small">${rancho.homePos()?.source === 'home' ? `Sua casa: <b>${esc(rancho.homePos().label || 'definida')}</b>` : 'Defina onde fica sua casa para o relatório do rancho calcular distância e custo de deslocamento.'}</p>
+    <p class="small">${rancho.homePos()?.source === 'home' ? `Sua casa: <b>${esc(rancho.homePos().label || 'definida')}</b>` : 'Defina sua casa para calcular a distância e o custo de ida até cada mercado.'}</p>
     <div class="row-actions"><button class="btn btn--ghost btn--sm" data-open="home">${rancho.homePos()?.source === 'home' ? 'Alterar casa' : 'Definir minha casa'}</button></div>
   </section>
   <div id="adminLink"></div>
@@ -165,10 +173,11 @@ export async function render() {
   if (!S.user) {
     link.textContent = 'Entrar';
     el.innerHTML = `<div class="me">
-      <header class="page-head"><h1>Você</h1><p class="muted">Sua economia fica guardada neste aparelho. Crie uma conta para não perder e usar em qualquer lugar.</p></header>
+      <header class="page-head"><h1>Você</h1><p class="muted">Sua economia e suas conquistas, num lugar só.</p></header>
       ${saveHero(st)}
       <div class="me-grid">${favMarket(st)}
-        <section class="panel"><div class="panel__head"><h2>Crie sua conta</h2></div>
+        <section class="panel"><div class="panel__head"><h2>Crie sua conta grátis</h2></div>
+          <p class="small">Sem conta, tudo fica só neste celular. Com conta, você não perde nada e usa em qualquer aparelho.</p>
           <div class="acc-steps">
             <div><b>1. Cadastro rápido</b><span>Nome, e-mail e senha. Libera ${CONFIG.QUICK_COMPARISONS} comparações.</span></div>
             <div><b>2. Cadastro completo</b><span>Celular, bairro e mercados preferidos. Comparações sem limite.</span></div>

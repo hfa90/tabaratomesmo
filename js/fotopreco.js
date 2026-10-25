@@ -5,6 +5,7 @@
 //   😬 mudou    → manda o preço novo com a foto como prova; na loja (GPS), entra no site na hora
 //   ❔ não existe → manda para cadastro (moderação) com o que a IA leu
 import * as api from './api.js';
+import { ic } from './icons.js';
 import { S, $, esc, brl, logo, hooks, isOn } from './core.js';
 import { parse, match } from './voice.js';
 import { findByEan, validEan } from './scanner.js';
@@ -31,16 +32,16 @@ export function open() {
   st = { mid: st?.mid || currentMarket() || [...S.markets.keys()][0] };
   if (api.MODE === 'live' && !S.user) { hooks.closeSheet?.('#toolSheet'); return hooks.openAuth('signup', 'Crie sua conta para conferir preços pela foto e ganhar pontos.'); }
   sheet(`
-    <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">📸</span> Foto do preço</h2>
+    <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${ic('camera')}</span> Foto do preço</h2>
     <ol class="how" aria-label="Como usar">
-      <li><span class="how__i" aria-hidden="true">🥫</span><span>Produto e <b>etiqueta</b> juntos</span></li>
-      <li><span class="how__i" aria-hidden="true">📸</span><span>Foto <b>nítida</b>, de perto</span></li>
-      <li><span class="how__i" aria-hidden="true">✅</span><span>Veja se o preço <b>confere</b></span></li>
+      <li><span class="how__i" aria-hidden="true">${ic('can')}</span><span>Produto e <b>etiqueta</b> juntos</span></li>
+      <li><span class="how__i" aria-hidden="true">${ic('camera')}</span><span>Foto <b>nítida</b>, de perto</span></li>
+      <li><span class="how__i" aria-hidden="true">${ic('good')}</span><span>Veja se o preço <b>confere</b></span></li>
     </ol>
     ${marketPicker(st.mid)}
     <div class="tool__actions">
-      <button class="btn btn--primary btn--xl" data-fp="cam">📷 Tirar foto</button>
-      <button class="btn btn--ghost btn--block" data-fp="gal">🖼️ Escolher da galeria</button>
+      <button class="btn btn--primary btn--xl" data-fp="cam">${ic('camera')} Tirar foto</button>
+      <button class="btn btn--ghost btn--block" data-fp="gal">${ic('image')} Escolher da galeria</button>
     </div>
     <p class="muted small center">A foto vale como prova: se você estiver na loja, o preço novo entra no site na hora.</p>`);
 }
@@ -55,10 +56,10 @@ function pick(capture) {
 // ---------------------------------------------------------------- ler
 async function read(file) {
   let cv;
-  try { cv = (await ia.fileCanvases(file, { max: 1800 }))[0]; } catch (e) { return fail('😕', 'Não consegui abrir a foto', esc(e.message)); }
+  try { cv = (await ia.fileCanvases(file, { max: 1800 }))[0]; } catch (e) { return fail(ic('alert'), 'Não consegui abrir a foto', esc(e.message)); }
   st.cv = cv;
   const thumb = ia.toCanvas(cv, 520).toDataURL('image/jpeg', 0.8);
-  sheet(`<h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">📸</span> Lendo a etiqueta…</h2>
+  sheet(`<h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${ic('camera')}</span> Lendo a etiqueta…</h2>
     <div class="fp-photo is-reading"><img src="${thumb}" alt="Sua foto" /><span class="fp-scan" aria-hidden="true"></span></div>
     <p class="muted center">Procurando o produto e o preço.</p>`);
 
@@ -68,13 +69,13 @@ async function read(file) {
   try {
     out = api.MODE === 'live' ? await ia.iaRead('etiqueta', [cv], { supermarket_id: st.mid }) : demoRead();
   } catch (e) {
-    return fail(e.code === 'limite' ? '⏳' : '😕', e.code === 'limite' ? 'Limite de hoje atingido' : 'Não consegui ler agora', esc(e.message));
+    return fail(e.code === 'limite' ? ic('hourglass') : ic('alert'), e.code === 'limite' ? 'Limite de hoje atingido' : 'Não consegui ler agora', esc(e.message));
   }
   const r = out.result || {};
   st.read = r; st.reading_id = out.reading_id; st.photo_url = out.photo_url; st.thumb = thumb;
   st.ean = [eanLocal, r.ean].find((c) => c && validEan(c)) || null;
   track('tool', { query: 'fotopreco', market_id: st.mid });
-  if (!r.legivel || !r.preco) return fail('🔍', 'Não deu para ler o preço', esc(r.motivo || 'Chegue mais perto da etiqueta, sem reflexo, e tente de novo.'));
+  if (!r.legivel || !r.preco) return fail(ic('search'), 'Não deu para ler o preço', esc(r.motivo || 'Chegue mais perto da etiqueta, sem reflexo, e tente de novo.'));
 
   // achar o produto
   let p = st.ean ? findByEan(st.ean) : null;
@@ -94,13 +95,13 @@ async function barcodeIn(cv) {
 // ---------------------------------------------------------------- resultado
 function result() {
   const { read: r, p, mid } = st; const m = S.markets.get(mid);
-  const head = `<div class="fp-read"><img src="${st.thumb}" alt="" /><span><small>A IA leu</small><b>${esc([r.nome, r.marca, r.tamanho].filter(Boolean).join(' · ') || r.texto_etiqueta || 'Produto')}</b><em>${brl(r.preco)}</em>${r.preco_promocional ? `<small>🏷️ ${brl(r.preco_promocional)} ${esc(r.condicao || '')}</small>` : ''}</span></div>`;
+  const head = `<div class="fp-read"><img src="${st.thumb}" alt="" /><span><small>A IA leu</small><b>${esc([r.nome, r.marca, r.tamanho].filter(Boolean).join(' · ') || r.texto_etiqueta || 'Produto')}</b><em>${brl(r.preco)}</em>${r.preco_promocional ? `<small>${ic('tag')} ${brl(r.preco_promocional)} ${esc(r.condicao || '')}</small>` : ''}</span></div>`;
   if (!p) {
     sheet(`${head}
-      <div class="verdict is-meh"><span class="verdict__face" aria-hidden="true">❔</span><b class="verdict__t" id="toolTitle">Qual destes é o produto?</b><span class="verdict__l">Não achei com certeza no site.</span></div>
+      <div class="verdict is-meh"><span class="verdict__face" aria-hidden="true">${ic('question')}</span><b class="verdict__t" id="toolTitle">Qual destes é o produto?</b><span class="verdict__l">Não achei com certeza no site.</span></div>
       <ul class="fp-cands">${(st.cands || []).map((c) => `<li><button data-fp-set="${c.id}">${c.emoji || '🛒'} ${esc(pname(c))}</button></li>`).join('')}</ul>
       <form class="fp-search" id="fpSearch" autocomplete="off"><input type="search" name="q" placeholder="Buscar outro produto…" aria-label="Buscar produto" /></form><ul class="fp-cands" id="fpRes"></ul>
-      <div class="tool__actions"><button class="btn btn--ghost btn--block" data-fp="new">➕ Não está no site: pedir cadastro</button><button class="btn btn--text" data-fp="again">Tirar outra foto</button></div>`);
+      <div class="tool__actions"><button class="btn btn--ghost btn--block" data-fp="new">${ic('plus')} Não está no site: pedir cadastro</button><button class="btn btn--text" data-fp="again">Tirar outra foto</button></div>`);
     $('#fpSearch').addEventListener('input', (e) => {
       const q = e.target.value.trim();
       $('#fpRes').innerHTML = q.length < 2 ? '' : match(parse(q), S.products, { limit: 6 }).map((x) => `<li><button data-fp-set="${x.p.id}">${x.p.emoji || '🛒'} ${esc(pname(x.p))}</button></li>`).join('');
@@ -112,20 +113,20 @@ function result() {
   const diff = site != null ? Math.round((r.preco - site) * 100) / 100 : null;
   const best = p.prices.filter((x) => isOn(x.market_id) && x.market_id !== mid)[0];
   let face, cls, title, line, cta;
-  if (site == null) { face = '🆕'; cls = 'is-meh'; title = `Primeiro preço no ${esc(m?.name || 'mercado')}`; line = 'Ninguém tinha mandado ainda. Vale pontos extras!'; cta = '📤 Mandar este preço'; }
-  else if (Math.abs(diff) < 0.01) { face = '😀'; cls = 'is-good'; title = 'Confere! O site está certo'; line = `${brl(site)} no ${esc(m?.name || '')}. Confirme para deixar o preço fresquinho.`; cta = '✅ Confirmar o preço'; }
-  else { face = diff > 0 ? '😬' : '🤑'; cls = diff > 0 ? 'is-bad' : 'is-good'; title = diff > 0 ? `Subiu ${brl(diff)}` : `Baixou ${brl(-diff)}`; line = `No site: <s>${brl(site)}</s> → na etiqueta: <b>${brl(r.preco)}</b>`; cta = '📤 Atualizar o preço no site'; }
+  if (site == null) { face = ic('sparkle'); cls = 'is-meh'; title = `Primeiro preço no ${esc(m?.name || 'mercado')}`; line = 'Ninguém tinha mandado ainda. Vale pontos extras!'; cta = (ic('send') + ' Mandar este preço'); }
+  else if (Math.abs(diff) < 0.01) { face = ic('good'); cls = 'is-good'; title = 'Confere! O site está certo'; line = `${brl(site)} no ${esc(m?.name || '')}. Confirme para deixar o preço fresquinho.`; cta = (ic('good') + ' Confirmar o preço'); }
+  else { face = diff > 0 ? ic('warn') : ic('down'); cls = diff > 0 ? 'is-bad' : 'is-good'; title = diff > 0 ? `Subiu ${brl(diff)}` : `Baixou ${brl(-diff)}`; line = `No site: <s>${brl(site)}</s> → na etiqueta: <b>${brl(r.preco)}</b>`; cta = (ic('send') + ' Atualizar o preço no site'); }
   sheet(`${head}
     <div class="fp-prod"><button data-open-product="${p.id}">${p.emoji || '🛒'} <span><b>${esc(pname(p))}</b><small>reconhecido ${st.ean ? 'pelo código de barras' : 'pelo nome'}</small></span></button><button class="linkish" data-fp="other">não é este?</button></div>
     <div class="verdict ${cls}"><span class="verdict__face" aria-hidden="true">${face}</span><b class="verdict__t" id="toolTitle">${title}</b><span class="verdict__l">${line}</span></div>
-    ${best && best.price < r.preco - 0.009 ? `<p class="fp-best">💡 No ${logo(S.markets.get(best.market_id), 'xs')} <b>${esc(S.markets.get(best.market_id)?.name || '')}</b> está ${brl(best.price)}.</p>` : ''}
+    ${best && best.price < r.preco - 0.009 ? `<p class="fp-best">${ic('bulb')} No ${logo(S.markets.get(best.market_id), 'xs')} <b>${esc(S.markets.get(best.market_id)?.name || '')}</b> está ${brl(best.price)}.</p>` : ''}
     ${marketPicker(mid)}
     <div class="tool__actions"><button class="btn btn--primary btn--xl" data-fp="send">${cta}</button><button class="btn btn--text" data-fp="again">Tirar outra foto</button></div>`);
 }
 
 function fail(face, title, text) {
   sheet(`<div class="verdict is-meh"><span class="verdict__face" aria-hidden="true">${face}</span><b class="verdict__t" id="toolTitle">${title}</b><span class="verdict__l">${text}</span></div>
-    <div class="tool__actions"><button class="btn btn--primary btn--xl" data-fp="cam">📷 Tirar outra foto</button><button class="btn btn--text" data-close>Fechar</button></div>`);
+    <div class="tool__actions"><button class="btn btn--primary btn--xl" data-fp="cam">${ic('camera')} Tirar outra foto</button><button class="btn btn--text" data-close>Fechar</button></div>`);
 }
 
 // ---------------------------------------------------------------- enviar
@@ -144,11 +145,11 @@ async function send(btn) {
     sheet(`<div class="fx-done"><p class="fx-done__pts">+${out.points || 0} pts</p>
       <h2 class="sheet__title" id="toolTitle">${live ? 'Preço atualizado no site!' : out.queued ? 'Guardado para enviar' : 'Preço enviado!'}</h2>
       <p>${live ? `Agora todo mundo vê ${brl(st.read.preco)} no ${esc(S.markets.get(st.mid)?.name || '')}.` : out.queued ? 'Sem internet: vai sozinho quando o sinal voltar.' : out.at_store ? 'Entra no site assim que for confirmado.' : 'Como você não parece estar na loja agora, ele passa pela confirmação da comunidade.'}</p>
-      <div class="tool__actions"><button class="btn btn--primary btn--xl" data-fp="cam">📸 Conferir outro preço</button><button class="btn btn--text" data-close>Fechar</button></div></div>`);
+      <div class="tool__actions"><button class="btn btn--primary btn--xl" data-fp="cam">${ic('camera')} Conferir outro preço</button><button class="btn btn--text" data-close>Fechar</button></div></div>`);
     if (live) hooks.refreshCatalog?.().catch(() => {});
     hooks.afterContribution?.();
   } catch (e) {
-    btn.disabled = false; btn.textContent = '📤 Tentar de novo';
+    btn.disabled = false; btn.textContent = 'Tentar de novo';
     hooks.toast?.(e.message || 'Não consegui enviar agora.', 'warn');
   }
 }
@@ -160,10 +161,10 @@ async function askNew(btn) {
   try {
     await api.sendShelfPhoto(blob, { supermarket_id: st.mid, product_id: null, spoken: r.texto_etiqueta || null, name: [r.nome, r.marca].filter(Boolean).join(' ') || null,
       size: r.tamanho || null, price: r.preco, site_price: null, lat: pos?.lat ?? null, lng: pos?.lng ?? null });
-    sheet(`<div class="fx-done"><p class="fx-done__pts">📮</p><h2 class="sheet__title" id="toolTitle">Pedido de cadastro enviado</h2>
+    sheet(`<div class="fx-done"><p class="fx-done__pts">${ic('mail')}</p><h2 class="sheet__title" id="toolTitle">Pedido de cadastro enviado</h2>
       <p>A equipe confere a foto e coloca o produto no site. Obrigado!</p>
-      <div class="tool__actions"><button class="btn btn--primary btn--xl" data-fp="cam">📸 Conferir outro preço</button><button class="btn btn--text" data-close>Fechar</button></div></div>`);
-  } catch (e) { btn.disabled = false; btn.textContent = '➕ Tentar de novo'; hooks.toast?.(e.message, 'warn'); }
+      <div class="tool__actions"><button class="btn btn--primary btn--xl" data-fp="cam">${ic('camera')} Conferir outro preço</button><button class="btn btn--text" data-close>Fechar</button></div></div>`);
+  } catch (e) { btn.disabled = false; btn.textContent = 'Tentar de novo'; hooks.toast?.(e.message, 'warn'); }
 }
 
 // ---------------------------------------------------------------- demonstração

@@ -90,7 +90,7 @@ const MOMENTS = {
     icon: I.home, t: 'Em casa', s: 'Planeje antes de sair',
     items: [
       { icon: I.tag, t: 'Preços de hoje', s: 'Cada produto mostra primeiro o mercado mais barato, com o preço dos outros ao lado.', go: '#ofertas' },
-      { icon: I.list, t: 'Rancho do mês', s: 'Monte a lista e veja em qual mercado ela inteira sai mais barata, e se vale ir mais longe.', go: '#lista' },
+      { icon: I.list, t: 'Lista do mês (rancho)', s: 'Monte a lista e veja em qual mercado ela inteira sai mais barata, e se vale ir mais longe.', go: '#lista' },
       { icon: I.meal, t: 'Planejar refeições', s: 'Diga o que vai comer na semana e o site calcula o que comprar e quanto custa.', go: '#refeicoes' },
       { icon: I.map, t: 'Lojas no mapa', s: 'Veja a loja mais perto de você e abra a rota.', go: '#mapa' },
     ],

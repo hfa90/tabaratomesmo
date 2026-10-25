@@ -2,6 +2,7 @@
 // e vê na hora o preço aqui e onde está mais barato.
 // Usa o BarcodeDetector do navegador (Android/Chrome) e, se não houver (iPhone), a biblioteca ZXing.
 import * as api from './api.js';
+import { ic } from './icons.js';
 import { S, $, esc, brl, logo, media, hooks, isOn } from './core.js';
 import { perUnit } from './unitprice.js';
 import { currentMarket, addProduct, addFromSpeech } from './carrinho.js';
@@ -40,15 +41,15 @@ export function findByEan(code) {
 // ---------------------------------------------------------------- tela
 const body = () => $('#toolBody');
 const HOW = `<ol class="how" aria-label="Como usar">
-  <li><span class="how__i" aria-hidden="true">📱</span><span>Aponte para as <b>listrinhas</b></span></li>
-  <li><span class="how__i" aria-hidden="true">🔔</span><span>Espere o <b>apito</b></span></li>
-  <li><span class="how__i" aria-hidden="true">💰</span><span>Veja o <b>preço</b></span></li>
+  <li><span class="how__i" aria-hidden="true">${ic('phone')}</span><span>Aponte para as <b>listrinhas</b></span></li>
+  <li><span class="how__i" aria-hidden="true">${ic('bell')}</span><span>Espere o <b>apito</b></span></li>
+  <li><span class="how__i" aria-hidden="true">${ic('coins')}</span><span>Veja o <b>preço</b></span></li>
 </ol>`;
 
 const HOW_QR = `<ol class="how" aria-label="Como usar">
-  <li><span class="how__i" aria-hidden="true">🧾</span><span>Pegue a <b>nota</b> do caixa</span></li>
-  <li><span class="how__i" aria-hidden="true">🔳</span><span>Aponte para o <b>quadradinho</b></span></li>
-  <li><span class="how__i" aria-hidden="true">✅</span><span>Veja se <b>cobrou certo</b></span></li>
+  <li><span class="how__i" aria-hidden="true">${ic('receipt')}</span><span>Pegue a <b>nota</b> do caixa</span></li>
+  <li><span class="how__i" aria-hidden="true">${ic('qr')}</span><span>Aponte para o <b>quadradinho</b></span></li>
+  <li><span class="how__i" aria-hidden="true">${ic('good')}</span><span>Veja se <b>cobrou certo</b></span></li>
 </ol>`;
 const isQr = () => opts.kind === 'qr';
 const valid = (t) => (isQr() ? /^https?:\/\/\S+/i.test(String(t).trim()) : validEan(t));
@@ -60,22 +61,22 @@ export function open(o = {}) {
   $('#toolSheet').dataset.tool = isQr() ? 'cupom' : 'scan';
   body().innerHTML = `
     <div class="tool tool--scan">
-      <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${isQr() ? '🧾' : '📷'}</span> ${isQr() ? 'Conferir a nota do caixa' : 'Ler o código de barras'}</h2>
+      <h2 class="sheet__title" id="toolTitle"><span aria-hidden="true">${isQr() ? ic('receipt') : ic('camera')}</span> ${isQr() ? 'Conferir a nota do caixa' : 'Ler o código de barras'}</h2>
       ${isQr() ? HOW_QR : HOW}
       <div class="scan ${isQr() ? 'scan--qr' : ''}" id="scanBox">
         <video id="scanVideo" playsinline muted autoplay></video>
         <div class="scan__frame" aria-hidden="true"><i></i><i></i><i></i><i></i><span class="scan__laser"></span></div>
         <div class="scan__msg" id="scanMsg"><span class="spin" aria-hidden="true"></span> Ligando a câmera…</div>
-        <button class="scan__torch" id="scanTorch" type="button" hidden aria-pressed="false">🔦 Lanterna</button>
+        <button class="scan__torch" id="scanTorch" type="button" hidden aria-pressed="false">${ic('torch')} Lanterna</button>
       </div>
       ${isQr() ? `<details class="scan__type" id="scanType">
-        <summary>🔗 Não está lendo? Cole o link da nota</summary>
+        <summary>${ic('link')} Não está lendo? Cole o link da nota</summary>
         <form id="scanForm" class="scan__form" autocomplete="off">
           <input name="code" inputmode="url" placeholder="https://sistemas.sefaz.am.gov.br/…" aria-label="Link do QR da nota" />
           <button class="btn btn--primary">Conferir</button>
         </form>
         <p class="muted small">Outro app de câmera lê o QR e mostra o link: copie e cole aqui.</p>
-      </details>${opts.demo ? '<button class="btn btn--ghost btn--block" data-scan="demo">👀 Ver com uma nota de exemplo</button>' : ''}`
+      </details>${opts.demo ? ('<button class="btn btn--ghost btn--block" data-scan="demo">' + ic('eye') + ' Ver com uma nota de exemplo</button>') : ''}`
       : `<details class="scan__type" id="scanType">
         <summary>⌨️ Não está lendo? Digite os números</summary>
         <form id="scanForm" class="scan__form" autocomplete="off">
@@ -104,7 +105,7 @@ async function start() {
   const v = $('#scanVideo'); if (!v) return stop();
   v.srcObject = stream;
   try { await v.play(); } catch {}
-  if (msg) msg.innerHTML = isQr() ? 'Aponte para o quadradinho da nota 🔳' : 'Aponte para as listrinhas ▮▯▮▮▯▮';
+  if (msg) msg.innerHTML = isQr() ? ('Aponte para o quadradinho da nota ' + ic('qr')) : 'Aponte para as listrinhas ▮▯▮▮▯▮';
   torchSetup();
 
   if ('BarcodeDetector' in window) {
@@ -137,7 +138,7 @@ async function start() {
 
 function camFail(text) {
   const box = $('#scanBox'); if (box) box.classList.add('is-off');
-  const msg = $('#scanMsg'); if (msg) msg.innerHTML = `<span class="scan__big" aria-hidden="true">📷</span>${esc(text)}<button class="btn btn--sm btn--ghost" data-scan="retry">Tentar de novo</button>`;
+  const msg = $('#scanMsg'); if (msg) msg.innerHTML = `<span class="scan__big" aria-hidden="true">${ic('camera')}</span>${esc(text)}<button class="btn btn--sm btn--ghost" data-scan="retry">Tentar de novo</button>`;
   $('#scanType')?.setAttribute('open', '');
 }
 
@@ -191,10 +192,10 @@ export function showProduct(p, code = '') {
   const best = prices[0]; const hx = prices.find((x) => x.market_id === mid);
   const bm = best && S.markets.get(best.market_id);
   let face, cls, title, line;
-  if (!best) { face = '🤔'; cls = 'is-meh'; title = 'Ainda não sabemos o preço'; line = 'Você pode ser o primeiro a informar.'; }
-  else if (hx && hx.price <= best.price + 0.009) { face = '😀'; cls = 'is-good'; title = 'Aqui é o mais barato!'; line = `Pode levar sem medo: ${esc(here.name)} tem o menor preço.`; }
-  else if (hx) { face = '😬'; cls = 'is-bad'; title = `No ${esc(bm.name)} é mais barato`; line = `Lá custa <b>${brl(hx.price - best.price)} a menos</b>.`; }
-  else { face = '🧐'; cls = 'is-meh'; title = `Mais barato: ${esc(bm.name)}`; line = `Ainda não sabemos o preço no ${esc(here?.name || 'mercado em que você está')}.`; }
+  if (!best) { face = ic('question'); cls = 'is-meh'; title = 'Ainda não sabemos o preço'; line = 'Você pode ser o primeiro a informar.'; }
+  else if (hx && hx.price <= best.price + 0.009) { face = ic('good'); cls = 'is-good'; title = 'Aqui é o mais barato!'; line = `Pode levar sem medo: ${esc(here.name)} tem o menor preço.`; }
+  else if (hx) { face = ic('warn'); cls = 'is-bad'; title = `No ${esc(bm.name)} é mais barato`; line = `Lá custa <b>${brl(hx.price - best.price)} a menos</b>.`; }
+  else { face = ic('question'); cls = 'is-meh'; title = `Mais barato: ${esc(bm.name)}`; line = `Ainda não sabemos o preço no ${esc(here?.name || 'mercado em que você está')}.`; }
   const pu = best && perUnit(p.unit, (hx || best).price);
   body().innerHTML = `
     <div class="tool tool--result">
@@ -208,11 +209,11 @@ export function showProduct(p, code = '') {
         <div class="cmp__c ${hx && hx === best ? 'is-win' : ''}"><small>Aqui ${here ? `(${esc(here.name)})` : ''}</small><b>${hx ? brl(hx.price) : '?'}</b></div>
         ${hx !== best ? `<div class="cmp__c is-win"><small>${logo(bm, 'xs')} ${esc(bm.name)}</small><b>${brl(best.price)}</b></div>` : ''}
       </div>` : ''}
-      ${pu && Math.abs(pu.qty - 1) > 1e-9 ? `<p class="res-ppu">⚖️ Isso dá <b>${pu.text}</b></p>` : ''}
+      ${pu && Math.abs(pu.qty - 1) > 1e-9 ? `<p class="res-ppu">${ic('scale')} Isso dá <b>${pu.text}</b></p>` : ''}
       ${prices.length > 1 ? `<details class="res-all"><summary>Ver todos os mercados (${prices.length})</summary><ol>${prices.map((x) => `<li>${logo(S.markets.get(x.market_id), 'xs')}<span>${esc(S.markets.get(x.market_id).name)}${x.market_id === mid ? ' (aqui)' : ''}</span><b>${brl(x.price)}</b></li>`).join('')}</ol></details>` : ''}
       <div class="tool__actions">
-        <button class="btn btn--primary btn--xl" data-scan="cart" data-pid="${p.id}">🛒 Pôr no carrinho</button>
-        <button class="btn btn--ghost btn--xl" data-scan="again">📷 Ler outro</button>
+        <button class="btn btn--primary btn--xl" data-scan="cart" data-pid="${p.id}">${ic('cart')} Pôr no carrinho</button>
+        <button class="btn btn--ghost btn--xl" data-scan="again">${ic('camera')} Ler outro</button>
         ${!hx ? `<button class="btn btn--text" data-scan="tell" data-pid="${p.id}">Eu sei o preço daqui</button>` : ''}
       </div>
       ${code ? `<p class="muted small center">Código ${esc(digits(code))}</p>` : ''}
@@ -234,14 +235,14 @@ async function offLookup(code) {
 function showUnknown(code) {
   body().innerHTML = `
     <div class="tool tool--result">
-      <div class="verdict is-meh"><span class="verdict__face" aria-hidden="true">🤔</span>
+      <div class="verdict is-meh"><span class="verdict__face" aria-hidden="true">${ic('question')}</span>
         <b class="verdict__t">Ainda não conheço este produto</b>
         <span class="verdict__l" id="offName">Procurando o nome…</span></div>
       <h3 class="pd__h">Me ensina: qual é?</h3>
       <input class="tool-search" id="learnQ" type="search" placeholder="Escreva o nome, ex.: Nescau" autocomplete="off" aria-label="Nome do produto" />
       <ul class="learn" id="learnList"></ul>
       <div class="tool__actions">
-        <button class="btn btn--ghost btn--xl" data-scan="again">📷 Ler outro</button>
+        <button class="btn btn--ghost btn--xl" data-scan="again">${ic('camera')} Ler outro</button>
         <button class="btn btn--text" data-scan="cartnew" data-code="${esc(digits(code))}">Pôr no carrinho mesmo assim</button>
       </div>
       <p class="muted small center">Código ${esc(digits(code))}</p>
@@ -268,7 +269,7 @@ function learnList(q) {
 async function learn(code, pid) {
   const map = api.store.get(MAP_KEY, {}); map[norm(code)] = pid; api.store.set(MAP_KEY, map);
   api.suggestEan?.(digits(code), pid).catch(() => {});
-  hooks.toast?.('Obrigado! Agora eu conheço este código. 🎉');
+  hooks.toast?.('Obrigado! Agora eu conheço este código.');
   showProduct(S.products.find((x) => x.id === pid), code);
 }
 

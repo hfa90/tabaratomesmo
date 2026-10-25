@@ -1,6 +1,7 @@
 // Na fila do caixa: um jogo rápido de "Tá barato ou tá caro?", o total do carrinho para conferir
 // antes de pagar e três preços para checar enquanto a fila anda.
 import * as api from './api.js';
+import { ic } from './icons.js';
 import { S, $, esc, brl, logo, hooks, isOn, media } from './core.js';
 import { track } from './track.js';
 import * as ads from './ads.js';
@@ -53,7 +54,7 @@ export function render() {
         <em>${c.items.length ? 'Confira antes de passar no caixa' : 'Anote os itens para conferir o total'}</em>
       </a>
 
-      <button class="fila-nota" data-cupom="open"><span aria-hidden="true">🧾</span><span><b>Depois de pagar: confira a nota</b><small>Leia o QR da nota e veja se o caixa cobrou o preço da etiqueta</small></span><em>›</em></button>
+      <button class="fila-nota" data-cupom="open"><span aria-hidden="true">${ic('receipt')}</span><span><b>Depois de pagar: confira a nota</b><small>Leia o QR da nota e veja se o caixa cobrou o preço da etiqueta</small></span><em>›</em></button>
 
       <section class="panel game" id="game">${gameHTML()}</section>
 
@@ -80,7 +81,7 @@ function gameHTML() {
   }
   const { p, x, picked, answer, avg, best } = g.q;
   const mk = S.markets.get(x.market_id);
-  return `<div class="game-top"><p class="pd__h" style="margin:0">Tá barato ou tá caro?</p><span class="muted small">Rodada ${g.round + 1} de ${ROUNDS} · ${g.score} ${g.score === 1 ? 'acerto' : 'acertos'}${g.streak > 1 ? ` · 🔥 ${g.streak} seguidos` : ''}</span></div>
+  return `<div class="game-top"><p class="pd__h" style="margin:0">Tá barato ou tá caro?</p><span class="muted small">Rodada ${g.round + 1} de ${ROUNDS} · ${g.score} ${g.score === 1 ? 'acerto' : 'acertos'}${g.streak > 1 ? ` · ${ic('flame')} ${g.streak} seguidos` : ''}</span></div>
     <div class="game-q">${media(p, 'pd__media')}<div><b>${esc(p.name)}</b><small class="muted">${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</small>
       <span class="game-price">${brl(x.price)}</span><small>${logo(mk, 'xs')} no ${esc(mk.name)}</small></div></div>
     ${picked ? `<div class="game-a ${picked === answer ? 'is-ok' : 'is-bad'}"><b>${picked === answer ? 'Acertou!' : 'Errou!'}</b> Está <b>${answer}</b>: a média nos mercados é ${brl(avg)} e o menor preço é ${brl(best.price)} no ${esc(S.markets.get(best.market_id).name)}.</div>

@@ -1,3 +1,4 @@
+import { ic } from './icons.js';
 // Sem sinal dentro do mercado: o catálogo fica salvo no aparelho e o que a pessoa envia
 // (preços vistos, códigos ensinados, fotos de etiqueta, eventos) espera numa fila até a internet voltar.
 // Guarda em IndexedDB; se o navegador não deixar, usa localStorage para o catálogo e segue sem fila.
@@ -93,8 +94,8 @@ async function status() {
   el.hidden = false;
   const when = savedAt ? new Date(savedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null;
   el.innerHTML = off
-    ? `<span aria-hidden="true">📴</span><span><b>${navigator.onLine ? 'Sem conexão com o site.' : 'Sem internet.'}</b> Tudo continua funcionando${when ? ` com os preços salvos em ${when}` : ''}.${n ? ` ${n} ${n > 1 ? 'envios esperando' : 'envio esperando'}.` : ''}</span>`
-    : `<span aria-hidden="true">📤</span><span>Enviando ${n} ${n > 1 ? 'coisas' : 'coisa'} que ficaram na fila…</span>`;
+    ? `<span aria-hidden="true">${ic('offline')}</span><span><b>${navigator.onLine ? 'Sem conexão com o site.' : 'Sem internet.'}</b> Tudo continua funcionando${when ? ` com os preços salvos em ${when}` : ''}.${n ? ` ${n} ${n > 1 ? 'envios esperando' : 'envio esperando'}.` : ''}</span>`
+    : `<span aria-hidden="true">${ic('send')}</span><span>Enviando ${n} ${n > 1 ? 'coisas' : 'coisa'} que ficaram na fila…</span>`;
 }
 addEventListener('online', () => { status(); flush(); });
 addEventListener('offline', status);

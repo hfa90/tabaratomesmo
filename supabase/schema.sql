@@ -106,7 +106,7 @@ create table if not exists public.app_settings (
   updated_by  uuid
 );
 insert into public.app_settings (key, value, label) values
- ('anon_comparisons',  '3',    'Comparações sem cadastro'),
+ ('anon_comparisons',  '10',    'Comparações sem cadastro'),
  ('quick_comparisons', '15',   'Comparações com cadastro rápido'),
  ('collab_enabled',    'true', 'Usuários podem informar preços'),
  ('promos_enabled',    'true', 'Promoções dos mercados aparecem no site'),

@@ -2,16 +2,17 @@
 // Os supermercados cadastram no portal (tabela market_deals); aqui o site mostra o que vale hoje,
 // avisa no detalhe do produto e calcula o melhor dia para fazer o rancho.
 import * as api from './api.js';
+import { ic } from './icons.js';
 import { S, $, esc, brl, logo, isOn, DOW, DOW_SHORT } from './core.js';
 
 export const PAYMENTS = {
-  pix: { label: 'Pix', icon: '⚡' },
-  debito: { label: 'cartão de débito', icon: '💳' },
-  credito: { label: 'cartão de crédito', icon: '💳' },
-  cartao_loja: { label: 'cartão da loja', icon: '🪪' },
-  dinheiro: { label: 'dinheiro', icon: '💵' },
-  vale: { label: 'vale-alimentação', icon: '🎟️' },
-  app_loja: { label: 'app da loja', icon: '📱' },
+  pix: { label: 'Pix', icon: ic('flash') },
+  debito: { label: 'cartão de débito', icon: ic('card') },
+  credito: { label: 'cartão de crédito', icon: ic('card') },
+  cartao_loja: { label: 'cartão da loja', icon: ic('id') },
+  dinheiro: { label: 'dinheiro', icon: ic('cash') },
+  vale: { label: 'vale-alimentação', icon: ic('ticket') },
+  app_loja: { label: 'app da loja', icon: ic('phone') },
 };
 
 let list = [];
@@ -66,19 +67,27 @@ export const fmtPct = (v) => `${String(Math.round(Number(v) * 10) / 10).replace(
 
 // ---------------------------------------------------------------- página inicial: "Dias de desconto"
 let dayPick = new Date().getDay();
+let dwOpen = false;
 export function renderHome() {
   const el = $('#dealsWeek'); if (!el) return;
   if (!all().length) { el.innerHTML = ''; return; }
   const today = new Date().getDay();
   const ds = forDay(dayPick).sort((a, b) => b.discount_pct - a.discount_pct);
-  el.innerHTML = `
-    <div class="sec-head"><h2>💳 Dias de desconto</h2></div>
+  const nToday = forDay(today).length;
+  const top = forDay(today).sort((x, y) => y.discount_pct - x.discount_pct)[0];
+  const topM = top && S.markets.get(top.supermarket_id);
+  el.innerHTML = `<details class="dw" ${dwOpen ? 'open' : ''}>
+    <summary class="dw__sum"><span class="dw__i" aria-hidden="true">${ic('calendar')}</span>
+      <span class="dw__t"><b>Dias de desconto</b><small>${nToday ? `Hoje: ${nToday} ${nToday > 1 ? 'descontos' : 'desconto'}${topM ? ` · até ${fmtPct(top.discount_pct)} no ${esc(topM.name)}` : ''}` : 'Veja os descontos de cada dia da semana'}</small></span>
+      <span class="dw__go" aria-hidden="true">${ic('down')}</span></summary>
     <div class="week" role="tablist" aria-label="Dia da semana">${[0, 1, 2, 3, 4, 5, 6].map((i) => {
       const d = (today + i) % 7; const n = forDay(d).length;
       return `<button role="tab" aria-selected="${d === dayPick}" data-dday="${d}" class="${n ? 'has' : ''}"><small>${i === 0 ? 'Hoje' : DOW_SHORT[d]}</small><b>${n || '–'}</b></button>`;
     }).join('')}</div>
     ${ds.length ? `<ul class="deals2">${ds.map((d) => card(d, { today: dayPick === today })).join('')}</ul>`
-      : `<p class="muted small center" style="padding:10px 0">Nenhum desconto ${dayPick === today ? 'hoje' : `na ${DOW[dayPick]}`} nos mercados ligados.</p>`}`;
+      : `<p class="muted small center" style="padding:10px 0">Nenhum desconto ${dayPick === today ? 'hoje' : `na ${DOW[dayPick]}`} nos mercados ligados.</p>`}
+  </details>`;
+  el.querySelector('details').addEventListener('toggle', (e) => { dwOpen = e.target.open; });
 }
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-dday]'); if (!b) return;
@@ -99,7 +108,7 @@ export function productNote(p) {
   }
   if (!rows.length) return '';
   rows.sort((a, b) => a.i - b.i || b.d.discount_pct - a.d.discount_pct);
-  return `<div class="pd-deals"><h3 class="pd__h">💳 Dias de desconto para este produto</h3><ul>${rows.slice(0, 4).map(({ d, i, dow, m }) => {
+  return `<div class="pd-deals"><h3 class="pd__h">${ic('card')} Dias de desconto para este produto</h3><ul>${rows.slice(0, 4).map(({ d, i, dow, m }) => {
     const x = p.prices.find((y) => y.market_id === m.id);
     const v = x ? x.price * (1 - d.discount_pct / 100) : null;
     return `<li>${logo(m, 'xs')}<span><b>${i === 0 ? 'Hoje' : i === 1 ? 'Amanhã' : DOW[dow]}</b> no ${esc(m.name)}: ${fmtPct(d.discount_pct)} off${d.payment ? ` ${esc(payText(d))}` : ''}</span>${v ? `<em>${brl(v)}</em>` : ''}</li>`;
@@ -141,7 +150,7 @@ export function bestDayHTML(bd) {
       <span class="bday__d"><small>${b.dow === today ? 'Hoje' : 'Toda'}</small><b>${DOW_SHORT[b.dow]}</b></span>
       <span><b>${DOW[b.dow][0].toUpperCase() + DOW[b.dow].slice(1)} no ${esc(b.m.name)}</b>
       ${b.off > 0.5 ? `<span class="bday__save">economiza <b>${brl(b.off)}</b> nos itens com desconto</span>` : ''}
-      ${pays.length ? `<small>${PAYMENTS[pays[0].payment]?.icon || '💳'} pagando com ${esc(PAYMENTS[pays[0].payment]?.label || pays[0].payment)}: mais ${brl(b.payOff)}</small>` : ''}</span>
+      ${pays.length ? `<small>${PAYMENTS[pays[0].payment]?.icon || ic('card')} pagando com ${esc(PAYMENTS[pays[0].payment]?.label || pays[0].payment)}: mais ${brl(b.payOff)}</small>` : ''}</span>
     </div>
     <ul class="bday__list">${[...b.used, ...pays].map((d) => `<li>${fmtPct(d.discount_pct)} ${esc(whatText(d))}${d.payment ? ` (${esc(payText(d))})` : ''}${d.title ? ` · <span class="muted">${esc(d.title)}</span>` : ''}</li>`).join('')}</ul>`;
 }

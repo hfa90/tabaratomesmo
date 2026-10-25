@@ -2,6 +2,7 @@
 // reciprocidade (seu preço ajuda N vizinhos, +2 comparações por preço), status (níveis e ranking do bairro)
 // e conveniência (detecta quando a pessoa está numa loja).
 import * as api from './api.js';
+import { ic } from './icons.js';
 import { S, $, $$, esc, brl, km, haversine, logo, hooks, ago } from './core.js';
 
 export const LEVELS = [
@@ -35,7 +36,7 @@ export function checkAtStore() {
   el.hidden = false;
   el.innerHTML = `<div class="sb">${logo(m, 'md')}
     <p><b>Você está no ${esc(hit.store.name)}?</b><span>Anote o carrinho falando os itens, ou confira 6 preços e ganhe pontos.</span></p>
-    <a class="btn btn--sm btn--ghost" href="#carrinho">Carrinho</a>
+    <a class="btn btn--sm btn--ghost" href="#carrinho">Somar compra</a>
     <button class="btn btn--sm btn--ink" data-fiscal-market="${m.id}">Conferir</button>
     <button class="icon-btn icon-btn--sm" data-banner-off="${key}" aria-label="Agora não">✕</button></div>`;
 }
@@ -150,7 +151,7 @@ async function submit(key, price) {
     const pos = fiscalPos || (S.pos?.gps ? S.pos : null);
     const r = await api.reportPrice({ product_id: pid, supermarket_id: mid, price, lat: pos?.lat, lng: pos?.lng });
     session.pts += r.points; session.sent++;
-    if (r.queued) { li.querySelector('.fx__form').outerHTML = `<p class="fx__ok">📴 ${brl(price)} guardado. <small>Sem internet agora: envio sozinho quando o sinal voltar.</small></p>`; return; }
+    if (r.queued) { li.querySelector('.fx__form').outerHTML = `<p class="fx__ok">${ic('offline')} ${brl(price)} guardado. <small>Sem internet agora: envio sozinho quando o sinal voltar.</small></p>`; return; }
     li.classList.add('is-done');
     li.querySelector('.fx__form').outerHTML = `<p class="fx__ok">✓ ${brl(price)} enviado <b>+${r.points} pts</b>${r.at_store ? ' <small>(inclui bônus por estar na loja)</small>' : ''}${r.status === 'aprovado' ? ' <small>Confirmado: já está no site.</small>' : ''}</p>`;
     $('#fxScore').innerHTML = `<b>${session.sent}</b> ${session.sent > 1 ? 'preços' : 'preço'}, <b>+${session.pts} pts</b> nesta conferida`;

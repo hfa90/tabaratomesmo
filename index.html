@@ -42,8 +42,8 @@
       <nav class="topnav" aria-label="Seções">
         <a href="#inicio" data-nav="inicio">Início</a>
         <a href="#ofertas" data-nav="ofertas">Ofertas</a>
-        <a href="#lista" data-nav="lista">Rancho do mês <b class="badge" data-list-count hidden></b></a>
-        <a href="#carrinho" data-nav="carrinho">Carrinho <b class="badge" data-cart-count hidden></b></a>
+        <a href="#lista" data-nav="lista">Lista do mês <b class="badge" data-list-count hidden></b></a>
+        <a href="#carrinho" data-nav="carrinho">No mercado <b class="badge" data-cart-count hidden></b></a>
         <a href="#refeicoes" data-nav="refeicoes">Refeições</a>
         <a href="#notas" data-nav="notas">Minhas notas</a>
         <a href="#mapa" data-nav="mapa">Mapa</a>
@@ -93,11 +93,11 @@
         <button class="compare-line" id="compareLine" type="button" data-open="markets"></button>
       </header>
 
-      <section class="hub-wrap" id="toolHub" aria-label="Ajudantes do mercado"></section>
-      <section class="deals-week" id="dealsWeek" aria-label="Dias de desconto"></section>
-
-      <div id="adHome" class="ad-slot"></div>
+      <section class="save-strip" id="saveStrip" aria-live="polite" hidden></section>
+      <section class="hub-wrap" id="toolHub" aria-label="Ferramentas para usar no mercado"></section>
       <section class="deals" id="deals" aria-label="Destaques" hidden></section>
+      <section class="deals-week" id="dealsWeek" aria-label="Dias de desconto"></section>
+      <div id="adHome" class="ad-slot"></div>
 
       <div class="toolbar">
         <div class="chips" id="catChips" aria-label="Categorias"></div>
@@ -169,9 +169,9 @@
   <!-- ===== NAV MOBILE ===== -->
   <nav class="tabbar" aria-label="Navegação principal">
     <a href="#ofertas" data-nav="ofertas"><svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 0 1 2-2h6.2a2 2 0 0 1 1.4.6l8.8 8.8a2 2 0 0 1 0 2.8l-6.2 6.2a2 2 0 0 1-2.8 0L3.6 12.6A2 2 0 0 1 3 11.2zM8 9.5A1.5 1.5 0 1 0 8 6.5a1.5 1.5 0 0 0 0 3z" fill="currentColor"/></svg><span>Ofertas</span></a>
-    <a href="#lista" data-nav="lista"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L21 8H6.2M9.5 20.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm8 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Rancho</span><b class="badge" data-list-count hidden></b></a>
-    <a href="#carrinho" data-nav="carrinho" class="tab-mic"><span class="tab-mic__b"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span><span>Carrinho</span><b class="badge" data-cart-count hidden></b></a>
-    <a href="#mapa" data-nav="mapa"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="currentColor"/></svg><span>Mapa</span></a>
+    <a href="#lista" data-nav="lista"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L21 8H6.2M9.5 20.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm8 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Lista</span><b class="badge" data-list-count hidden></b></a>
+    <a href="#carrinho" data-nav="carrinho" class="tab-mic"><span class="tab-mic__b"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span><span>No mercado</span><b class="badge" data-cart-count hidden></b></a>
+    <a href="#notas" data-nav="notas"><svg viewBox="0 0 24 24"><path d="M5 3v18l2.5-1.5L10 21l2-1.5 2 1.5 2.5-1.5L19 21V3l-2.5 1.5L14 3l-2 1.5L10 3 7.5 4.5zM9 9h6M9 13h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Notas</span></a>
     <a href="#conta" data-nav="conta"><svg viewBox="0 0 24 24"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zm0 2c-4.4 0-8 2.5-8 5.5V21h16v-1.5c0-3-3.6-5.5-8-5.5z" fill="currentColor"/></svg><span>Você</span></a>
   </nav>
 

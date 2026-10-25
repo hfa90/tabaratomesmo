@@ -1,4 +1,5 @@
 import { CONFIG, BAIRROS } from './config.js';
+import { ic } from './icons.js';
 import * as api from './api.js';
 import { lineChart } from './chart.js';
 import {
@@ -112,6 +113,12 @@ function renderNearby() {
     <span class="logos">${on.map((m) => logo(m, 'xs')).join('')}</span>
     <span>Comparando <b>${on.length === S.markets.size ? `todos os ${on.length}` : `${on.length} de ${S.markets.size}`}</b> mercados<span class="cl-near">${closest ? ` · mais perto: <b>${esc(closest.m.name)}</b>, ${km(closest.n.km)}` : ''}</span></span>
     <em>Ajustar</em>`;
+  // localização só quando a pessoa quiser: um convite discreto, sem janela automática
+  let cta = $('#locCta');
+  if (!S.pos) {
+    if (!cta) { cta = Object.assign(document.createElement('button'), { id: 'locCta', type: 'button', className: 'loc-cta' }); cta.dataset.open = 'loc'; $('#compareLine').after(cta); }
+    cta.innerHTML = `${ic('pin')} Ver a loja mais perto de você`;
+  } else cta?.remove();
   const list = $('#marketsList');
   if (list) list.innerHTML = marketsByDistance().map(({ m, n }) => `
     <li><label class="mk-row">${logo(m, 'md')}
@@ -254,10 +261,10 @@ async function canCompare() {
     if (S.anonUsed < CONFIG.ANON_COMPARISONS) {
       S.anonUsed++; api.store.set('tb.anonUsed', S.anonUsed);
       const left = CONFIG.ANON_COMPARISONS - S.anonUsed;
-      if (left <= 1) toast(left ? 'Resta 1 comparação sem cadastro.' : 'Esta foi sua última comparação sem cadastro.');
+      if (!left) toast('Esta foi a última comparação sem cadastro. Com uma conta grátis você continua.');
       return true;
     }
-    openAuth('signup', 'Crie sua conta em 20 segundos para continuar comparando.');
+    openAuth('signup', `Gostou? Crie sua conta grátis em 20 segundos para continuar comparando, guardar sua lista e ver quanto já economizou.`);
     return false;
   }
   try {
@@ -297,7 +304,7 @@ async function openProduct(pid) {
         <div>
           <p>Menor preço no <b>${esc(bm.name)}</b></p>
           ${priceTag(best.price, 'lg')} ${best.regular ? `<s class="was">${brl(best.regular)}</s>` : ''}
-          ${perUnit(p.unit, best.price) && Math.abs(perUnit(p.unit, best.price).qty - 1) > 1e-9 ? `<p class="pd__ppu">⚖️ Sai <b>${perUnit(p.unit, best.price).text}</b></p>` : ''}
+          ${perUnit(p.unit, best.price) && Math.abs(perUnit(p.unit, best.price).qty - 1) > 1e-9 ? `<p class="pd__ppu">${ic('scale')} Sai <b>${perUnit(p.unit, best.price).text}</b></p>` : ''}
         </div>
         ${changeBadge(p.change_pct)}
       </div>
@@ -365,13 +372,13 @@ async function openProduct(pid) {
 /** "Qual tamanho compensa?": outros tamanhos do mesmo produto, pelo preço do quilo/litro */
 function sizesBox(p) {
   const sib = sizeSiblings(p, S.products, (q) => visiblePrices(q)[0]?.price);
-  if (!sib.length) return `<button class="size-cta" data-tool="tamanho" data-tool-pid="${p.id}"><span aria-hidden="true">⚖️</span><span><b>Achou outro tamanho na prateleira?</b><small>Descubra qual pacote compensa mais</small></span><em>›</em></button>`;
+  if (!sib.length) return `<button class="size-cta" data-tool="tamanho" data-tool-pid="${p.id}"><span aria-hidden="true">${ic('scale')}</span><span><b>Achou outro tamanho na prateleira?</b><small>Descubra qual pacote compensa mais</small></span><em>›</em></button>`;
   const best = sib[0];
   return `<div class="sizes">
-    <h3 class="pd__h">⚖️ Qual tamanho compensa?</h3>
+    <h3 class="pd__h">${ic('scale')} Qual tamanho compensa?</h3>
     <ol class="sizes__list">${sib.map((x, i) => `<li class="${i === 0 ? 'is-best' : ''} ${x.p.id === p.id ? 'is-me' : ''}">
       <button data-open-product="${x.p.id}"><span class="sizes__u">${esc(x.p.unit)}</span><span class="sizes__p">${brl(x.price)}</span>
-      <span class="sizes__k">${x.pu.text}</span>${i === 0 ? '<span class="sizes__win">👍 Compensa</span>' : `<span class="sizes__more">+${Math.round((x.pu.value / best.pu.value - 1) * 100)}%</span>`}</button></li>`).join('')}</ol>
+      <span class="sizes__k">${x.pu.text}</span>${i === 0 ? ('<span class="sizes__win">' + ic('thumb') + ' Compensa</span>') : `<span class="sizes__more">+${Math.round((x.pu.value / best.pu.value - 1) * 100)}%</span>`}</button></li>`).join('')}</ol>
   </div>`;
 }
 
@@ -586,7 +593,7 @@ function bindAuthForms() {
     const email = fg.email.value.trim();
     try {
       await api.resetPassword(email);
-      fg.outerHTML = `<p class="ok-box">📬 Se houver conta com esse e-mail, chega em instantes um e-mail com um <b>link</b> e um <b>código de 8 números</b>. Use o mais recente.</p>
+      fg.outerHTML = `<p class="ok-box">${ic('mail')} Se houver conta com esse e-mail, chega em instantes um e-mail com um <b>link</b> e um <b>código de 8 números</b>. Use o mais recente.</p>
         <form class="form" id="codeForm" novalidate><label>Código do e-mail<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="00000000" style="font:700 1.4rem/1 ui-monospace,monospace;letter-spacing:.3em;text-align:center" /></label>
         <p class="form__err" role="alert"></p><button class="btn btn--primary btn--block">Criar nova senha</button></form>`;
       const cf2 = $('#codeForm');
@@ -640,6 +647,27 @@ function renderProfileBanner() {
 
 function renderAccount() { account.render(); }
 
+/** faixa "quanto você economizou" no topo das ofertas: reforço positivo, ou o potencial para quem está começando */
+function renderSaveStrip() {
+  const el = $('#saveStrip'); if (!el) return;
+  const s = account.savingsSummary();
+  if (s.total > 0.5) {
+    el.className = 'save-strip is-won';
+    el.innerHTML = `<span class="save-strip__i" aria-hidden="true">${ic('piggy')}</span>
+      <span class="save-strip__t"><small>Você já economizou</small><b>${brl(s.total)}</b>${s.month > 0.5 ? `<small>${brl(s.month)} neste mês</small>` : ''}</span>
+      ${S.user ? `<a class="save-strip__go" href="#conta">ver ${ic('arrow')}</a>` : `<button class="save-strip__go" data-auth="signup">guardar ${ic('arrow')}</button>`}`;
+  } else {
+    const ps = S.products.map((p) => visiblePrices(p)).filter((pr) => pr.length >= 2).map((pr) => 1 - pr[0].price / pr[pr.length - 1].price).filter((v) => v > 0 && v < 0.9);
+    const avg = ps.length ? Math.round((ps.reduce((a, b) => a + b, 0) / ps.length) * 100) : 0;
+    if (!avg) { el.hidden = true; return; }
+    el.className = 'save-strip';
+    el.innerHTML = `<span class="save-strip__i" aria-hidden="true">${ic('piggy')}</span>
+      <span class="save-strip__t"><b>O mesmo produto chega a custar ${avg}% menos</b><small>Monte sua lista e veja em qual mercado ela sai mais barata</small></span>
+      <a class="save-strip__go" href="#lista">montar ${ic('arrow')}</a>`;
+  }
+  el.hidden = false;
+}
+
 // ======================================================================
 //  Rotas
 // ======================================================================
@@ -660,6 +688,7 @@ function route() {
   if (view === 'notas') notas.render();
   if (view === 'refeicoes') refeicoes.render();
   if (view === 'inicio') inicio.render();
+  if (view === 'ofertas') renderSaveStrip();
   $$('[data-nav]').forEach((a) => a.classList.toggle('is-active', a.dataset.nav === (view === 'fila' ? 'carrinho' : view)));
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
 }
@@ -711,6 +740,7 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (d.auth) return openAuth(d.auth);
+  if (d.bannerClose !== undefined) { api.store.set('tb.bannerSeen', (typeof S.settings.banner === 'string' ? S.settings.banner.trim() : '')); $('#siteBanner')?.remove(); return; }
   if (d.open === 'loc') return openLoc('pos');
   if (d.open === 'markets') return openSheet('#marketsSheet');
   if (d.open === 'home') return openLoc('home', () => renderAccount());
@@ -777,9 +807,10 @@ function applySettings() {
   if (Number.isFinite(Number(st.quick_comparisons))) CONFIG.QUICK_COMPARISONS = Number(st.quick_comparisons);
   const msg = typeof st.banner === 'string' ? st.banner.trim() : '';
   let el = $('#siteBanner');
-  if (msg) {
+  // aviso do administrador: aparece até a pessoa fechar (volta se a mensagem mudar)
+  if (msg && api.store.get('tb.bannerSeen', '') !== msg) {
     if (!el) { el = Object.assign(document.createElement('div'), { id: 'siteBanner', className: 'site-banner' }); $('.topbar').after(el); }
-    el.innerHTML = `<p>${esc(msg)}</p>`;
+    el.innerHTML = `<p>${esc(msg)}</p><button class="site-banner__x" type="button" data-banner-close aria-label="Fechar aviso">${ic('close')}</button>`;
   } else el?.remove();
   document.body.classList.toggle('no-collab', st.collab_enabled === false);
 }
@@ -816,13 +847,13 @@ async function boot() {
 
   if (S.pos) { computeNearest(); $('#locLabel').textContent = S.pos.label || 'Minha localização'; $('#locBtn').classList.add('is-set'); }
   rancho.meta();
-  renderChips(); renderNearby(); renderDeals(); renderGrid(); route();
+  renderChips(); renderNearby(); renderDeals(); renderGrid(); renderSaveStrip(); route();
   if (location.hash === '#refeicoes') refeicoes.render();
   fiscal.renderHome(); fiscal.checkAtStore();
   ajudantes.renderHub();
   deals.load().then(() => { deals.renderHome(); if (location.hash === '#lista') renderList(); });
   off.status(); off.flush();
-  off.onFlush((n) => toast(`📤 ${n} ${n > 1 ? 'envios que estavam guardados foram feitos' : 'envio que estava guardado foi feito'}.`));
+  off.onFlush((n) => toast(`${n} ${n > 1 ? 'envios que estavam guardados foram feitos' : 'envio que estava guardado foi feito'}.`));
   // de volta à internet: busca os preços novos
   addEventListener('online', () => { refreshCatalog().catch(() => {}); });
   // deixa a biblioteca do leitor de código guardada para usar sem sinal (iPhone)
@@ -837,7 +868,7 @@ async function boot() {
       const near = BAIRROS.map((b) => ({ b, d: haversine(p, b) })).sort((a, b) => a.d - b.d)[0];
       setPos({ ...p, label: near.d < 4 ? near.b.name : 'Sua localização', gps: true });
     });
-    else if (!S.pos) setTimeout(() => { if (!S.pos && !$$('.sheet.is-open').length && $('#view-inicio').hidden) openLoc('pos'); }, 1400);
+    // sem localização: não abre nada sozinho; a pessoa pede quando quiser ver a loja mais perto (linha de comparação e mapa)
   } catch {}
 
   api.onAuth(async (user) => {

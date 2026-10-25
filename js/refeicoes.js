@@ -3,6 +3,7 @@
 // (g, kg, ml, L, unidades), mostra quantos pacotes comprar, quanto custa no mercado mais barato e
 // põe tudo no Rancho do mês com um toque. Pratos que a base não conhece podem ser calculados com IA.
 import * as api from './api.js';
+import { ic } from './icons.js';
 import { S, $, $$, esc, brl, hooks, isOn } from './core.js';
 import { parse, match } from './voice.js';
 import { sizeOf } from './unitprice.js';
@@ -122,7 +123,7 @@ export function render() {
   const portions = plan.meals.reduce((s, m) => s + m.pessoas * timesIn(m, plan.periodo), 0);
   const ids = draft.pratos;
   el.innerHTML = `
-  <header class="page-head"><h1>🍲 Planejar refeições</h1>
+  <header class="page-head"><h1>${ic('pot')} Planejar refeições</h1>
     <p class="muted">Diga o que você quer comer e quantas vezes. A gente calcula cada ingrediente, quantos pacotes comprar e quanto custa.</p></header>
 
   <section class="panel ml-add">
@@ -133,7 +134,7 @@ export function render() {
     </form>
     <div class="chips ml-combos" aria-label="Atalhos">${COMBOS.map((c, i) => `<button class="chip" data-ml-combo="${i}">${esc(c.nome)}</button>`).join('')}</div>
     ${ids.length || draft.unknown.length ? `<div class="ml-picked">${ids.map((id) => `<span class="ml-chip">${esc(byId(id)?.nome || id)}<button data-ml-rm="${id}" aria-label="Tirar">✕</button></span>`).join('')}
-      ${draft.unknown.map((u) => `<span class="ml-chip is-unknown">❔ ${esc(u)}<button data-ml-ia="${esc(u)}">🤖 calcular com IA</button><button data-ml-rmu="${esc(u)}" aria-label="Tirar">✕</button></span>`).join('')}</div>` : ''}
+      ${draft.unknown.map((u) => `<span class="ml-chip is-unknown">${ic('question')} ${esc(u)}<button data-ml-ia="${esc(u)}">${ic('sparkle')} calcular com IA</button><button data-ml-rmu="${esc(u)}" aria-label="Tirar">✕</button></span>`).join('')}</div>` : ''}
     <div class="ml-row">
       <div class="ml-f"><span>Pessoas</span><span class="stepper"><button data-ml="p-" aria-label="Menos pessoas">−</button><output>${draft.pessoas}</output><button data-ml="p+" aria-label="Mais pessoas">+</button></span></div>
       <div class="ml-f"><span>Quantas vezes</span><span class="stepper"><button data-ml="v-" aria-label="Menos vezes">−</button><output>${draft.vezes}</output><button data-ml="v+" aria-label="Mais vezes">+</button></span></div>
@@ -148,7 +149,7 @@ export function render() {
     <ul>${plan.meals.map((m) => `<li><div><b>${esc(m.pratos.map((id) => byId(id)?.nome || id).join(' + '))}</b>
       <small>${m.pessoas} ${m.pessoas === 1 ? 'pessoa' : 'pessoas'} · ${m.vezes}× por ${PER[m.por]}</small>
       <details><summary>Ver 1 porção</summary>${m.pratos.map((id) => { const r = byId(id); return r ? `<p><b>${esc(r.nome)}:</b> ${r.itens.map((i) => `${esc(i.n)} ${fmtQ(i.q, i.u)}`).join(', ')}</p>` : ''; }).join('')}</details></div>
-      <button class="calc-ic" data-ml-del="${m.id}" aria-label="Tirar do plano">🗑️</button></li>`).join('')}</ul></section>
+      <button class="calc-ic" data-ml-del="${m.id}" aria-label="Tirar do plano">${ic('trash')}</button></li>`).join('')}</ul></section>
 
   <section class="panel ml-res">
     <div class="panel__head"><h2>O que comprar</h2>
@@ -158,10 +159,10 @@ export function render() {
     <ul class="ml-list">${T.map((t) => { const b = t.buy; const m = b && S.markets.get(b.market); return `<li class="${buy.get(t.key) ? '' : 'is-off'}">
       <label class="tick"><input type="checkbox" data-ml-buy="${esc(t.key)}" ${buy.get(t.key) ? 'checked' : ''} ${b ? '' : 'disabled'} /><span></span></label>
       <div class="ml-i"><b>${esc(t.n)}</b><small>${fmtQ(t.q, t.u)} · ${esc([...t.from].slice(0, 3).join(', '))}</small>
-        ${b ? `<small class="ml-buy">🛒 ${b.byWeight ? `${b.need.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg de` : `${b.packs} ×`} ${esc([b.p.name, b.p.brand, b.byWeight ? '' : b.p.unit].filter(Boolean).join(' '))}${b.pantry ? ' · <i>deve ter em casa</i>' : ''}</small>` : '<small class="muted">não achei no catálogo</small>'}</div>
+        ${b ? `<small class="ml-buy">${ic('cart')} ${b.byWeight ? `${b.need.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg de` : `${b.packs} ×`} ${esc([b.p.name, b.p.brand, b.byWeight ? '' : b.p.unit].filter(Boolean).join(' '))}${b.pantry ? ' · <i>deve ter em casa</i>' : ''}</small>` : '<small class="muted">não achei no catálogo</small>'}</div>
       <span class="ml-v">${b ? `<b>${brl(b.cost)}</b><small>${esc(m?.name || '')}</small>` : ''}</span></li>`; }).join('')}</ul>
-    <div class="row-actions ml-go"><button class="btn btn--primary" data-ml="rancho">🛒 Pôr no Rancho do mês</button><button class="btn btn--ghost" data-ml="share">📋 Copiar lista</button></div>
-  </section>` : `<div class="notas-empty"><span aria-hidden="true">🍽️</span><p><b>Comece pelo que você mais come.</b> Toque num atalho acima ou escreva, por exemplo, “feijoada”, “tapioca” ou “arroz com feijão e frango”.</p></div>`}`;
+    <div class="row-actions ml-go"><button class="btn btn--primary" data-ml="rancho">${ic('cart')} Pôr na lista do mês</button><button class="btn btn--ghost" data-ml="share">${ic('copy')} Copiar lista</button></div>
+  </section>` : `<div class="notas-empty"><span aria-hidden="true">${ic('plate')}</span><p><b>Comece pelo que você mais come.</b> Toque num atalho acima ou escreva, por exemplo, “feijoada”, “tapioca” ou “arroz com feijão e frango”.</p></div>`}`;
   bindInput();
 }
 
@@ -190,7 +191,7 @@ function takeText(text) {
 // ---------------------------------------------------------------- IA para pratos desconhecidos
 async function askIA(text) {
   if (api.MODE === 'live' && !S.user) return hooks.openAuth('signup', 'Crie sua conta para calcular pratos novos com IA.');
-  hooks.toast?.(`🤖 Calculando os ingredientes de “${text}”…`);
+  hooks.toast?.(`Calculando os ingredientes de “${text}”…`);
   try {
     const ia = await import('./ia.js');
     const out = await ia.iaRead('receita', [], { text });
@@ -244,7 +245,7 @@ function toRancho() {
   const by = new Map();
   for (const t of T) by.set(t.buy.p.id, (by.get(t.buy.p.id) || 0) + t.buy.rancho);
   for (const [pid, q] of by) hooks.setQty(pid, Math.max(q, S.list.get(pid) || 0));
-  hooks.toast?.(`🛒 ${by.size} produtos no Rancho do mês. Lá você vê em qual mercado sai mais barato.`);
+  hooks.toast?.(`${by.size} produtos na lista do mês. Lá você vê em qual mercado sai mais barato.`);
   setTimeout(() => { location.hash = '#lista'; }, 700);
 }
 

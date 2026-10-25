@@ -2,11 +2,11 @@
 //  - arquivos do site: rede primeiro, cópia salva quando não há sinal
 //  - bibliotecas de CDN e fontes (Supabase, leitor de código, mapa): cópia salva primeiro (endereços com versão fixa)
 //  - API do Supabase: sempre ao vivo (o app guarda o catálogo no aparelho e enfileira os envios)
-const CACHE = 'tb-v14';
+const CACHE = 'tb-v15';
 const CDN = 'tb-cdn-v1';
 const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/api.js', 'js/config.js', 'js/chart.js', 'js/core.js', 'js/rancho.js',
   'js/fiscal.js', 'js/account.js', 'js/track.js', 'js/carrinho.js', 'js/voice.js', 'js/fila.js', 'js/ads.js', 'js/presence.js',
-  'js/ajudantes.js', 'js/scanner.js', 'js/unitprice.js', 'js/offline.js', 'js/deals.js', 'js/cupom.js', 'js/demo-data.js', 'js/notas.js', 'js/fotopreco.js', 'js/ia.js', 'js/calc.js', 'js/refeicoes.js', 'js/receitas-data.js', 'js/inicio.js',
+  'js/ajudantes.js', 'js/scanner.js', 'js/unitprice.js', 'js/offline.js', 'js/deals.js', 'js/cupom.js', 'js/demo-data.js', 'js/notas.js', 'js/fotopreco.js', 'js/ia.js', 'js/calc.js', 'js/refeicoes.js', 'js/receitas-data.js', 'js/inicio.js', 'js/icons.js',
   'assets/icon.svg', 'manifest.webmanifest'];
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
