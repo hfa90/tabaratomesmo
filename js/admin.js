@@ -163,7 +163,7 @@ async function renderSaude() {
   const FILES = {
     'Notas e leitor com IA': 'atualizacao-2026-10-notas-ia.sql', 'Zerar histórico': 'atualizacao-2026-10-zerar-historico.sql', 'Lista da família': 'atualizacao-2026-10-lista-familia.sql',
     'Sincronizar aparelhos e campanhas': 'atualizacao-2026-10-sync-clientes-campanhas.sql', 'Zerar em todos os aparelhos': 'atualizacao-2026-10-zerar-todos-aparelhos.sql',
-    'Datas especiais': 'atualizacao-2026-10-datas-especiais.sql', 'Uso, avisos e privacidade': 'atualizacao-2026-10-push-uso-lgpd.sql', 'Base (schema.sql)': 'schema.sql',
+    'Datas especiais': 'atualizacao-2026-10-datas-especiais.sql', 'Uso, avisos e privacidade': 'atualizacao-2026-10-push-uso-lgpd.sql', 'Robô do Telegram': 'atualizacao-2026-10-telegram.sql', 'Base (schema.sql)': 'schema.sql',
   };
   const missing = [...groups].filter(([, cs]) => cs.some((c) => !c.ok));
   const ok = (b) => `<em class="saude-dot ${b ? 'is-ok' : b === false ? 'is-bad' : ''}">${b ? 'em dia' : b === false ? 'falta' : '–'}</em>`;

@@ -17,6 +17,7 @@ Comparador de preços de supermercados de Manaus: Nova Era, Supermercados DB, Ve
 - **Avisos do que a pessoa compra**: para os produtos dos ranchos concluídos, da última compra, das notas e do que foi marcado "já peguei", o site guarda o preço em cada supermercado e avisa quando sobe ou desce (3% e R$ 0,10 ou mais), no quadro do topo das ofertas e no celular.
 - **Datas especiais em 3D** (`js/especial.js`, `js/temas.js`): Black Friday, Natal, Halloween, Réveillon, Dia das Mães, dos Pais e dos Namorados. A administração liga a data e o período (admin › Datas especiais); os supermercados escolhem até 24 produtos e um preço especial (portal › Datas especiais). O site mostra um banner animado no início e nas ofertas e a página temática com cena 3D (three.js) interativa, contagem regressiva, carrossel 3D e cartões que inclinam. Prévia: `#especial?tema=natal&previa=1`. Precisa de [`supabase/atualizacoes/atualizacao-2026-10-datas-especiais.sql`](supabase/atualizacoes/atualizacao-2026-10-datas-especiais.sql).
 - **Avisos com o site fechado** (`js/push.js` + função `notificar`): preço que baixou do que a pessoa acompanha (favoritos e o que já comprou), lista da família que alguém mudou e avisos dos mercados (perto, preferidos ou todos) chegam no celular mesmo com o site fechado, pelo Web Push. Regras no banco: 8h às 21h, no máximo 3 por dia e 1 de mercado por dia. A pessoa escolhe o que receber em Você › Preferências. No iPhone, precisa adicionar o site à tela de início.
+- **Robô do Telegram** ([@tabaratomesmo_bot](https://t.me/tabaratomesmo_bot), função `telegram` + `js/telegram.js`): a pessoa escreve "quanto tá o óleo?" ou "arroz 5kg" e recebe o preço de hoje em cada mercado (do mais barato ao mais caro, com a idade do preço e as promoções); manda a **foto do QR** ou o **link da nota** e descobre se dava para pagar menos (e onde a diferença foi maior); e mexe na **Lista do mês** ("põe 2 arroz na lista", "tira o açúcar", "minha lista", com onde ela sai mais barata). Com a conta ligada (Você › Conta › **Ligar ao Telegram**), a lista é a mesma do site e chega na hora, as notas contam pontos e entram em Minhas notas, e "Acompanhar preço" vira favorito. Sem conta, o robô responde preços e confere notas. Usa o mesmo leitor de frases do site (`js/voice.js`), não usa IA e não custa nada por mensagem.
 - **Uma interrupção por visita** (`js/interrupt.js`): janela de campanha, aviso flutuante, pedido para ligar avisos e boas-vindas na loja disputam um único espaço por visita; o que sobrar fica para a próxima.
 - **Conferir um preço**: um botão só abre as três formas (ler o código, fotografar a etiqueta, mandar a nota). Em "No mercado", a calculadora é o padrão e falar o item é a opção.
 - **Confiança no preço**: cada preço mostra há quanto tempo foi atualizado (bolinha verde até 2 dias, amarela até 1 semana, cinza mais antigo) e de onde veio (nota fiscal, clientes, mercado, encarte, coleta).
@@ -145,6 +146,21 @@ O `schema.sql` já junta todas as atualizações. Banco antigo: rode só o que f
 
 Para trocar as chaves VAPID: `npx web-push generate-vapid-keys`, troque a pública em `js/config.js` e as duas nos segredos (quem já tinha ligado os avisos precisa ligar de novo).
 
+### 1f. Robô do Telegram (outubro/2026)
+O robô já está criado (@tabaratomesmo_bot), com comandos, descrição e o webhook apontando para `…/functions/v1/telegram`. Falta:
+1. **Banco:** SQL Editor › rode [`supabase/atualizacoes/atualizacao-2026-10-telegram.sql`](supabase/atualizacoes/atualizacao-2026-10-telegram.sql).
+2. **Site:** envie as mudanças para o GitHub (o botão "Ligar ao Telegram" fica em `js/telegram.js`). A função lê `js/voice.js` do site publicado, então publique o site **antes** da função.
+3. **Função `telegram`:** Edge Functions › Deploy a new function › Via Editor › nome `telegram` › cole [`supabase/functions/telegram/index.ts`](supabase/functions/telegram/index.ts) › **desligue "Verify JWT"** (o Telegram não manda login do Supabase; a função confere a senha do webhook) › Deploy.
+   Pela linha de comando: `supabase functions deploy telegram --no-verify-jwt`.
+4. **Segredos** (Edge Functions › Secrets), que nunca vão para o GitHub:
+   - `TELEGRAM_TOKEN`: o token do @BotFather
+   - `TELEGRAM_SECRET`: a senha do webhook (a mesma do `secret_token` do setWebhook)
+5. Mande "oi" para o robô. Para ver erros: Edge Functions › telegram › Logs.
+
+Trocar o token (no @BotFather, `/revoke`): ponha o novo em `TELEGRAM_TOKEN` e registre o webhook de novo, abrindo no navegador
+`https://api.telegram.org/bot<NOVO_TOKEN>/setWebhook?url=https://lygqyliiebcxwxioxbvd.supabase.co/functions/v1/telegram&secret_token=<TELEGRAM_SECRET>&allowed_updates=["message","callback_query"]`.
+Se mudar `js/voice.js`, publique a função `telegram` de novo para ela pegar a versão nova.
+
 ### 2. Logomarcas oficiais
 Coloque os arquivos em `assets/logos/` com estes nomes (PNG ou troque a extensão na coluna `logo_url`):
 
@@ -218,6 +234,8 @@ supabase/functions/leitor-ia/index.ts   leitor com IA: encarte, etiqueta, nota p
 supabase/email-templates/   e-mails de conta com a cara do site
 supabase/configurar-auth.mjs   aplica Site URL, endereços de retorno e e-mails no Supabase
 supabase/functions/notificar/index.ts   avisos no celular com o site fechado (Web Push, a cada 15 min)
+supabase/functions/telegram/index.ts    robô do Telegram: preços, nota fiscal e Lista do mês
+js/telegram.js       ligar a conta ao robô do Telegram (Você › Conta)
 supabase/atualizacoes/   atualizações do banco para quem já tinha o schema (o schema.sql já inclui todas)
 supabase/agendar-avisos.sql   agenda a função notificar (pg_cron + pg_net)
 js/push.js             inscrição dos avisos com o site fechado

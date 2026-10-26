@@ -7,6 +7,7 @@ import { S, $, $$, esc, brl, logo, hooks, initials } from './core.js';
 import * as rancho from './rancho.js';
 import * as fiscal from './fiscal.js';
 import * as push from './push.js';
+import * as telegram from './telegram.js';
 
 let tab = 'resumo';
 let remote = null;        // ranchos salvos na conta
@@ -168,6 +169,7 @@ function dataPanel() {
     <p class="small">${rancho.homePos()?.source === 'home' ? `Sua casa: <b>${esc(rancho.homePos().label || 'definida')}</b>` : 'Defina sua casa para calcular a distância e o custo de ida até cada mercado.'}</p>
     <div class="row-actions"><button class="btn btn--ghost btn--sm" data-open="home">${rancho.homePos()?.source === 'home' ? 'Alterar casa' : 'Definir minha casa'}</button></div>
   </section>
+  ${telegram.panel()}
   <div id="adminLink"></div>
   ${api.MODE === 'demo' ? '<p class="note">Modo demonstração: o banco ainda não respondeu, então a conta fica só neste aparelho.</p>' : ''}
   <button class="btn btn--text" id="logout">Sair da conta</button>`;
@@ -197,6 +199,10 @@ export async function render() {
     </div>`;
     return;
   }
+
+  // vindo do robô do Telegram ("#conta?telegram"): abre a aba Conta, onde fica o botão de ligar
+  const wantTg = /[?&]telegram\b/.test(location.hash);
+  if (wantTg) { tab = 'dados'; history.replaceState(null, '', location.pathname + location.search + '#conta'); }
 
   const p = S.profile || {};
   const name = p.full_name || S.user.user_metadata?.full_name || S.user.email;
@@ -243,6 +249,7 @@ export async function render() {
     fiscal.renderHome(); fiscal.renderAccount($('#fiscalAcc'));
   } else {
     box.innerHTML = `<div class="me">${dataPanel()}${prefsPanel()}</div>`;
+    telegram.fill().then(() => { if (wantTg) $('#tgPanel')?.scrollIntoView({ block: 'center', behavior: 'smooth' }); });
     api.amIMaster().then((ok) => { const el = $('#adminLink'); if (ok && el) el.innerHTML = `<section class="panel"><div class="panel__head"><h2>Administração</h2></div><p class="small muted">Sua conta é administradora master.</p><div class="row-actions"><a class="btn btn--primary" href="admin.html">Abrir a administração</a><a class="btn btn--ghost" href="parceiros.html">Área do supermercado</a></div></section>`; }).catch(() => {});
   }
 }

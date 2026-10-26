@@ -501,6 +501,29 @@ export async function amIMaster() {
   return !error && !!data;
 }
 
+// ---------------------------------------------------------------- robô do Telegram (atualizacao-2026-10-telegram.sql)
+const noTgFn = (e) => /telegram_|PGRST202|42883|could not find/i.test(`${e.code} ${e.message}`);
+/** { linked, username, name, linked_at } ou null (banco sem a atualização, ou modo demonstração) */
+export async function telegramStatus() {
+  if (MODE !== 'live') return null;
+  const c = await client();
+  const { data, error } = await withTimeout(c.rpc('telegram_status'));
+  if (error) { if (noTgFn(error)) return null; throw error; }
+  return data;
+}
+/** código de uso único (15 min) para abrir t.me/<robô>?start=<código> */
+export async function telegramLinkCode() {
+  const c = await client();
+  const { data, error } = await withTimeout(c.rpc('telegram_link_code'));
+  if (error) throw new Error(noTgFn(error) ? 'O Telegram ainda não foi ativado no banco.' : error.message);
+  return data;
+}
+export async function telegramUnlink() {
+  const c = await client();
+  const { error } = await withTimeout(c.rpc('telegram_unlink'));
+  if (error) throw error;
+}
+
 // ---------------------------------------------------------------- publicidade
 export async function adsLive() {
   if (MODE === 'demo') {

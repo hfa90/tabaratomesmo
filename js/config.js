@@ -16,6 +16,9 @@ export const CONFIG = {
   // Avisos com o site fechado (Web Push). Chave PÚBLICA; a privada fica só nos segredos da função "notificar".
   VAPID_PUBLIC_KEY: 'BAegRvMVmtPuFNQqv8a8Xg43yPkwcMMvf8mLHhdGXr1d074bu7xR70SrBTlptm2kJv37JKOuy3YXDBBMCnV-j1w',
 
+  // Robô do Telegram (supabase/functions/telegram). O token fica só nos segredos da função.
+  TELEGRAM_BOT: 'tabaratomesmo_bot',
+
   // Se o banco não responder (ex.: schema ainda não aplicado), usa dados de demonstração
   DEMO_FALLBACK: true,
 };
