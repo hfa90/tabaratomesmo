@@ -149,8 +149,8 @@ Para trocar as chaves VAPID: `npx web-push generate-vapid-keys`, troque a públi
 ### 1f. Robô do Telegram (outubro/2026)
 O robô já está criado (@tabaratomesmo_bot), com comandos, descrição e o webhook apontando para `…/functions/v1/telegram`. Falta:
 1. **Banco:** SQL Editor › rode [`supabase/atualizacoes/atualizacao-2026-10-telegram.sql`](supabase/atualizacoes/atualizacao-2026-10-telegram.sql).
-2. **Site:** envie as mudanças para o GitHub (o botão "Ligar ao Telegram" fica em `js/telegram.js`). A função lê `js/voice.js` do site publicado, então publique o site **antes** da função.
-3. **Função `telegram`:** Edge Functions › Deploy a new function › Via Editor › nome `telegram` › cole [`supabase/functions/telegram/index.ts`](supabase/functions/telegram/index.ts) › **desligue "Verify JWT"** (o Telegram não manda login do Supabase; a função confere a senha do webhook) › Deploy.
+2. **Site:** envie as mudanças para o GitHub (o botão "Ligar ao Telegram" fica em `js/telegram.js`).
+3. **Função `telegram`:** Edge Functions › Deploy a new function › Via Editor › nome `telegram` › cole [`supabase/functions/telegram/index.ts`](supabase/functions/telegram/index.ts) e, com "Add File", crie `voice.js` com o conteúdo de [`supabase/functions/telegram/voice.js`](supabase/functions/telegram/voice.js) › Deploy › depois, em Details, **desligue "Enforce JWT verification"** (o Telegram não manda login do Supabase; a função confere a senha do webhook).
    Pela linha de comando: `supabase functions deploy telegram --no-verify-jwt`.
 4. **Segredos** (Edge Functions › Secrets), que nunca vão para o GitHub:
    - `TELEGRAM_TOKEN`: o token do @BotFather
@@ -159,7 +159,7 @@ O robô já está criado (@tabaratomesmo_bot), com comandos, descrição e o web
 
 Trocar o token (no @BotFather, `/revoke`): ponha o novo em `TELEGRAM_TOKEN` e registre o webhook de novo, abrindo no navegador
 `https://api.telegram.org/bot<NOVO_TOKEN>/setWebhook?url=https://lygqyliiebcxwxioxbvd.supabase.co/functions/v1/telegram&secret_token=<TELEGRAM_SECRET>&allowed_updates=["message","callback_query"]`.
-Se mudar `js/voice.js`, publique a função `telegram` de novo para ela pegar a versão nova.
+Se mudar `js/voice.js`, copie para `supabase/functions/telegram/voice.js` e publique a função `telegram` de novo (o teste automático avisa se as duas cópias ficarem diferentes).
 
 ### 2. Logomarcas oficiais
 Coloque os arquivos em `assets/logos/` com estes nomes (PNG ou troque a extensão na coluna `logo_url`):

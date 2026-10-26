@@ -12,12 +12,14 @@
 //   SITE_URL         — opcional; padrão https://hfa90.github.io/tabaratomesmo/
 // Publicar:  supabase functions deploy telegram --no-verify-jwt   (o Telegram não manda login do Supabase)
 //
-// O leitor de frases é o mesmo do site (js/voice.js), importado do endereço publicado.
+// O leitor de frases é o mesmo do site: voice.js aqui é uma CÓPIA de js/voice.js (o Supabase não importa
+// de github.io). Mudou js/voice.js? Copie para cá e publique a função de novo; o teste automático avisa se esquecer.
+// Pelo painel: na função, "Add File" › voice.js, e cole o conteúdo.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import jsQRmod from 'npm:jsqr@1.4.0';
 import jpeg from 'npm:jpeg-js@0.4.4';
 // @ts-ignore: módulo JS do site, sem tipos
-import { parse, match, strip } from 'https://hfa90.github.io/tabaratomesmo/js/voice.js';
+import { parse, match, strip } from './voice.js';
 
 const TOKEN = Deno.env.get('TELEGRAM_TOKEN');
 const SECRET = Deno.env.get('TELEGRAM_SECRET');

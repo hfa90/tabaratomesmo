@@ -134,6 +134,12 @@ test('o service worker guarda só arquivos que existem', async () => {
   expect(missing).toEqual([]);
 });
 
+test('o robô do Telegram usa o mesmo leitor de frases do site', async () => {
+  const a = fs.readFileSync(path.join(ROOT, 'js/voice.js'), 'utf8');
+  const b = fs.readFileSync(path.join(ROOT, 'supabase/functions/telegram/voice.js'), 'utf8');
+  expect(b === a, 'copie js/voice.js para supabase/functions/telegram/voice.js e publique a função telegram').toBe(true);
+});
+
 test('nenhum segredo no código do site', async () => {
   const files = ['js', 'supabase/functions'].flatMap((d) => fs.readdirSync(path.join(ROOT, d), { recursive: true }).map((f) => path.join(ROOT, d, String(f))))
     .filter((f) => fs.statSync(f).isFile());
