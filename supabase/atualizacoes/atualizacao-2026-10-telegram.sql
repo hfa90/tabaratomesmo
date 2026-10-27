@@ -47,11 +47,17 @@ alter table public.tg_updates enable row level security;     -- só a função "
 -- ---------------------------------------------------------------- para o site
 create or replace function public.telegram_link_code()
 returns text language plpgsql security definer set search_path = public as $$
-declare v_code text;
+declare v_code text; b bytea; i int; letters constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 begin
   if auth.uid() is null then raise exception 'Entre na sua conta para ligar o Telegram.'; end if;
   delete from tg_link_codes where user_id = auth.uid() or expires_at < now() - interval '1 day';
-  v_code := 'L' || replace(gen_random_uuid()::text, '-', '');
+  -- código curto para digitar no Telegram se o link não ligar sozinho: 3 letras + 3 números ("KQM482")
+  loop
+    b := uuid_send(gen_random_uuid()); v_code := '';
+    for i in 0..2 loop v_code := v_code || substr(letters, 1 + get_byte(b, i) % 24, 1); end loop;
+    v_code := v_code || lpad((((get_byte(b, 3) << 8) | get_byte(b, 4)) % 1000)::text, 3, '0');
+    exit when not exists (select 1 from tg_link_codes where code = v_code);
+  end loop;
   insert into tg_link_codes (code, user_id, expires_at) values (v_code, auth.uid(), now() + interval '15 minutes');
   return v_code;
 end $$;
@@ -78,9 +84,10 @@ grant execute on function public.telegram_unlink() to authenticated;
 create or replace function public.tg_link_consume(p_code text, p_chat bigint, p_first text default null, p_username text default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_user uuid; v_name text;
+  v_code text := case when p_code ~ '^L[a-f0-9]{32}$' then p_code else upper(regexp_replace(coalesce(p_code, ''), '[^A-Za-z0-9]', '', 'g')) end;
 begin
   update tg_link_codes set used_at = now()
-   where code = p_code and used_at is null and expires_at > now()
+   where code = v_code and used_at is null and expires_at > now()
   returning user_id into v_user;
   if v_user is null then return jsonb_build_object('ok', false); end if;
   update tg_contacts set user_id = null, linked_at = null where user_id = v_user and chat_id <> p_chat;

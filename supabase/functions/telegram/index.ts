@@ -34,8 +34,11 @@ type Ctx = { chat: number; user: string | null; first: string };
 type Price = { market_id: number; price: number; regular: number | null; at: string; src?: string; promo?: { title?: string; ends?: string } | null };
 type Product = { id: number; name: string; brand: string | null; unit: string | null; ean: string | null; category_name?: string; change_pct: number | null; prices: Price[] };
 
-const BTN = { lista: '🛒 Minha lista', nota: '🧾 Mandar nota', ajuda: '❓ Ajuda' };
-const MENU = { keyboard: [[{ text: BTN.lista }, { text: BTN.nota }], [{ text: BTN.ajuda }]], resize_keyboard: true, is_persistent: true };
+const BTN = { ofertas: '🔥 Ofertas de hoje', lista: '🛒 Minha lista', nota: '🧾 Mandar nota', ajuda: '❓ Ajuda' };
+const MENU = { keyboard: [[{ text: BTN.ofertas }, { text: BTN.lista }], [{ text: BTN.nota }, { text: BTN.ajuda }]], resize_keyboard: true, is_persistent: true };
+// código curto para ligar a conta: 3 letras + 3 números ("KQM482", aceita "KQM 482"); o antigo "L" + 32 hex continua valendo
+const CODE_RE = /^([a-z]{3})[\s-]?(\d{3})$/i;
+const OLD_CODE_RE = /^L[a-f0-9]{32}$/;
 
 // ---------------------------------------------------------------- Telegram
 async function tg(method: string, body: Record<string, unknown>) {
@@ -133,14 +136,71 @@ function askLink(ctx: Ctx, why = 'usar a sua Lista do mês') {
 }
 
 // ---------------------------------------------------------------- respostas
-function welcome(ctx: Ctx) {
-  const linked = ctx.user ? '\n\n✅ Sua conta do site está ligada.' : '\n\n🔗 Ligue sua conta do site para usar a lista e guardar notas: /conta';
-  return send(ctx.chat,
-    `Olá${ctx.first ? `, ${esc(ctx.first)}` : ''}! 👋 Eu sou o robô do <b>Tá Barato Mesmo?</b>, o comparador de preços dos supermercados de Manaus.\n\n` +
-    `🔎 <b>Preço de hoje</b>: escreva o produto, tipo <i>quanto tá o óleo?</i> ou <i>arroz 5kg</i>\n` +
-    `🧾 <b>Nota fiscal</b>: mande a foto do QR da nota (ou cole o link) e eu digo se dava para pagar menos\n` +
-    `🛒 <b>Lista do mês</b>: <i>põe café na lista</i>, <i>tira o açúcar</i>, <i>minha lista</i>` + linked,
+/** tela inicial: deixa claro onde a pessoa está e mostra o que dá para fazer, em botões */
+async function welcome(ctx: Ctx, opts: { justLinked?: string | null } = {}) {
+  const name = opts.justLinked ?? ctx.first;
+  const status = opts.justLinked !== undefined
+    ? `✅ <b>Conta ligada${opts.justLinked ? `, ${esc(String(opts.justLinked).split(' ')[0])}` : ''}!</b> A Lista do mês daqui é a mesma do site, e as notas que você mandar contam pontos.`
+    : ctx.user ? '✅ Conectado à sua conta do site.'
+    : '🔗 Ligue sua conta do site para usar a Lista do mês e guardar notas (botão abaixo).';
+  // 1ª mensagem: quem é o robô (e o teclado fixo com os atalhos)
+  await send(ctx.chat,
+    `🛒 Você está no robô oficial do <b>Tá Barato Mesmo?</b>\n@tabaratomesmo_bot · preços dos supermercados de Manaus\n\n${status}`,
     { reply_markup: MENU });
+  // 2ª mensagem: as opções
+  const quick = [['🍚 Arroz', 'arroz'], ['🫘 Feijão', 'feijao'], ['🛢️ Óleo', 'oleo'], ['☕ Café', 'cafe'], ['🥛 Leite', 'leite'], ['🍗 Frango', 'frango']]
+    .map(([t, q]) => ({ text: t, callback_data: `q:${q}` }));
+  return send(ctx.chat,
+    `<b>O que você quer fazer${name && opts.justLinked === undefined ? `, ${esc(String(name).split(' ')[0])}` : ''}?</b>\n\n` +
+    `🔎 Ou escreva o nome de um produto: <i>quanto tá o óleo?</i>, <i>arroz 5kg</i>\n` +
+    `🧾 Para conferir uma compra, mande a foto do QR da nota fiscal`,
+    { reply_markup: { inline_keyboard: [
+      [{ text: '🔥 Ofertas de hoje', callback_data: 'ofertas' }, { text: '📉 Baixaram de preço', callback_data: 'baixou' }],
+      [{ text: '🛒 Minha lista', callback_data: 'mylist' }, { text: '🧾 Conferir nota', callback_data: 'nota' }],
+      quick.slice(0, 3), quick.slice(3),
+      [ctx.user ? { text: '🌐 Abrir o site', url: SITE } : { text: '🔗 Ligar minha conta do site', url: SITE + '#conta?telegram' }],
+    ] } });
+}
+
+/** onde a diferença entre mercados é maior hoje (promoções primeiro) */
+async function ofertas(ctx: Ctx) {
+  const cat = await catalog();
+  const rows = cat.products.filter((p) => p.prices.length >= 2).map((p) => {
+    const lo = p.prices[0], hi = p.prices[p.prices.length - 1].price;
+    return { p, lo, pct: (hi - lo.price) / hi, promo: !!lo.promo };
+  }).filter((r) => r.pct >= 0.05 || r.promo)
+    .sort((a, b) => (Number(b.promo) - Number(a.promo)) || (b.pct - a.pct)).slice(0, 8);
+  if (!rows.length) return send(ctx.chat, 'Hoje não achei diferenças grandes entre os mercados. Escreva um produto para ver o preço.');
+  const lines = ['🔥 <b>Ofertas de hoje</b>: onde comprar no lugar certo faz mais diferença', ''];
+  for (const r of rows) lines.push(`• ${esc(cut(pname(r.p), 40))}: <b>${brl(r.lo.price)}</b> no ${esc(marketName(r.lo.market_id))}${r.promo ? ' 🏷️' : ''} <i>(${Math.round(r.pct * 100)}% menos que o mais caro)</i>`);
+  lines.push('', 'Toque num produto para ver todos os mercados.');
+  return send(ctx.chat, lines.join('\n'), { reply_markup: { inline_keyboard: [
+    ...rows.map((r) => [{ text: cut(`${pname(r.p)} · ${brl(r.lo.price)}`, 60), callback_data: `p:${r.p.id}` }]),
+    [{ text: '📉 Baixaram de preço', callback_data: 'baixou' }, { text: '↩️ Início', callback_data: 'home' }],
+  ] } });
+}
+
+/** o que mais baixou na última semana */
+async function baixou(ctx: Ctx) {
+  const cat = await catalog();
+  const rows = cat.products.filter((p) => p.change_pct != null && p.change_pct <= -1 && p.prices.length)
+    .sort((a, b) => (a.change_pct! - b.change_pct!)).slice(0, 8);
+  if (!rows.length) return send(ctx.chat, '📉 Nenhum preço baixou na última semana. Veja as <b>Ofertas de hoje</b>:', { reply_markup: { inline_keyboard: [[{ text: '🔥 Ofertas de hoje', callback_data: 'ofertas' }]] } });
+  const lines = ['📉 <b>Baixaram de preço</b> na última semana', ''];
+  for (const p of rows) lines.push(`• ${esc(cut(pname(p), 40))}: <b>−${String(Math.abs(p.change_pct!)).replace('.', ',')}%</b> · ${brl(p.prices[0].price)} no ${esc(marketName(p.prices[0].market_id))}`);
+  return send(ctx.chat, lines.join('\n'), { reply_markup: { inline_keyboard: [
+    ...rows.map((p) => [{ text: cut(`${pname(p)} · ${brl(p.prices[0].price)}`, 60), callback_data: `p:${p.id}` }]),
+    [{ text: '🔥 Ofertas de hoje', callback_data: 'ofertas' }, { text: '↩️ Início', callback_data: 'home' }],
+  ] } });
+}
+
+/** liga a conta pelo código do site; devolve false se o código não vale */
+async function linkWith(ctx: Ctx, code: string) {
+  const { data, error } = await sb.rpc('tg_link_consume', { p_code: code, p_chat: ctx.chat, p_first: ctx.first || null, p_username: null });
+  if (error || !data?.ok) return false;
+  ctx.user = data.user_id;
+  await welcome(ctx, { justLinked: data.name ?? '' });
+  return true;
 }
 
 async function sendProduct(ctx: Ctx, p: Product) {
@@ -355,13 +415,14 @@ async function onText(ctx: Ctx, raw: string) {
   if (t.startsWith('/')) {
     const [cmd0, ...rest] = t.split(/\s+/);
     const cmd = cmd0.slice(1).split('@')[0].toLowerCase(), arg = rest.join(' ');
-    if (cmd === 'start' && /^L[a-f0-9]{32}$/.test(arg)) {
-      const { data, error } = await sb.rpc('tg_link_consume', { p_code: arg, p_chat: ctx.chat, p_first: ctx.first || null, p_username: null });
-      if (error || !data?.ok) return send(ctx.chat, '⌛ Esse link de ligação expirou ou já foi usado. No site, toque de novo em <b>Ligar ao Telegram</b>.', { reply_markup: MENU });
-      ctx.user = data.user_id;
-      return send(ctx.chat, `✅ Pronto${data.name ? `, ${esc(String(data.name).split(' ')[0])}` : ''}! Sua conta está ligada.\n\nAgora a lista que você mexe aqui aparece no site na hora, e as notas que você manda contam pontos.\n\nExperimente: <i>minha lista</i> ou <i>quanto tá o café?</i>`, { reply_markup: MENU });
+    if (cmd === 'start' && (OLD_CODE_RE.test(arg) || CODE_RE.test(arg))) {
+      if (await linkWith(ctx, arg)) return;
+      await send(ctx.chat, '⌛ Esse código de ligação expirou ou já foi usado. No site, toque de novo em <b>Ligar ao Telegram</b>.');
+      return welcome(ctx);
     }
-    if (cmd === 'start' || cmd === 'ajuda' || cmd === 'help' || cmd === 'menu') return welcome(ctx);
+    if (cmd === 'start' || cmd === 'ajuda' || cmd === 'help' || cmd === 'menu' || cmd === 'inicio') return welcome(ctx);
+    if (cmd === 'ofertas') return ofertas(ctx);
+    if (cmd === 'baixou' || cmd === 'baixaram') return baixou(ctx);
     if (cmd === 'lista') return showList(ctx);
     if (cmd === 'nota') return notaHelp(ctx);
     if (cmd === 'conta') return ctx.user
@@ -373,9 +434,12 @@ async function onText(ctx: Ctx, raw: string) {
     }
     return welcome(ctx);
   }
+  if (t === BTN.ofertas) return ofertas(ctx);
   if (t === BTN.lista) return showList(ctx);
   if (t === BTN.nota) return notaHelp(ctx);
   if (t === BTN.ajuda) return welcome(ctx);
+  // código do site digitado à mão ("KQM 482"); se não for um código válido, segue como pesquisa
+  if (CODE_RE.test(t) && await linkWith(ctx, t)) return;
 
   const s = strip(t).replace(/[?!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
   if (/^(ver |mostra |manda |minha |a )*lista( do mes)?$/.test(s)) return showList(ctx);
@@ -383,7 +447,9 @@ async function onText(ctx: Ctx, raw: string) {
   if (m) return addByText(ctx, m[2]);
   m = s.match(/^(tira|tirar|remove|remover|apaga|apagar|exclui|excluir)\s+(.+?)(\s+da\s+(minha\s+)?lista)?$/);
   if (m) return removeByText(ctx, m[2].replace(/^(o|a|os|as)\s+/, ''));
-  if (/^(oi|ola|oie|bom dia|boa tarde|boa noite|e ai|opa|menu|ajuda|obrigad[oa]|valeu)$/.test(s)) return welcome(ctx);
+  if (/^(oi|ola|oie|bom dia|boa tarde|boa noite|e ai|opa|menu|ajuda|inicio|start|obrigad[oa]|valeu)$/.test(s)) return welcome(ctx);
+  if (/^(ofertas?( de hoje)?|promocao|promocoes|promo)$/.test(s)) return ofertas(ctx);
+  if (/^(baixou|baixaram|o que baixou)$/.test(s)) return baixou(ctx);
   return priceQuery(ctx, t);
 }
 const notaHelp = (ctx: Ctx) => send(ctx.chat, '🧾 Mande aqui a <b>foto do QR</b> da nota fiscal (de perto, só do QR) ou cole o <b>link</b> da nota.\n\nEu leio os itens na Sefaz e digo se dava para pagar menos em outro mercado.');
@@ -395,6 +461,12 @@ async function onCallback(ctx: Ctx, cb: any) {
   const answer = (text?: string) => tg('answerCallbackQuery', { callback_query_id: cb.id, ...(text ? { text } : {}) });
   const cat = await catalog();
   if (k === 'p') { await answer(); const p = cat.byId.get(pid); return p ? sendProduct(ctx, p) : send(ctx.chat, 'Esse produto saiu do catálogo.'); }
+  if (k === 'home') { await answer(); return welcome(ctx); }
+  if (k === 'mylist') { await answer(); return showList(ctx); }
+  if (k === 'ofertas') { await answer(); return ofertas(ctx); }
+  if (k === 'baixou') { await answer(); return baixou(ctx); }
+  if (k === 'nota') { await answer(); return notaHelp(ctx); }
+  if (k === 'q') { await answer(); return priceQuery(ctx, v || ''); }
   if (k === 'list') { await answer(); return showList(ctx, msgId); }
   if (k === 'edit') { await answer(); return showList(ctx, msgId, true); }
   if (!ctx.user) { await answer(); return askLink(ctx, k === 'fav' ? 'acompanhar preços' : 'usar a sua Lista do mês'); }

@@ -38,6 +38,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -q -f supabase/schema.sql
       - name: Testes do banco
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes.sql
+      - name: Testes do robô do Telegram
+        run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-telegram.sql
 
   site:
     runs-on: ubuntu-latest

@@ -12,6 +12,23 @@ const BOT = CONFIG.TELEGRAM_BOT || 'tabaratomesmo_bot';
 const botUrl = (start) => `https://t.me/${BOT}${start ? `?start=${encodeURIComponent(start)}` : ''}`;
 let st = null, poll = null;
 
+const showCode = (c) => `${c.slice(0, 3)} ${c.slice(3)}`;
+/** depois de abrir o Telegram: o que fazer lá e o código, para quando o "/start" não liga sozinho */
+export function hint(code) {
+  const h = $('#tgHint'); if (!h) return;
+  h.hidden = false;
+  h.innerHTML = `<div class="tg-steps">
+      <p class="small"><b>No Telegram, você está na conversa com o robô oficial @${esc(BOT)}.</b></p>
+      <ol class="small">
+        <li>Toque em <b>Iniciar</b>. Se aparecer <b>/start</b> escrito na caixa de mensagem, toque em <b>Enviar</b>.</li>
+        <li>Não ligou? Mande para o robô este código:</li>
+      </ol>
+      <div class="tg-code"><b aria-label="Código para ligar">${esc(showCode(code))}</b><button class="btn btn--ghost btn--sm" data-tg="copy" data-code="${esc(code)}">${ic('copy')} Copiar</button></div>
+      <p class="small muted">Vale por 15 minutos. Esta tela muda sozinha quando ligar.</p>
+      <div class="row-actions"><a class="btn btn--ghost btn--sm" href="${botUrl(code)}" target="_blank" rel="noopener">${ic('send')} Abrir o robô de novo</a></div>
+    </div>`;
+}
+
 /** quadro "Telegram" da aba Conta (preenchido por fill()) */
 export function panel() {
   return `<section class="panel" id="tgPanel"><div class="panel__head"><h2>${ic('send')} Telegram</h2></div><div id="tgBody"><div class="skeleton" style="height:64px"></div></div></section>`;
@@ -32,7 +49,7 @@ export async function fill() {
   } else {
     box.innerHTML = `<p class="small">Pergunte <i>“quanto tá o óleo?”</i>, mande a foto da nota fiscal e mexa na sua lista pelo Telegram, sem abrir o site.</p>
       <div class="row-actions"><button class="btn btn--primary btn--sm" data-tg="link">${ic('link')} Ligar ao Telegram</button></div>
-      <p class="small muted" id="tgHint" hidden>Toque em <b>Iniciar</b> no Telegram. Esta tela atualiza sozinha quando ligar.</p>`;
+      <div id="tgHint" hidden></div>`;
   }
 }
 
@@ -55,12 +72,16 @@ document.addEventListener('click', async (e) => {
     try {
       const code = await api.telegramLinkCode();
       if (w) w.location.href = botUrl(code); else location.href = botUrl(code);
-      const h = $('#tgHint'); if (h) h.hidden = false;
+      hint(code);
       startPoll();
     } catch (err) {
       w?.close();
       hooks.toast?.(err.message || 'Não consegui gerar o link agora.');
     } finally { b.disabled = false; }
+  }
+  if (b.dataset.tg === 'copy') {
+    try { await navigator.clipboard.writeText(b.dataset.code); hooks.toast?.('Código copiado. Cole no Telegram.'); }
+    catch { hooks.toast?.(`Código: ${showCode(b.dataset.code)}`); }
   }
   if (b.dataset.tg === 'unlink') {
     b.disabled = true;
