@@ -59,3 +59,67 @@ end $$;
 do $$ begin assert exists (select 1 from pg_proc where proname='db_health' and prosrc like '%Robô do Telegram%'); end $$;
 rollback;
 select 'TESTES_TG_OK';
+
+-- ---------------------------------------------------------------- avisos de preço (atualizacao-2026-10-telegram-avisos.sql)
+begin;
+insert into auth.users (id, email) values ('cccccccc-0000-0000-0000-000000000001', 'aviso@x.com');
+insert into tg_contacts (chat_id, user_id, linked_at) values (7001, 'cccccccc-0000-0000-0000-000000000001', now());
+-- acompanha 5 produtos que têm preço
+insert into favorites (user_id, product_id)
+  select 'cccccccc-0000-0000-0000-000000000001', id from v_products where min_price > 2 order by id limit 5;
+do $$
+declare dia timestamptz := (current_date + time '15:00') at time zone 'America/Manaus';   -- 15h em Manaus
+        noite timestamptz := (current_date + time '22:30') at time zone 'America/Manaus';
+        o jsonb; p record;
+begin
+  o := public.tg_alerts_collect(300, dia);
+  assert jsonb_array_length(o) = 0, 'primeira vez só guarda o preço: ' || o::text;
+  assert (select count(*) from tg_price_refs where chat_id = 7001) = 5, 'guardou as referências';
+
+  -- um produto baixa 10% no mercado mais barato
+  select v.id, v.min_price, (v.prices->0->>'market_id')::smallint mid into p from v_products v
+   where v.id in (select product_id from favorites where user_id = 'cccccccc-0000-0000-0000-000000000001') order by v.id limit 1;
+  insert into prices (product_id, supermarket_id, price, source) values (p.id, p.mid, round(p.min_price * 0.9, 2), 'teste');
+  o := public.tg_alerts_collect(300, noite);
+  assert jsonb_array_length(o) = 0, 'à noite não avisa';
+  o := public.tg_alerts_collect(300, dia);
+  assert jsonb_array_length(o) = 1 and (o->0->>'product_id')::int = p.id, 'avisa o que baixou: ' || o::text;
+  assert (o->0->>'from')::numeric = p.min_price and (o->0->>'to')::numeric = round(p.min_price * 0.9, 2), 'de/por certos';
+  assert o->0->'best' ? 'market_id', 'manda o mercado';
+  o := public.tg_alerts_collect(300, dia);
+  assert jsonb_array_length(o) = 0, 'não repete o mesmo aviso';
+
+  -- mudança pequena (1%) não avisa
+  insert into prices (product_id, supermarket_id, price, source) values (p.id, p.mid, round(p.min_price * 0.9 * 1.01, 2), 'teste');
+  o := public.tg_alerts_collect(300, dia);
+  assert jsonb_array_length(o) = 0, 'mudança pequena não avisa';
+
+  -- subiu bastante em todos os mercados: avisa também
+  insert into prices (product_id, supermarket_id, price, source)
+    select p.id, (x->>'market_id')::smallint, round((x->>'price')::numeric * 1.3, 2), 'teste'
+      from v_products v, jsonb_array_elements(v.prices) x where v.id = p.id;
+  o := public.tg_alerts_collect(300, dia);
+  assert jsonb_array_length(o) = 1 and (o->0->>'to')::numeric > (o->0->>'from')::numeric, 'avisa o que subiu';
+
+  -- os 4 outros mudam ao mesmo tempo: no máximo 3 por vez, o resto fica para a próxima
+  for p in select v.id, v.min_price, (v.prices->0->>'market_id')::smallint mid from v_products v
+            where v.id in (select product_id from favorites where user_id = 'cccccccc-0000-0000-0000-000000000001') order by v.id offset 1 loop
+    insert into prices (product_id, supermarket_id, price, source) values (p.id, p.mid, round(p.min_price * 0.8, 2), 'teste');
+  end loop;
+  o := public.tg_alerts_collect(300, dia);
+  assert jsonb_array_length(o) = 3, 'no máximo 3 por vez: ' || jsonb_array_length(o);
+  assert (select alerts_today from tg_contacts where chat_id = 7001) = 5, 'contou 5 avisos hoje';
+  o := public.tg_alerts_collect(300, dia);
+  assert jsonb_array_length(o) = 1, 'o que sobrou vem na próxima, até 6 no dia';
+  assert (select alerts_today from tg_contacts where chat_id = 7001) = 6, 'chegou a 6 no dia';
+
+  -- pausado: não avisa
+  update tg_contacts set alerts = false, alerts_day = null where chat_id = 7001;
+  insert into prices (product_id, supermarket_id, price, source)
+    select v.id, (v.prices->0->>'market_id')::smallint, round(v.min_price * 0.5, 2), 'teste' from v_products v
+     where v.id in (select product_id from favorites where user_id = 'cccccccc-0000-0000-0000-000000000001');
+  o := public.tg_alerts_collect(300, dia);
+  assert jsonb_array_length(o) = 0, 'avisos pausados';
+end $$;
+rollback;
+select 'TESTES_TG_AVISOS_OK';

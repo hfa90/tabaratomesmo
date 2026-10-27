@@ -31,8 +31,8 @@ const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
 const sb = createClient(URL_, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 
 type Ctx = { chat: number; user: string | null; first: string };
-type Price = { market_id: number; price: number; regular: number | null; at: string; src?: string; promo?: { title?: string; ends?: string } | null };
-type Product = { id: number; name: string; brand: string | null; unit: string | null; ean: string | null; category_name?: string; change_pct: number | null; prices: Price[] };
+type Price = { market_id: number; price: number; regular: number | null; at: string; src?: string; promo?: { title?: string; ends?: string; kind?: string; code?: string } | null };
+type Product = { id: number; name: string; brand: string | null; unit: string | null; ean: string | null; photo?: string | null; category_name?: string; change_pct: number | null; prices: Price[] };
 
 const BTN = { ofertas: '🔥 Ofertas de hoje', lista: '🛒 Minha lista', nota: '🧾 Mandar nota', ajuda: '❓ Ajuda' };
 const MENU = { keyboard: [[{ text: BTN.ofertas }, { text: BTN.lista }], [{ text: BTN.nota }, { text: BTN.ajuda }]], resize_keyboard: true, is_persistent: true };
@@ -67,6 +67,23 @@ function ago(at: string) {
 }
 const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
+// aviso que acompanha todo preço mostrado pelo robô
+const AVISO = '⚠️ <i>Os preços podem mudar sem aviso prévio. O Tá Barato Mesmo? não controla os preços dos supermercados: confira na loja antes de comprar.</i>';
+const SRC: Record<string, string> = { nota: 'confirmado por nota fiscal', qr: 'confirmado por nota fiscal', comunidade: 'informado por clientes',
+  mercado: 'informado pelo mercado', encarte: 'do encarte do mercado', coleta: 'coletado na loja', seed: 'coletado na loja' };
+/** link do produto no site (abre o detalhe com todos os mercados) */
+const productUrl = (id: number) => `${SITE}?produto=${id}#ofertas`;
+/** foto do produto com endereço completo (o Telegram baixa a imagem) */
+const photoUrl = (u?: string | null) => (!u ? null : /^https:\/\//i.test(u) ? u : /^\/\//.test(u) ? 'https:' + u : SITE + u.replace(/^\.?\//, ''));
+const fmtDay = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Manaus', weekday: 'short', day: '2-digit', month: '2-digit' });
+/** até quando o preço vale: data da promoção, ou o aviso de que preço normal não tem data */
+function validity(x?: Price | null) {
+  if (!x) return '';
+  if (x.promo?.ends) return `🗓️ ${x.promo.kind === 'exclusiva' ? 'Preço exclusivo' : 'Promoção'}${x.promo.title ? ` “${esc(cut(x.promo.title, 40))}”` : ''} válida até <b>${fmtDay(x.promo.ends)}</b>${x.promo.code ? ` · código no caixa: <code>${esc(x.promo.code)}</code>` : ''}.`;
+  if (x.promo) return '🗓️ Promoção sem data de término informada pelo mercado.';
+  return '🗓️ Preço normal da loja: o mercado não informa data de término.';
+}
+
 // ---------------------------------------------------------------- catálogo (guardado por 3 minutos)
 let CAT: { markets: Map<number, { id: number; name: string }>; products: Product[]; byId: Map<number, Product>; byEan: Map<string, Product> } | null = null;
 let CAT_AT = 0;
@@ -76,7 +93,7 @@ async function catalog() {
   if (m.error) throw m.error;
   const rows: any[] = [];
   for (let from = 0; ; from += 1000) {
-    const p = await sb.from('v_products').select('id, name, brand, unit, ean, category_name, change_pct, prices').order('id').range(from, from + 999);
+    const p = await sb.from('v_products').select('id, name, brand, unit, ean, photo, category_name, change_pct, prices').order('id').range(from, from + 999);
     if (p.error) throw p.error;
     rows.push(...(p.data || []));
     if (!p.data || p.data.length < 1000) break;
@@ -140,8 +157,8 @@ function askLink(ctx: Ctx, why = 'usar a sua Lista do mês') {
 async function welcome(ctx: Ctx, opts: { justLinked?: string | null } = {}) {
   const name = opts.justLinked ?? ctx.first;
   const status = opts.justLinked !== undefined
-    ? `✅ <b>Conta ligada${opts.justLinked ? `, ${esc(String(opts.justLinked).split(' ')[0])}` : ''}!</b> A Lista do mês daqui é a mesma do site, e as notas que você mandar contam pontos.`
-    : ctx.user ? '✅ Conectado à sua conta do site.'
+    ? `✅ <b>Conta ligada${opts.justLinked ? `, ${esc(String(opts.justLinked).split(' ')[0])}` : ''}!</b> A Lista do mês daqui é a mesma do site, e as notas que você mandar contam pontos.\n\n🔔 Quando mudar o preço do que você acompanha (favoritos, lista e o que já comprou), eu aviso aqui, das 8h às 21h. Para pausar: /avisos`
+    : ctx.user ? '✅ Conectado à sua conta do site. 🔔 Aviso aqui quando mudar o preço do que você acompanha (/avisos para pausar).'
     : '🔗 Ligue sua conta do site para usar a Lista do mês e guardar notas (botão abaixo).';
   // 1ª mensagem: quem é o robô (e o teclado fixo com os atalhos)
   await send(ctx.chat,
@@ -173,7 +190,7 @@ async function ofertas(ctx: Ctx) {
   if (!rows.length) return send(ctx.chat, 'Hoje não achei diferenças grandes entre os mercados. Escreva um produto para ver o preço.');
   const lines = ['🔥 <b>Ofertas de hoje</b>: onde comprar no lugar certo faz mais diferença', ''];
   for (const r of rows) lines.push(`• ${esc(cut(pname(r.p), 40))}: <b>${brl(r.lo.price)}</b> no ${esc(marketName(r.lo.market_id))}${r.promo ? ' 🏷️' : ''} <i>(${Math.round(r.pct * 100)}% menos que o mais caro)</i>`);
-  lines.push('', 'Toque num produto para ver todos os mercados.');
+  lines.push('', 'Toque num produto para ver todos os mercados.', '', AVISO);
   return send(ctx.chat, lines.join('\n'), { reply_markup: { inline_keyboard: [
     ...rows.map((r) => [{ text: cut(`${pname(r.p)} · ${brl(r.lo.price)}`, 60), callback_data: `p:${r.p.id}` }]),
     [{ text: '📉 Baixaram de preço', callback_data: 'baixou' }, { text: '↩️ Início', callback_data: 'home' }],
@@ -188,6 +205,7 @@ async function baixou(ctx: Ctx) {
   if (!rows.length) return send(ctx.chat, '📉 Nenhum preço baixou na última semana. Veja as <b>Ofertas de hoje</b>:', { reply_markup: { inline_keyboard: [[{ text: '🔥 Ofertas de hoje', callback_data: 'ofertas' }]] } });
   const lines = ['📉 <b>Baixaram de preço</b> na última semana', ''];
   for (const p of rows) lines.push(`• ${esc(cut(pname(p), 40))}: <b>−${String(Math.abs(p.change_pct!)).replace('.', ',')}%</b> · ${brl(p.prices[0].price)} no ${esc(marketName(p.prices[0].market_id))}`);
+  lines.push('', AVISO);
   return send(ctx.chat, lines.join('\n'), { reply_markup: { inline_keyboard: [
     ...rows.map((p) => [{ text: cut(`${pname(p)} · ${brl(p.prices[0].price)}`, 60), callback_data: `p:${p.id}` }]),
     [{ text: '🔥 Ofertas de hoje', callback_data: 'ofertas' }, { text: '↩️ Início', callback_data: 'home' }],
@@ -219,10 +237,12 @@ async function sendProduct(ctx: Ctx, p: Product) {
   }
   if (p.change_pct != null && Math.abs(p.change_pct) >= 1)
     lines.push(`${p.change_pct < 0 ? '📉 Baixou' : '📈 Subiu'} ${String(Math.abs(p.change_pct)).replace('.', ',')}% na última semana.`);
+  if (p.prices[0]) lines.push('', validity(p.prices[0]));
+  lines.push('', AVISO);
   return send(ctx.chat, lines.join('\n'), {
     reply_markup: { inline_keyboard: [
-      [{ text: '➕ Pôr na lista', callback_data: `add:${p.id}` }, { text: '⭐ Acompanhar preço', callback_data: `fav:${p.id}` }],
-      [{ text: '🌐 Ver no site', url: SITE + '#ofertas' }],
+      [{ text: '➕ Pôr na lista', callback_data: `add:${p.id}` }, { text: '🔔 Avisar se mudar', callback_data: `fav:${p.id}` }],
+      [{ text: '🌐 Ver no site', url: productUrl(p.id) }],
     ] },
   });
 }
@@ -406,6 +426,72 @@ function readQR(data: Uint8Array, w: number, h: number): string | null {
   return jsQR(crop, cw, ch, { inversionAttempts: 'attemptBoth' })?.data ?? null;
 }
 
+// ---------------------------------------------------------------- avisos de preço (agendamento a cada 15 min)
+async function toggleAlerts(ctx: Ctx) {
+  if (!ctx.user) return askLink(ctx, 'receber avisos quando o preço mudar');
+  const { data } = await sb.from('tg_contacts').select('alerts').eq('chat_id', ctx.chat).maybeSingle();
+  const on = !(data?.alerts ?? true);
+  await sb.from('tg_contacts').update({ alerts: on }).eq('chat_id', ctx.chat);
+  return send(ctx.chat, on
+    ? '🔔 <b>Avisos de preço ligados.</b> Quando mudar o preço do que você acompanha (favoritos, Lista do mês e o que já comprou), eu aviso aqui, das 8h às 21h, no máximo 6 por dia.'
+    : '🔕 <b>Avisos de preço pausados.</b> Para voltar a receber, mande /avisos de novo.');
+}
+
+type Alert = { chat_id: number; product_id: number; name: string; brand: string | null; unit: string | null; photo: string | null;
+  from: number; to: number; from_market: number | null; best: Price };
+
+/** texto do aviso: o que mudou, onde, até quando vale, de onde veio o preço e o aviso de que pode mudar */
+function alertText(a: Alert) {
+  const down = a.to < a.from, pct = Math.round(Math.abs(a.to - a.from) / a.from * 100);
+  const name = [a.name, a.brand, a.unit].filter(Boolean).join(' ');
+  const where = marketName(a.best.market_id);
+  const before = a.from_market && a.from_market !== a.best.market_id ? ` (era no ${esc(marketName(a.from_market))})` : '';
+  return [
+    `${down ? '📉 <b>Baixou' : '📈 <b>Subiu'}: ${esc(name)}</b>`,
+    '',
+    `De ${brl(a.from)}${before} por <b>${brl(a.to)}</b> no <b>${esc(where)}</b> (${down ? '−' : '+'}${pct}%)` + (a.best.regular ? ` · preço normal ${brl(a.best.regular)}` : ''),
+    validity(a.best),
+    `🕒 Atualizado ${ago(a.best.at).replace(/^\S+ /, '')}${a.best.src && SRC[a.best.src] ? `, ${SRC[a.best.src]}` : ''}.`,
+    '',
+    `🔗 <a href="${productUrl(a.product_id)}">Ver no site, com todos os mercados</a>`,
+    '',
+    AVISO,
+  ].filter((l, i, arr) => l !== '' || arr[i - 1] !== '').join('\n');
+}
+
+async function sendAlert(a: Alert) {
+  const kb = { inline_keyboard: [
+    [{ text: '🌐 Ver no site', url: productUrl(a.product_id) }, { text: '➕ Pôr na lista', callback_data: `add:${a.product_id}` }],
+    [{ text: '🔕 Pausar avisos', callback_data: 'mute' }],
+  ] };
+  const text = alertText(a);
+  const photo = photoUrl(a.photo);
+  let r = photo && text.length <= 1024
+    ? await tg('sendPhoto', { chat_id: a.chat_id, photo, caption: text, parse_mode: 'HTML', reply_markup: kb })
+    : null;
+  // sem foto, foto que o Telegram não conseguiu baixar ou texto longo: vai como mensagem
+  if (!r?.ok && r?.error_code !== 403) r = await send(a.chat_id, text, { reply_markup: kb });
+  return r;
+}
+
+async function runAlerts() {
+  await catalog();
+  const { data, error } = await sb.rpc('tg_alerts_collect', { p_limit: 300 });
+  if (error) return { error: error.message };
+  const list = (data ?? []) as Alert[];
+  let ok = 0, fail = 0;
+  for (const a of list) {
+    const r = await sendAlert(a);
+    if (r?.ok) ok++;
+    else {
+      fail++;
+      // a pessoa bloqueou o robô: para de tentar
+      if (r?.error_code === 403) await sb.from('tg_contacts').update({ alerts: false }).eq('chat_id', a.chat_id);
+    }
+  }
+  return { enviados: ok, falharam: fail };
+}
+
 // ---------------------------------------------------------------- comandos e roteamento
 async function onText(ctx: Ctx, raw: string) {
   const t = raw.trim();
@@ -428,6 +514,7 @@ async function onText(ctx: Ctx, raw: string) {
     if (cmd === 'conta') return ctx.user
       ? send(ctx.chat, '✅ Sua conta do site está ligada a este Telegram.\n\nPara desligar: /sair')
       : askLink(ctx, 'usar a lista, guardar notas e ganhar pontos');
+    if (cmd === 'avisos') return toggleAlerts(ctx);
     if (cmd === 'sair') {
       await sb.from('tg_contacts').update({ user_id: null, linked_at: null }).eq('chat_id', ctx.chat);
       return send(ctx.chat, '👋 Desliguei sua conta deste Telegram. Os preços continuam funcionando; para ligar de novo: /conta');
@@ -462,6 +549,10 @@ async function onCallback(ctx: Ctx, cb: any) {
   const cat = await catalog();
   if (k === 'p') { await answer(); const p = cat.byId.get(pid); return p ? sendProduct(ctx, p) : send(ctx.chat, 'Esse produto saiu do catálogo.'); }
   if (k === 'home') { await answer(); return welcome(ctx); }
+  if (k === 'mute' || k === 'unmute') {
+    await sb.from('tg_contacts').update({ alerts: k === 'unmute' }).eq('chat_id', ctx.chat);
+    return answer(k === 'mute' ? '🔕 Avisos de preço pausados. Para voltar: /avisos' : '🔔 Avisos de preço ligados.');
+  }
   if (k === 'mylist') { await answer(); return showList(ctx); }
   if (k === 'ofertas') { await answer(); return ofertas(ctx); }
   if (k === 'baixou') { await answer(); return baixou(ctx); }
@@ -483,7 +574,10 @@ async function onCallback(ctx: Ctx, cb: any) {
   }
   if (k === 'fav') {
     const { error } = await sb.from('favorites').upsert({ user_id: ctx.user, product_id: pid }, { onConflict: 'user_id,product_id', ignoreDuplicates: true });
-    return answer(error ? 'Não consegui agora. Tente de novo.' : '⭐ Agora você acompanha este preço. O aviso de que baixou chega pelo site.');
+    if (error) return answer('Não consegui agora. Tente de novo.');
+    await answer('🔔 Pronto! Aviso aqui quando o preço mudar.');
+    const { data: ct } = await sb.from('tg_contacts').select('alerts').eq('chat_id', ctx.chat).maybeSingle();
+    return ct?.alerts === false ? send(ctx.chat, '🔕 Seus avisos de preço estão pausados. Para voltar a receber: /avisos') : undefined;
   }
   return answer();
 }
@@ -518,6 +612,12 @@ async function handle(up: any) {
 
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return new Response('ok');
+  // agendamento (pg_cron, a cada 15 min): manda os avisos de preço. Usa a mesma senha da função "notificar".
+  const cron = Deno.env.get('NOTIFICAR_SEGREDO');
+  if (req.headers.get('x-segredo')) {
+    if (!cron || req.headers.get('x-segredo') !== cron || !TOKEN) return new Response('não autorizado', { status: 401 });
+    try { return Response.json(await runAlerts()); } catch (e) { console.error('avisos', e); return Response.json({ error: String(e) }, { status: 500 }); }
+  }
   if (!TOKEN || !SECRET) return new Response('faltam os segredos TELEGRAM_TOKEN e TELEGRAM_SECRET', { status: 500 });
   if (req.headers.get('x-telegram-bot-api-secret-token') !== SECRET) return new Response('não autorizado', { status: 401 });
   let up: any;

@@ -157,6 +157,13 @@ O robô já está criado (@tabaratomesmo_bot), com comandos, descrição e o web
    - `TELEGRAM_SECRET`: a senha do webhook (a mesma do `secret_token` do setWebhook)
 5. Mande "oi" para o robô. Para ver erros: Edge Functions › telegram › Logs.
 
+**Avisos de preço pelo Telegram:** rode também [`supabase/atualizacoes/atualizacao-2026-10-telegram-avisos.sql`](supabase/atualizacoes/atualizacao-2026-10-telegram-avisos.sql) e crie o agendamento (a cada 15 min, usa a mesma senha `NOTIFICAR_SEGREDO` da função `notificar`, sem precisar copiar a senha):
+```sql
+select cron.schedule('tb-telegram-avisos', '7,22,37,52 * * * *',
+  replace(command, '/functions/v1/notificar', '/functions/v1/telegram')) from cron.job where jobname = 'tb-notificar';
+```
+Quem ligou a conta recebe, quando o menor preço de um produto que acompanha (favoritos, Lista do mês e o que comprou nas notas dos últimos 120 dias) muda 3% e R$ 0,10 ou mais: foto, preço anterior e novo, mercado, até quando vale (data da promoção, ou o aviso de que o preço normal não tem data), de onde veio o preço, o link do produto no site (`?produto=ID`) e o aviso de que os preços podem mudar sem aviso prévio e que o site não controla os preços dos mercados. Das 8h às 21h, no máximo 3 por vez e 6 por dia; `/avisos` pausa ou volta; quem bloqueia o robô deixa de receber. Liga e desliga para todos em admin (`telegram_alerts`).
+
 Trocar o token (no @BotFather, `/revoke`): ponha o novo em `TELEGRAM_TOKEN` e registre o webhook de novo, abrindo no navegador
 `https://api.telegram.org/bot<NOVO_TOKEN>/setWebhook?url=https://lygqyliiebcxwxioxbvd.supabase.co/functions/v1/telegram&secret_token=<TELEGRAM_SECRET>&allowed_updates=["message","callback_query"]`.
 Se mudar `js/voice.js`, copie para `supabase/functions/telegram/voice.js` e publique a função `telegram` de novo (o teste automático avisa se as duas cópias ficarem diferentes).

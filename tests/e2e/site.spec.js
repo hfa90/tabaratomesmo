@@ -134,6 +134,17 @@ test('o service worker guarda só arquivos que existem', async () => {
   expect(missing).toEqual([]);
 });
 
+test('link de produto (?produto=ID) abre o detalhe com o aviso de que os preços podem mudar', async ({ page }) => {
+  const errs = await ofertas(page);
+  const pid = await page.locator('.card[data-pid]').first().getAttribute('data-pid');
+  await page.goto(`/?produto=${pid}#ofertas`);
+  await expect(page.locator('#productSheet')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('#productSheet .pd__disclaimer')).toContainText('podem mudar sem aviso prévio');
+  await expect(page.locator('#productSheet .pd__disclaimer')).toContainText('não controla os preços');
+  expect(page.url()).not.toContain('produto=');
+  expect(errs).toEqual([]);
+});
+
 test('o robô do Telegram usa o mesmo leitor de frases do site', async () => {
   const a = fs.readFileSync(path.join(ROOT, 'js/voice.js'), 'utf8');
   const b = fs.readFileSync(path.join(ROOT, 'supabase/functions/telegram/voice.js'), 'utf8');

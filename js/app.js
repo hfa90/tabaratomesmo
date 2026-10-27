@@ -366,6 +366,8 @@ async function openProduct(pid) {
         </ol>
       </div>
 
+      <p class="pd__disclaimer">${ic('warn')} <span>Os preços podem mudar sem aviso prévio. O Tá Barato Mesmo? não controla os preços dos supermercados: confira na loja antes de comprar.</span></p>
+
       ${sizesBox(p)}
       ${deals.productNote(p)}
 
@@ -981,6 +983,15 @@ async function boot() {
       track('push_open', { query: av, campaign_id: q.get('camp') || null });
       if (q.get('camp')) track('camp_click', { campaign_id: q.get('camp') });
       history.replaceState(null, '', location.pathname + location.hash);
+    }
+  } catch {}
+  // link de um produto (avisos do robô do Telegram e compartilhamentos): ?produto=ID abre o detalhe
+  try {
+    const q = new URLSearchParams(location.search); const pid = Number(q.get('produto'));
+    if (pid) {
+      q.delete('produto'); history.replaceState(null, '', location.pathname + (q.toString() ? `?${q}` : '') + location.hash);
+      if (S.products.some((x) => x.id === pid)) setTimeout(() => openProduct(pid), 250);
+      else toast('Esse produto não está mais no site.');
     }
   } catch {}
   push.refresh(6000); // mantém em dia o que o servidor acompanha (avisos com o site fechado)
