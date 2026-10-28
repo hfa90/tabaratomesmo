@@ -168,6 +168,10 @@ Trocar o token (no @BotFather, `/revoke`): ponha o novo em `TELEGRAM_TOKEN` e re
 `https://api.telegram.org/bot<NOVO_TOKEN>/setWebhook?url=https://lygqyliiebcxwxioxbvd.supabase.co/functions/v1/telegram&secret_token=<TELEGRAM_SECRET>&allowed_updates=["message","callback_query"]`.
 Se mudar `js/voice.js`, copie para `supabase/functions/telegram/voice.js` e publique a função `telegram` de novo (o teste automático avisa se as duas cópias ficarem diferentes).
 
+### 1g. Mapa de unidades (admin.html#unidades)
+Mostra no mapa os supermercados e atacados de Manaus do **OpenStreetMap** (Overpass API, `shop=supermarket` e `shop=wholesale`): verde = já cadastrada, laranja = de uma rede do site e falta cadastrar, cinza = outros mercados. Tocar numa unidade abre o cadastro preenchido (rede reconhecida pelo nome, nome sugerido como "DB Ponta Negra", bairro, endereço, horário e coordenadas); arraste o marcador até a entrada da loja e salve. Se a unidade estiver a até 150 m de uma loja já cadastrada, a tela pergunta se é a mesma e liga as duas. Faltou no OpenStreetMap? Busque o endereço (Nominatim) ou toque no lugar certo do mapa. Redes novas (ex.: São Jorge) entram **fora do site** até terem preços (Supermercados › "Aparece no site").
+Precisa de [`supabase/atualizacoes/atualizacao-2026-10-mapa-unidades.sql`](supabase/atualizacoes/atualizacao-2026-10-mapa-unidades.sql) (`stores.osm_ref`, que impede cadastrar a mesma unidade duas vezes). Dados © colaboradores do OpenStreetMap, licença ODbL: os créditos ficam no mapa do site e do admin.
+
 ### 2. Logomarcas oficiais
 Coloque os arquivos em `assets/logos/` com estes nomes (PNG ou troque a extensão na coluna `logo_url`):
 
@@ -243,6 +247,7 @@ supabase/configurar-auth.mjs   aplica Site URL, endereços de retorno e e-mails 
 supabase/functions/notificar/index.ts   avisos no celular com o site fechado (Web Push, a cada 15 min)
 supabase/functions/telegram/index.ts    robô do Telegram: preços, nota fiscal e Lista do mês
 js/telegram.js       ligar a conta ao robô do Telegram (Você › Conta)
+js/admin-mapa.js     admin › Mapa de unidades (OpenStreetMap): cadastrar as lojas tocando no mapa
 supabase/atualizacoes/   atualizações do banco para quem já tinha o schema (o schema.sql já inclui todas)
 supabase/agendar-avisos.sql   agenda a função notificar (pg_cron + pg_net)
 js/push.js             inscrição dos avisos com o site fechado

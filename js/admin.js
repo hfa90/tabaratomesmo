@@ -7,6 +7,7 @@ import { hbars, kpi, heatmap, fmtN, downloadCSV } from './viz.js';
 import * as adsUI from './ads.js';
 import * as encarte from './encarte.js';
 import { THEMES, nextDates } from './temas.js';
+import * as mapa from './admin-mapa.js';
 
 const st = { user: null, days: 30, usersQ: '', usersFilter: 'all', usersPage: 0, repStatus: 'pendente', modTab: 'precos', prodQ: '', overview: null, markets: null, adStatus: 'pendente', ads: null };
 const PAGE = 50;
@@ -84,7 +85,7 @@ async function enter() {
 
 function route() {
   const v = (location.hash || '#geral').slice(1);
-  const views = { geral: renderOverview, encartes: renderEncartes, mercados: renderMarkets, usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, datas: renderEventos, uso: renderUso, saude: renderSaude, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
+  const views = { geral: renderOverview, encartes: renderEncartes, mercados: renderMarkets, unidades: () => mapa.render(head), usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, datas: renderEventos, uso: renderUso, saude: renderSaude, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
   const view = views[v] ? v : 'geral';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
   views[view]();

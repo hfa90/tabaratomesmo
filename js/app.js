@@ -452,7 +452,7 @@ function drawMap() {
   const center = S.pos || CONFIG.DEFAULT_POS;
   if (!S.map) {
     S.map = L.map('map', { zoomControl: true, attributionControl: true }).setView([center.lat, center.lng], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(S.map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">colaboradores do OpenStreetMap</a>' }).addTo(S.map);
     S.mapLayers = L.layerGroup().addTo(S.map);
   }
   S.mapLayers.clearLayers();

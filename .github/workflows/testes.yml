@@ -40,6 +40,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes.sql
       - name: Testes do robô do Telegram
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-telegram.sql
+      - name: Testes do Mapa de unidades
+        run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-mapa.sql
 
   site:
     runs-on: ubuntu-latest
