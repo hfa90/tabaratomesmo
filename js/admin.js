@@ -85,7 +85,8 @@ async function enter() {
 
 function route() {
   const v = (location.hash || '#geral').slice(1);
-  const views = { geral: renderOverview, encartes: renderEncartes, mercados: renderMarkets, unidades: () => mapa.render(head), usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, datas: renderEventos, uso: renderUso, saude: renderSaude, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
+  const views = { geral: renderOverview, encartes: renderEncartes, mercados: renderMarkets, unidades: () => mapa.render(head, { mode: 'admin', demo: A.MODE === 'demo', markets: A.markets, saveStore: A.saveStore, saveMarket: A.saveMarket,
+      demoStores: (ms) => Promise.all(ms.map((m) => A.access(m.id).then((d) => d.stores).catch(() => []))).then((a) => a.flat()) }), usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, datas: renderEventos, uso: renderUso, saude: renderSaude, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
   const view = views[v] ? v : 'geral';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
   views[view]();

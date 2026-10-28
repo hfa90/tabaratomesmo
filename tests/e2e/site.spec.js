@@ -168,6 +168,56 @@ test('admin › Mapa de unidades: mostra as unidades do OpenStreetMap e cadastra
   expect(errs).toEqual([]);
 });
 
+test('portal: o mercado cadastra a própria unidade e cria promoção só nela; o site mostra em cima do produto', async ({ page }) => {
+  const osm = { elements: [{ type: 'node', id: 10, lat: -3.072, lon: -60.016, tags: { shop: 'supermarket', name: 'Supermercado Coema', 'addr:suburb': 'Flores' } }] };
+  await page.route(/overpass/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(osm) }));
+  await page.route(/nominatim/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"address":{}}' }));
+  const errs = await open(page, '/parceiros.html');
+  await page.click('[data-demo]');
+  await page.goto('/parceiros.html#unidades');
+  await page.locator('[data-um-go="node/10"]').evaluate((b) => b.click());
+  const f = page.locator('#umForm');
+  await expect(f.locator('select[name=market]')).toBeDisabled(); // só a própria rede
+  await expect(f.locator('input[name=name]')).toHaveValue('Coema Flores');
+  await f.locator('.btn--primary').evaluate((b) => b.click());
+  await expect(page.locator('#umPanel .note')).toContainText('cadastrada');
+  await page.goto('/parceiros.html#promocoes');
+  await page.click('[data-newpromo]');
+  const pf = page.locator('#promoForm');
+  await pf.locator('select[name=store_id]').selectOption({ label: 'Só na unidade Coema Flores (Flores)' });
+  const pid = await pf.locator('select[name=product_id]').inputValue();
+  const label = await pf.locator('select[name=product_id] option:checked').textContent();
+  const price = Number(label.match(/R\$\s*([\d.,]+)/)[1].replace('.', '').replace(',', '.'));
+  await pf.locator('input[name=promo_price]').fill((Math.round(price * 70) / 100).toFixed(2).replace('.', ','));
+  await pf.locator('input[value=geral]').check();
+  await pf.locator('.btn--primary').evaluate((b) => b.click());
+  await expect(page.locator('#promoWrap .pill--unit')).toContainText('Coema Flores');
+  await page.goto('/#ofertas');
+  const card = page.locator(`.card[data-pid="${pid}"]`);
+  await expect(card.locator('.card__unit')).toContainText('só no Coema Flores');
+  await card.locator('.card__hit').click();
+  await expect(page.locator('#productSheet .unit-promo')).toContainText('Nas outras unidades do Coema vale o preço normal');
+  expect(errs).toEqual([]);
+});
+
+test('encarte: o que já foi lido continua lá ao sair e voltar', async ({ page }) => {
+  const errs = await open(page, '/admin.html');
+  await page.click('[data-demo]');
+  await page.goto('/admin.html#encartes');
+  // uma "foto" de encarte qualquer: na demonstração a leitura é simulada
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGP8z8BQz0AEYBxVSF+FAP5FDvcfRYWgAAAAAElFTkSuQmCC', 'base64');
+  await page.setInputFiles('#enFiles', { name: 'encarte.png', mimeType: 'image/png', buffer: png });
+  await expect(page.locator('.en-tbl tbody tr').first()).toBeVisible({ timeout: 20_000 });
+  const n = await page.locator('.en-tbl tbody tr').count();
+  await page.goto('/admin.html#usuarios');
+  await page.goto('/admin.html#encartes');
+  await expect(page.locator('.en-saved')).toContainText('Encarte em andamento');
+  await expect(page.locator('.en-tbl tbody tr')).toHaveCount(n);
+  await page.click('[data-en-reset]');
+  await expect(page.locator('.en-tbl tbody tr')).toHaveCount(0);
+  expect(errs).toEqual([]);
+});
+
 test('o robô do Telegram usa o mesmo leitor de frases do site', async () => {
   const a = fs.readFileSync(path.join(ROOT, 'js/voice.js'), 'utf8');
   const b = fs.readFileSync(path.join(ROOT, 'supabase/functions/telegram/voice.js'), 'utf8');

@@ -172,6 +172,12 @@ Se mudar `js/voice.js`, copie para `supabase/functions/telegram/voice.js` e publ
 Mostra no mapa os supermercados e atacados de Manaus do **OpenStreetMap** (Overpass API, `shop=supermarket` e `shop=wholesale`): verde = já cadastrada, laranja = de uma rede do site e falta cadastrar, cinza = outros mercados. Tocar numa unidade abre o cadastro preenchido (rede reconhecida pelo nome, nome sugerido como "DB Ponta Negra", bairro, endereço, horário e coordenadas); arraste o marcador até a entrada da loja e salve. Se a unidade estiver a até 150 m de uma loja já cadastrada, a tela pergunta se é a mesma e liga as duas. Faltou no OpenStreetMap? Busque o endereço (Nominatim) ou toque no lugar certo do mapa. Redes novas (ex.: São Jorge) entram **fora do site** até terem preços (Supermercados › "Aparece no site").
 Precisa de [`supabase/atualizacoes/atualizacao-2026-10-mapa-unidades.sql`](supabase/atualizacoes/atualizacao-2026-10-mapa-unidades.sql) (`stores.osm_ref`, que impede cadastrar a mesma unidade duas vezes). Dados © colaboradores do OpenStreetMap, licença ODbL: os créditos ficam no mapa do site e do admin.
 
+### 1h. Promoção por unidade e Mapa de unidades no portal (outubro/2026)
+Rode [`supabase/atualizacoes/atualizacao-2026-10-promo-unidade.sql`](supabase/atualizacoes/atualizacao-2026-10-promo-unidade.sql).
+- **Portal › Mapa de unidades** (`parceiros.html#unidades`): o mesmo mapa do admin, só com as unidades da própria rede. O supermercado cadastra e corrige as próprias lojas (`market_save_store`); o banco recusa mexer nas de outra rede.
+- **Promoção só numa unidade** (Portal › Promoções › "Vale em"): `promotions.store_id`. Não muda o preço da rede na comparação (`v_products` ignora); o site mostra uma faixa em cima do produto ("R$ 15,50 só no Coema Flores · Flores", com a distância quando a localização está ligada) e, no detalhe, o quadro com bairro, validade, código (se exclusiva), rota e o aviso de que nas outras unidades vale o preço normal (`v_store_promos`). O robô do Telegram também mostra.
+- **Encarte (IA)**: o encarte em andamento não se perde ao sair da tela nem ao recarregar (fica no aparelho por 7 dias); dá para enviar mais páginas depois. "Começar outro encarte" limpa.
+
 ### 2. Logomarcas oficiais
 Coloque os arquivos em `assets/logos/` com estes nomes (PNG ou troque a extensão na coluna `logo_url`):
 

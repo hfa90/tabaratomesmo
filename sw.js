@@ -2,7 +2,7 @@
 //  - arquivos do site: rede primeiro, cópia salva quando não há sinal
 //  - bibliotecas de CDN e fontes (Supabase, leitor de código, mapa): cópia salva primeiro (endereços com versão fixa)
 //  - API do Supabase: sempre ao vivo (o app guarda o catálogo no aparelho e enfileira os envios)
-const CACHE = 'tb-v26';
+const CACHE = 'tb-v27';
 const CDN = 'tb-cdn-v1';
 const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/api.js', 'js/config.js', 'js/chart.js', 'js/core.js', 'js/rancho.js',
   'js/fiscal.js', 'js/account.js', 'js/telegram.js', 'js/track.js', 'js/carrinho.js', 'js/voice.js', 'js/fila.js', 'js/ads.js', 'js/presence.js',

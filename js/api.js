@@ -35,6 +35,7 @@ export async function loadCatalog() {
     MODE = 'live';
     const active = new Set(m.data.map((x) => x.id));
     const out = { supermarkets: m.data, stores: s.data.filter((x) => active.has(x.supermarket_id)), categories: cat.data, products: p.data.map(normalize) };
+    attachStorePromos(out.products, await storePromos(c));
     off.save('catalog', out); off.setSavedAt(new Date().toISOString());
     return out;
   } catch (e) {
@@ -43,8 +44,26 @@ export async function loadCatalog() {
     console.warn('[TáBarato] usando dados de demonstração:', e.message || e);
     MODE = 'demo';
     const { DEMO } = await import('./demo-data.js');
-    return { ...DEMO, products: applyPortalDemo(buildDemoProducts(DEMO)) };
+    return { ...DEMO, products: applyPortalDemo(buildDemoProducts(DEMO), DEMO.stores) };
   }
+}
+
+// ---------------------------------------------------------------- promoções que valem só numa unidade (v_store_promos)
+async function storePromos(c) {
+  try {
+    const { data, error } = await withTimeout(c.from('v_store_promos').select('*'), 6000);
+    if (error) return []; // banco sem a atualização: segue sem elas
+    return data || [];
+  } catch { return []; }
+}
+function attachStorePromos(products, rows) {
+  const by = new Map();
+  for (const r of rows) {
+    const x = { ...r, price: Number(r.price), regular: Number(r.regular), lat: Number(r.lat), lng: Number(r.lng) };
+    if (!by.has(r.product_id)) by.set(r.product_id, []);
+    by.get(r.product_id).push(x);
+  }
+  for (const p of products) p.storePromos = (by.get(p.id) || []).sort((a, b) => a.price - b.price);
 }
 
 async function fromSaved() {
@@ -69,7 +88,7 @@ function normalize(p) {
 
 // Em modo demonstração, o portal dos mercados grava no aparelho (tb.portalDemo);
 // aplicamos aqui para o site refletir produtos, fotos e promoções criados lá.
-function applyPortalDemo(products) {
+function applyPortalDemo(products, demoStores = []) {
   const d = ls.get('tb.portalDemo', null);
   if (!d) return products;
   const now = Date.now();
@@ -83,9 +102,17 @@ function applyPortalDemo(products) {
       if (v.price != null) { if (!x) { x = { market_id: mid, prev: null }; p.prices.push(x); } x.price = v.price; x.at = v.at || new Date().toISOString(); }
       if (v.photo) p.photo = v.photo;
     }
+    p.storePromos = [];
     for (const pr of d.promos || []) {
       if (pr.product_id !== p.id || !pr.active || new Date(pr.ends_at) < now || new Date(pr.starts_at) > now) continue;
       const x = p.prices.find((y) => y.market_id === pr.supermarket_id);
+      if (pr.store_id) {
+        // promoção de uma unidade só: não muda o preço da rede
+        const st = [...demoStores.map((s) => ({ ...s, ...(d.storeEdits || {})[s.id] })), ...(d.newStores || [])].find((s) => s.id === Number(pr.store_id));
+        if (st && x && pr.promo_price < x.price) p.storePromos.push({ id: pr.id, product_id: p.id, market_id: pr.supermarket_id, store_id: st.id, store: st.name, neighborhood: st.neighborhood,
+          lat: Number(st.lat), lng: Number(st.lng), price: pr.promo_price, regular: x.price, kind: pr.kind, code: pr.code, title: pr.title, ends: pr.ends_at, max: pr.max_per_client });
+        continue;
+      }
       if (x && pr.promo_price < x.price) { x.regular = x.price; x.price = pr.promo_price; x.promo = { kind: pr.kind, code: pr.code, ends: pr.ends_at }; }
     }
     p.prices.sort((a, b) => a.price - b.price);

@@ -32,7 +32,8 @@ const sb = createClient(URL_, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth
 
 type Ctx = { chat: number; user: string | null; first: string };
 type Price = { market_id: number; price: number; regular: number | null; at: string; src?: string; promo?: { title?: string; ends?: string; kind?: string; code?: string } | null };
-type Product = { id: number; name: string; brand: string | null; unit: string | null; ean: string | null; photo?: string | null; category_name?: string; change_pct: number | null; prices: Price[] };
+type StorePromo = { market_id: number; store: string; neighborhood: string | null; price: number; regular: number; kind: string; code: string | null; ends: string | null };
+type Product = { id: number; name: string; brand: string | null; unit: string | null; ean: string | null; photo?: string | null; category_name?: string; change_pct: number | null; prices: Price[]; storePromos?: StorePromo[] };
 
 const BTN = { ofertas: '🔥 Ofertas de hoje', lista: '🛒 Minha lista', nota: '🧾 Mandar nota', ajuda: '❓ Ajuda' };
 const MENU = { keyboard: [[{ text: BTN.ofertas }, { text: BTN.lista }], [{ text: BTN.nota }, { text: BTN.ajuda }]], resize_keyboard: true, is_persistent: true };
@@ -104,6 +105,14 @@ async function catalog() {
     prices: (p.prices || []).map((x: any) => ({ ...x, price: Number(x.price), regular: x.regular == null ? null : Number(x.regular) }))
       .sort((a: Price, b: Price) => a.price - b.price),
   }));
+  // promoções que valem só numa unidade (atualizacao-2026-10-promo-unidade.sql); sem a visão, segue sem elas
+  const sp = await sb.from('v_store_promos').select('product_id, market_id, store, neighborhood, price, regular, kind, code, ends');
+  const byP = new Map<number, StorePromo[]>();
+  for (const r of (sp.error ? [] : sp.data || []) as any[]) {
+    const x = { ...r, price: Number(r.price), regular: Number(r.regular) };
+    byP.set(r.product_id, [...(byP.get(r.product_id) || []), x].sort((a, b) => a.price - b.price));
+  }
+  products.forEach((p) => { p.storePromos = byP.get(p.id) || []; });
   CAT = {
     markets: new Map((m.data || []).map((x: any) => [x.id, x])),
     products,
@@ -237,6 +246,10 @@ async function sendProduct(ctx: Ctx, p: Product) {
   }
   if (p.change_pct != null && Math.abs(p.change_pct) >= 1)
     lines.push(`${p.change_pct < 0 ? '📉 Baixou' : '📈 Subiu'} ${String(Math.abs(p.change_pct)).replace('.', ',')}% na última semana.`);
+  if (p.storePromos?.length) {
+    lines.push('', '📍 <b>Promoção só em uma unidade:</b>');
+    for (const x of p.storePromos.slice(0, 4)) lines.push(`• ${esc(x.store)}${x.neighborhood ? ` (${esc(x.neighborhood)})` : ''}: <b>${brl(x.price)}</b> <s>${brl(x.regular)}</s>${x.ends ? ` até ${fmtDay(x.ends)}` : ''}${x.kind === 'exclusiva' && x.code ? ` · código <code>${esc(x.code)}</code>` : ''}`);
+  }
   if (p.prices[0]) lines.push('', validity(p.prices[0]));
   lines.push('', AVISO);
   return send(ctx.chat, lines.join('\n'), {

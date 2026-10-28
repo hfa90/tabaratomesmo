@@ -195,12 +195,41 @@ export async function promos(mid) {
   return data.map((p) => ({ ...p, promo_price: Number(p.promo_price) }));
 }
 
+// ---------------------------------------------------------------- unidades (lojas) da rede
+export async function stores(mid) {
+  if (MODE === 'demo') {
+    const { DEMO } = await import('./demo-data.js');
+    const d = demoState();
+    return [...DEMO.stores.filter((s) => s.supermarket_id === mid && !(d.storeEdits || {})[s.id]?.deleted).map((s) => ({ ...s, ...(d.storeEdits || {})[s.id] })),
+      ...(d.newStores || []).filter((s) => s.supermarket_id === mid)];
+  }
+  const c = await api.sbClient();
+  const { data, error } = await c.from('stores').select('*').eq('supermarket_id', mid).order('name');
+  if (error) throw error;
+  return data || [];
+}
+/** cadastra ou corrige uma unidade da própria rede (o banco recusa as de outra) */
+export async function saveStore(p) {
+  if (MODE === 'demo') {
+    const d = demoState(); d.newStores ||= []; d.storeEdits ||= {};
+    const row = { ...p, lat: Number(p.lat), lng: Number(p.lng), supermarket_id: Number(p.supermarket_id) };
+    if (p.id && d.newStores.some((s) => s.id === Number(p.id))) Object.assign(d.newStores.find((s) => s.id === Number(p.id)), row, { id: Number(p.id) });
+    else if (p.id) d.storeEdits[p.id] = { ...(d.storeEdits[p.id] || {}), ...row, id: Number(p.id) };
+    else d.newStores.push({ ...row, id: 9000 + d.newStores.length });
+    saveDemo(d); return;
+  }
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc('market_save_store', { p });
+  if (error) throw new Error(/market_save_store|PGRST202/i.test(error.message + error.code) ? 'Falta rodar a atualização do banco (atualizacao-2026-10-promo-unidade.sql).' : error.message);
+  return data;
+}
+
 export async function savePromo(p) {
   if (MODE === 'demo') {
     const d = demoState();
     if (p.id) Object.assign(d.promos.find((x) => x.id === p.id) || {}, p);
     else {
-      d.promos.filter((x) => x.product_id === p.product_id && x.supermarket_id === p.supermarket_id && x.active).forEach((x) => { x.active = false; });
+      d.promos.filter((x) => x.product_id === p.product_id && x.supermarket_id === p.supermarket_id && x.active && (x.store_id ?? null) === (p.store_id ?? null)).forEach((x) => { x.active = false; });
       d.promos.push({ active: true, created_at: new Date().toISOString(), ...p, id: d.nextPromo++,
         code: p.kind === 'exclusiva' ? (p.code || 'TB' + Math.random().toString(36).slice(2, 7).toUpperCase()) : null });
     }
@@ -209,9 +238,13 @@ export async function savePromo(p) {
   const c = await api.sbClient();
   const row = { supermarket_id: p.supermarket_id, product_id: p.product_id, kind: p.kind, promo_price: p.promo_price, title: p.title || null,
     code: p.code || null, max_per_client: p.max_per_client || null, starts_at: p.starts_at, ends_at: p.ends_at, active: p.active ?? true };
+  if (p.store_id) row.store_id = p.store_id; else if (p.id) row.store_id = null;
   if (!p.id) {
-    // uma promoção ativa por produto: encerra a anterior
-    await c.from('promotions').update({ active: false }).eq('supermarket_id', p.supermarket_id).eq('product_id', p.product_id).eq('active', true);
+    // uma promoção ativa por produto em cada lugar (rede toda, ou cada unidade): encerra a anterior do mesmo lugar
+    let q = c.from('promotions').update({ active: false }).eq('supermarket_id', p.supermarket_id).eq('product_id', p.product_id).eq('active', true);
+    q = p.store_id ? q.eq('store_id', p.store_id) : q.is('store_id', null);
+    const { error: e0 } = await q;
+    if (e0 && /store_id/.test(e0.message)) throw new Error('Falta rodar a atualização do banco (atualizacao-2026-10-promo-unidade.sql).');
   }
   const { error } = p.id ? await c.from('promotions').update(row).eq('id', p.id) : await c.from('promotions').insert(row);
   if (error) throw new Error(error.message);

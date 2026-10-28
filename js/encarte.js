@@ -8,8 +8,14 @@ import * as api from './api.js';
 import { $, $$, esc, brl, logo } from './core.js';
 import { parse, match } from './voice.js';
 import * as ia from './ia.js';
+import * as off from './offline.js';
 
-let E = null; // estado
+// O encarte em andamento não se perde ao trocar de tela nem ao recarregar a página:
+// fica na memória (com as páginas abertas) e guardado no aparelho (sem as imagens grandes), por 7 dias.
+let E = null; // estado da tela aberta
+const SESSIONS = new Map(); // escopo ("admin" ou "mk:<id>") → estado
+const KEEP_MS = 7 * 864e5;
+const keyOf = (opts) => `encarte:${opts.demo ? 'demo:' : ''}${opts.fixedMarket ? 'mk:' + opts.fixedMarket : 'admin'}`;
 const pname = (p) => [p.name, p.brand, p.unit].filter(Boolean).join(' ');
 const fmt = (v) => (v == null ? '' : String(v.toFixed(2)).replace('.', ','));
 
@@ -28,7 +34,10 @@ export function normUnit(t, porKg = false) {
  * opts: { markets, fixedMarket, categories, apply(mid, rows, starts, ends, file), toast, demo }
  */
 export async function mount(el, opts) {
-  E = { el, opts, mid: opts.fixedMarket ?? null, pages: [], rows: [], filter: 'all', starts: '', ends: '', files: [], catalog: null, busy: false };
+  const key = keyOf(opts);
+  E = SESSIONS.get(key) || await restore(key) || { key, mid: opts.fixedMarket ?? null, pages: [], rows: [], filter: 'all', starts: '', ends: '', hint: '', fileNames: [], catalog: null, busy: false, result: '' };
+  E.el = el; E.opts = opts; E.key = key;
+  SESSIONS.set(key, E);
   el.innerHTML = `
     <header class="pt-head"><div><h1>Importar encarte com IA</h1>
       <p class="muted">Envie as fotos ou o PDF do encarte. A IA lê cada produto e preço, o sistema acha no catálogo e você só revisa o que estiver em dúvida antes de publicar.</p></div></header>
@@ -41,6 +50,7 @@ export async function mount(el, opts) {
       <label class="drop en-drop" id="enDrop"><input type="file" id="enFiles" accept="image/*,application/pdf" multiple hidden />
         <span class="en-drop__i" aria-hidden="true">🗞️</span><b>Arraste o encarte aqui</b><span class="muted small">Fotos (JPG, PNG) ou PDF, várias páginas de uma vez</span></label>
       <details class="en-hint"><summary>Dica para a IA (opcional)</summary><input id="enHint" maxlength="200" placeholder="Ex.: preços com cartão Clube valem só para associados" /></details>
+      <div id="enSaved"></div>
       <div id="enPages" class="en-pages"></div>
     </section>
     <section id="enReview"></section>`;
@@ -50,9 +60,51 @@ export async function mount(el, opts) {
   ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('is-over'); }));
   drop.addEventListener('drop', (e) => e.dataTransfer.files.length && start([...e.dataTransfer.files]));
   $('#enMk', el)?.addEventListener('change', (e) => { E.mid = e.target.value ? Number(e.target.value) : null; rematchPrices(); drawReview(); });
-  $('#enStart', el).addEventListener('change', (e) => (E.starts = e.target.value));
-  $('#enEnd', el).addEventListener('change', (e) => (E.ends = e.target.value));
-  api.loadCatalog().then((c) => { E.catalog = c.products; }).catch(() => { E.catalog = []; });
+  $('#enStart', el).addEventListener('change', (e) => { E.starts = e.target.value; persist(); });
+  $('#enEnd', el).addEventListener('change', (e) => { E.ends = e.target.value; persist(); });
+  $('#enHint', el).addEventListener('change', (e) => { E.hint = e.target.value; persist(); });
+  // devolve à tela o que já estava em andamento
+  if ($('#enMk', el) && E.mid) $('#enMk', el).value = E.mid;
+  $('#enStart', el).value = E.starts || ''; $('#enEnd', el).value = E.ends || ''; $('#enHint', el).value = E.hint || '';
+  if (E.hint) $('.en-hint', el).open = true;
+  drawSaved();
+  if (E.pages.length) drawPages();
+  if (E.rows.length) drawReview();
+  if (E.result) $('#enReview', el).insertAdjacentHTML('afterbegin', E.result);
+  if (!E.catalog) api.loadCatalog().then((c) => { E.catalog = c.products; if (E.rows.length) drawReview(); }).catch(() => { E.catalog = []; });
+}
+
+// ---------------------------------------------------------------- guardar e recuperar
+async function restore(key) {
+  try {
+    const r = await off.read(key); const v = r?.value;
+    if (!v || Date.now() - Date.parse(v.at) > KEEP_MS || (!v.pages?.length && !v.rows?.length)) return null;
+    return { ...v, key, catalog: null, busy: false, restoredAt: v.at,
+      // as imagens grandes não ficam guardadas: página que não terminou de ler precisa do arquivo de novo
+      pages: v.pages.map((p) => (p.status === 'ok' ? p : { ...p, status: 'erro', err: 'envie o arquivo de novo para ler esta página' })) };
+  } catch { return null; }
+}
+let persistT = null;
+function persist() {
+  if (!E) return;
+  const st = E; clearTimeout(persistT);
+  persistT = setTimeout(() => {
+    const v = { at: new Date().toISOString(), mid: st.mid, starts: st.starts, ends: st.ends, hint: st.hint, filter: st.filter, fileNames: st.fileNames, result: st.result,
+      rows: st.rows, pages: st.pages.map(({ cv, ...p }) => p) };
+    off.save(st.key, v);
+  }, 400);
+}
+function drawSaved() {
+  const box = $('#enSaved', E.el); if (!box) return;
+  const has = E.pages.length || E.rows.length;
+  box.innerHTML = has ? `<div class="en-saved"><span>🗂️ ${E.restoredAt ? `Encarte em andamento, guardado em ${new Date(E.restoredAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : 'Encarte em andamento'}: ${E.pages.length} páginas, ${E.rows.length} itens${E.fileNames?.length ? ` (${esc(E.fileNames.join(', ').slice(0, 80))})` : ''}. Pode enviar mais páginas.</span>
+    <button class="btn btn--ghost btn--sm" data-en-reset ${E.busy ? 'disabled' : ''}>Começar outro encarte</button></div>` : '';
+}
+async function reset() {
+  if (E.busy) return;
+  SESSIONS.delete(E.key); clearTimeout(persistT);
+  await off.save(E.key, null);
+  mount(E.el, E.opts);
 }
 
 // ---------------------------------------------------------------- ler as páginas
@@ -60,37 +112,41 @@ async function start(files) {
   if (E.busy) return;
   const ok = files.filter((f) => ia.isPdf(f) || f.type.startsWith('image/'));
   if (!ok.length) return E.opts.toast('Envie fotos ou PDF do encarte.', 'warn');
-  E.busy = true; E.files = ok;
+  E.busy = true; E.fileNames = [...(E.fileNames || []), ...ok.map((f) => f.name)];
+  E.result = ''; drawSaved();
   const box = $('#enPages', E.el);
   box.innerHTML = '<p class="muted small">Abrindo os arquivos…</p>';
   const pages = [];
   for (const f of ok) {
     try {
       const cvs = await ia.fileCanvases(f, { maxPages: 30, scale: 2, max: 2200, onPage: (i, n) => (box.innerHTML = `<p class="muted small">Abrindo ${esc(f.name)}: página ${i} de ${n}…</p>`) });
-      cvs.forEach((cv, i) => pages.push({ cv, name: cvs.length > 1 ? `${f.name} · p.${i + 1}` : f.name, status: 'fila', items: [] }));
+      cvs.forEach((cv, i) => pages.push({ cv, thumb: ia.toCanvas(cv, 160).toDataURL('image/jpeg', 0.6), name: cvs.length > 1 ? `${f.name} · p.${i + 1}` : f.name, status: 'fila', items: [] }));
     } catch (e) { E.opts.toast(`Não abri ${f.name}: ${e.message}`, 'warn'); }
   }
-  E.pages = pages;
+  const first = E.pages.length;
+  E.pages.push(...pages);
   drawPages();
   if (!E.catalog) E.catalog = (await api.loadCatalog().catch(() => ({ products: [] }))).products;
   // 2 páginas por vez: mais rápido sem estourar o limite da IA
-  let next = 0;
-  const worker = async () => { while (next < pages.length) { const i = next++; await readPage(i); } };
+  let next = first;
+  const worker = async () => { while (next < E.pages.length) { const i = next++; await readPage(i); } };
   await Promise.all([worker(), worker()]);
   E.busy = false;
-  drawReview();
+  drawSaved(); drawReview(); persist();
 }
 
 async function readPage(i) {
-  const pg = E.pages[i]; pg.status = 'lendo'; drawPages();
+  const pg = E.pages[i];
+  if (!pg.cv) return E.opts.toast('Esta página não está mais aberta: envie o arquivo de novo.', 'warn');
+  pg.status = 'lendo'; drawPages();
   try {
     const out = E.opts.demo ? await demoRead(pg) : await ia.iaRead('encarte', [pg.cv], {
-      supermarket_id: E.mid, page: i + 1, hint: $('#enHint', E.el)?.value || '', categories: E.opts.categories.map((c) => c.slug),
+      supermarket_id: E.mid, page: i + 1, hint: E.hint || $('#enHint', E.el)?.value || '', categories: E.opts.categories.map((c) => c.slug),
     });
     const r = out.result || {};
     pg.items = r.itens || []; pg.status = 'ok'; pg.truncated = out.truncated;
-    if (r.validade_inicio && !E.starts) { E.starts = r.validade_inicio; $('#enStart', E.el).value = r.validade_inicio; }
-    if (r.validade_fim && !E.ends) { E.ends = r.validade_fim; $('#enEnd', E.el).value = r.validade_fim; }
+    if (r.validade_inicio && !E.starts) { E.starts = r.validade_inicio; const x = $('#enStart', E.el); if (x) x.value = r.validade_inicio; }
+    if (r.validade_fim && !E.ends) { E.ends = r.validade_fim; const x = $('#enEnd', E.el); if (x) x.value = r.validade_fim; }
     if (r.supermercado && !E.mid) {
       const n = ia.strip(r.supermercado);
       const m = E.opts.markets.find((x) => { const w = ia.strip(x.name).replace(/supermercados?/g, '').trim(); return w && n.includes(w); });
@@ -103,16 +159,16 @@ async function readPage(i) {
       if (!same) E.rows.push(r);
     }
   } catch (e) { pg.status = 'erro'; pg.err = e.message; }
-  drawPages(); drawReview();
+  drawPages(); drawReview(); persist();
 }
 
 function drawPages() {
   const box = $('#enPages', E.el); if (!box) return;
   const done = E.pages.filter((p) => p.status === 'ok').length;
   box.innerHTML = `<p class="en-prog"><b>${done} de ${E.pages.length}</b> páginas lidas · ${E.rows.length} itens encontrados</p>
-    <ul class="en-pgl">${E.pages.map((p, i) => `<li class="is-${p.status}"><img src="${ia.toCanvas(p.cv, 160).toDataURL('image/jpeg', 0.6)}" alt="" />
+    <ul class="en-pgl">${E.pages.map((p, i) => `<li class="is-${p.status}">${p.thumb ? `<img src="${p.thumb}" alt="" />` : '<span class="en-nothumb" aria-hidden="true">🗞️</span>'}
       <span><b>${esc(p.name)}</b><small>${{ fila: 'na fila', lendo: 'lendo…', ok: `${p.items.length} itens${p.truncated ? ' (página muito cheia: confira)' : ''}`, erro: esc(p.err || 'erro') }[p.status]}</small></span>
-      ${p.status === 'erro' ? `<button class="btn btn--sm btn--ghost" data-en-retry="${i}">Tentar de novo</button>` : ''}</li>`).join('')}</ul>`;
+      ${p.status === 'erro' && p.cv ? `<button class="btn btn--sm btn--ghost" data-en-retry="${i}">Tentar de novo</button>` : ''}</li>`).join('')}</ul>`;
 }
 
 // ---------------------------------------------------------------- casar com o catálogo
@@ -155,7 +211,8 @@ function rematchPrices() { /* preço atual depende do mercado: só redesenha */ 
 
 // ---------------------------------------------------------------- revisão
 function drawReview() {
-  const box = $('#enReview', E.el); if (!box || !E.rows.length) return;
+  const box = $('#enReview', E.el); if (!box) return;
+  if (!E.rows.length) { box.innerHTML = ''; persist(); return; }
   const R = E.rows;
   const need = R.filter((r) => r.include && flags(r).length);
   const isNew = R.filter((r) => r.mode === 'new'), promo = R.filter((r) => r.preco_de);
@@ -172,6 +229,7 @@ function drawReview() {
       <button class="btn btn--primary" data-en-apply ${!E.mid || !sel.length || E.busy ? 'disabled' : ''}>Publicar ${sel.length} itens</button>
     </div>
     <div id="enResult"></div></section>`;
+  persist();
 }
 
 function rowHTML(r) {
@@ -218,12 +276,15 @@ async function apply(btn) {
     ean: r.ean, preco: r.preco, preco_de: r.preco_de && r.preco_de > r.preco ? r.preco_de : null, oferta: r.oferta,
   }));
   try {
-    const out = await E.opts.apply(E.mid, rows, E.starts || null, E.ends || null, E.files.map((f) => f.name).join(', ').slice(0, 200));
-    $('#enResult', E.el).innerHTML = `<div class="ok-box en-done"><b>✓ Encarte publicado.</b> ${out.prices} preços atualizados, ${out.promos} promoções, ${out.created} produtos novos.
+    const out = await E.opts.apply(E.mid, rows, E.starts || null, E.ends || null, (E.fileNames || []).join(', ').slice(0, 200));
+    const html = `<div class="ok-box en-done"><b>✓ Encarte publicado em ${new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.</b> ${out.prices} preços atualizados, ${out.promos} promoções, ${out.created} produtos novos.
       ${out.errors?.length ? `<details><summary>${out.errors.length} itens com erro</summary><ul>${out.errors.map((e) => `<li>${esc(e.nome || 'linha ' + e.linha)}: ${esc(e.erro)}</li>`).join('')}</ul></details>` : ''}</div>`;
     E.opts.toast('Encarte publicado no site.');
     E.rows = E.rows.filter((r) => !sel.includes(r));
+    E.result = html;
     btn.textContent = 'Publicado ✓';
+    drawReview(); drawSaved();
+    $('#enReview', E.el).insertAdjacentHTML('afterbegin', html);
   } catch (e) { btn.disabled = false; btn.textContent = 'Tentar de novo'; E.opts.toast(e.message || 'Não foi possível publicar.', 'warn'); }
 }
 
@@ -239,7 +300,7 @@ async function demoRead() {
 // ---------------------------------------------------------------- eventos
 document.addEventListener('click', (e) => {
   if (!E) return;
-  const t = e.target.closest('[data-en-f],[data-en-pick],[data-en-set],[data-en-new],[data-en-apply],[data-en-retry]');
+  const t = e.target.closest('[data-en-f],[data-en-pick],[data-en-set],[data-en-new],[data-en-apply],[data-en-retry],[data-en-reset]');
   if (!t) { if (!e.target.closest('.en-popover')) $$('.en-popover', E.el).forEach((x) => x.remove()); return; }
   const d = t.dataset; const row = (k) => E.rows.find((r) => r.k === k);
   if (d.enF) { E.filter = d.enF; return drawReview(); }
@@ -248,6 +309,7 @@ document.addEventListener('click', (e) => {
   if (d.enNew) { const r = row(d.enNew); r.mode = 'new'; r.pid = null; return drawReview(); }
   if (d.enApply !== undefined) return apply(t);
   if (d.enRetry) return readPage(Number(d.enRetry));
+  if (d.enReset !== undefined) return reset();
 });
 document.addEventListener('change', (e) => {
   if (!E) return;

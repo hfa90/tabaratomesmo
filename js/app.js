@@ -48,8 +48,9 @@ function card(p, i) {
   const trend = c != null && (c <= -1 || (S.sort === 'alta' && c >= 0.5))
     ? `<span class="trend ${c < 0 ? 'down' : 'up'}" title="Variação média em 7 dias">${c < 0 ? '▼' : '▲'} ${Math.abs(c).toFixed(1).replace('.', ',')}%</span>` : '';
   const promo = prices.find((x) => x.promo);
-  return `<article class="card" data-pid="${p.id}" style="--i:${Math.min(i, 12)}">
+  return `<article class="card ${unitPromos(p).length ? 'has-unit' : ''}" data-pid="${p.id}" style="--i:${Math.min(i, 12)}">
     <button class="card__hit" data-open-product="${p.id}" aria-label="Comparar ${esc(p.name)} ${esc(p.brand || '')}"></button>
+    ${unitStrip(p)}
     ${media(p)}
     <div class="card__title">
       <h3>${esc(p.name)}</h3>
@@ -65,6 +66,33 @@ function card(p, i) {
       <svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.8 4.3 7.2C19.5 16.4 12 21 12 21z"/></svg>
     </button>
   </article>`;
+}
+
+// ---------------------------------------------------------------- promoção que vale só numa unidade da rede
+const unitPromos = (p) => (p.storePromos || []).filter((x) => isOn(x.market_id));
+const unitDist = (x) => (S.pos ? haversine(S.pos, x) : null);
+const unitEnds = (x) => (x.ends ? new Date(x.ends).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '') : '');
+function unitStrip(p) {
+  const u = unitPromos(p); if (!u.length) return '';
+  const x = u[0]; const m = S.markets.get(x.market_id); const d = unitDist(x);
+  const where = u.length > 1 ? `em ${u.length} unidades` : `só no ${esc(x.store)}`;
+  return `<p class="card__unit" title="Promoção que vale só nesta unidade do ${esc(m?.name || '')}">
+    <span class="card__unit-i" aria-hidden="true">${ic('pin')}</span>
+    <span><b>${brl(x.price)}</b> ${where}${u.length === 1 && x.neighborhood ? ` <i>· ${esc(x.neighborhood)}</i>` : ''}${d != null && u.length === 1 ? ` <i>· ${km(d)}</i>` : ''}</span></p>`;
+}
+function unitBox(p) {
+  const u = unitPromos(p); if (!u.length) return '';
+  return `<section class="unit-promos" aria-label="Promoção só em uma unidade">
+    <h3 class="pd__h">${ic('pin')} Promoção só ${u.length > 1 ? 'em algumas unidades' : 'em uma unidade'}</h3>
+    ${u.map((x) => {
+      const m = S.markets.get(x.market_id); const d = unitDist(x); const ends = unitEnds(x);
+      return `<div class="unit-promo">${logo(m, 'md')}
+        <div class="unit-promo__t"><p><b class="unit-promo__p">${brl(x.price)}</b> <s class="was">${brl(x.regular)}</s></p>
+          <p>Só na unidade <b>${esc(x.store)}</b>${x.neighborhood ? ` · ${esc(x.neighborhood)}` : ''}${d != null ? ` · a ${km(d)}` : ''}</p>
+          <small class="muted">${ends ? `Até ${ends}. ` : ''}${x.kind === 'exclusiva' && x.code ? `Mostre o código <code>${esc(x.code)}</code> no caixa. ` : ''}${x.max ? `Limite de ${x.max} por cliente. ` : ''}Nas outras unidades do ${esc(m?.name || 'mercado')} vale o preço normal.</small></div>
+        <a class="btn btn--ghost btn--sm" href="https://www.google.com/maps/dir/?api=1&destination=${x.lat},${x.lng}" target="_blank" rel="noopener" data-route="${x.market_id}">Rota</a></div>`;
+    }).join('')}
+  </section>`;
 }
 
 // ======================================================================
@@ -365,6 +393,8 @@ async function openProduct(pid) {
           }).join('')}
         </ol>
       </div>
+
+      ${unitBox(p)}
 
       <p class="pd__disclaimer">${ic('warn')} <span>Os preços podem mudar sem aviso prévio. O Tá Barato Mesmo? não controla os preços dos supermercados: confira na loja antes de comprar.</span></p>
 

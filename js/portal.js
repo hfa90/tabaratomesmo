@@ -10,6 +10,7 @@ import * as ff from './fotofinder.js';
 import * as clientes from './portal-clientes.js';
 import * as campanhas from './portal-campanhas.js';
 import * as especiais from './portal-especiais.js';
+import * as mapa from './admin-mapa.js';
 
 const st = {
   user: null, markets: [], mid: null, categories: [],
@@ -145,12 +146,19 @@ const ctx = () => ({ main: $('#ptMain'), mid: st.mid, market, banner: banner(), 
 function route() {
   if (!st.mid) return;
   const v = (location.hash || '#painel').slice(1);
-  const view = ['painel', 'clientes', 'campanhas', 'datas', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte'].includes(v) ? v : 'painel';
+  const view = ['painel', 'clientes', 'campanhas', 'datas', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte', 'unidades'].includes(v) ? v : 'painel';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
-  ({ painel: renderDashboard, clientes: () => clientes.render(ctx()), campanhas: () => campanhas.render(ctx()), datas: () => especiais.render(ctx()), produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte })[view]();
+  ({ painel: renderDashboard, clientes: () => clientes.render(ctx()), campanhas: () => campanhas.render(ctx()), datas: () => especiais.render(ctx()), produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte, unidades: renderUnidades })[view]();
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
+
+// ================================================================ MAPA DE UNIDADES (as lojas da própria rede)
+function renderUnidades() {
+  const head = (t, sub, actions = '') => `${banner()}<header class="pt-head"><div><h1>${t}</h1>${sub ? `<p class="muted">${sub}</p>` : ''}</div>${actions}</header>`;
+  mapa.render(head, { mode: 'market', demo: P.MODE === 'demo', markets: async () => [market()],
+    saveStore: (p) => P.saveStore({ ...p, supermarket_id: st.mid }).then((r) => { st.stores = null; return r; }), demoStores: () => P.stores(st.mid) });
+}
 
 // ================================================================ ENCARTE (IA)
 function renderEncarte() {
@@ -439,8 +447,9 @@ async function savePhoto(file, url, key) {
   return f ? P.uploadPhoto(st.mid, f, key) : url;
 }
 
-function promoForm(r, existing = null) {
+async function promoForm(r, existing = null) {
   const now = new Date(); const end = new Date(Date.now() + 7 * 864e5);
+  if (!st.stores) st.stores = await P.stores(st.mid).catch(() => []);
   const d = (x) => new Date(x).toISOString().slice(0, 10);
   const p = existing || {};
   openSheet(`<h2 class="sheet__title" id="ptSheetTitle">${p.id ? 'Editar promoção' : 'Nova promoção'}</h2>
@@ -448,6 +457,10 @@ function promoForm(r, existing = null) {
       <input type="hidden" name="promo_id" value="${p.id || ''}" />
       ${r ? `<input type="hidden" name="product_id" value="${r.product_id}" /><div class="fx-prod"><span>${r.emoji || '🛒'}</span><div><b>${esc(r.name)}</b><small class="muted">${esc([r.brand, r.unit].filter(Boolean).join(' · '))} · preço atual ${brl(r.price)}</small></div></div>`
         : `<label>Produto<select name="product_id" required>${(st.catalog || []).filter((x) => x.active).map((x) => `<option value="${x.product_id}" ${p.product_id === x.product_id ? 'selected' : ''}>${esc(x.name)} ${esc(x.brand || '')} ${esc(x.unit || '')} · ${brl(x.price)}</option>`).join('')}</select></label>`}
+      <label>Vale em<select name="store_id">
+        <option value="">Todas as unidades do ${esc(market()?.name || '')}</option>
+        ${(st.stores || []).map((s) => `<option value="${s.id}" ${Number(p.store_id) === s.id ? 'selected' : ''}>Só na unidade ${esc(s.name)}${s.neighborhood ? ` (${esc(s.neighborhood)})` : ''}</option>`).join('')}
+      </select><small class="muted">Só numa unidade: o site mostra a oferta em destaque no produto, com o bairro e a distância, sem mudar o preço da rede na comparação.${(st.stores || []).length ? '' : ' Cadastre as unidades em <a href="#unidades">Mapa de unidades</a>.'}</small></label>
       <fieldset class="pick"><legend>Tipo de promoção</legend>
         <label class="pick__i"><input type="radio" name="kind" value="exclusiva" ${p.kind !== 'geral' ? 'checked' : ''} /><span><b>Exclusiva do Tá Barato Mesmo?</b><br/><small class="muted">Só para quem vem pelo site. O cliente mostra o código no caixa. Aparece em destaque.</small></span></label>
         <label class="pick__i"><input type="radio" name="kind" value="geral" ${p.kind === 'geral' ? 'checked' : ''} /><span><b>Geral da loja</b><br/><small class="muted">Vale para todo mundo, dentro e fora do site (encarte, loja física).</small></span></label>
@@ -472,7 +485,8 @@ async function renderPromos() {
   const main = $('#ptMain');
   main.innerHTML = `${banner()}<header class="pt-head"><div><h1>Promoções</h1><p class="muted">Exclusivas aparecem em destaque no site com um código para o caixa. Gerais mostram o preço de oferta para todo mundo.</p></div>
     <button class="btn btn--primary" data-newpromo>+ Nova promoção</button></header><div id="promoWrap"><div class="skeleton" style="height:240px"></div></div>`;
-  try { await loadCatalog(); st.promos = await P.promos(st.mid); } catch (e) { $('#promoWrap').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
+  try { await loadCatalog(); [st.promos, st.stores] = await Promise.all([P.promos(st.mid), st.stores ? st.stores : P.stores(st.mid).catch(() => [])]); } catch (e) { $('#promoWrap').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
+  const unit = (p) => { const s = p.store_id && (st.stores || []).find((x) => x.id === Number(p.store_id)); return s ? `<span class="pill pill--unit" title="Vale só nesta unidade">📍 ${esc(s.name)}</span>` : ''; };
   const name = (pid) => st.catalog.find((x) => x.product_id === pid) || { name: `Produto ${pid}` };
   const now = Date.now();
   const groups = [
@@ -483,7 +497,7 @@ async function renderPromos() {
   $('#promoWrap').innerHTML = groups.map(([t, arr]) => `<section class="panel" style="margin-bottom:14px"><div class="panel__head"><h2>${t}</h2><span class="muted small">${arr.length}</span></div>
     ${arr.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Produto</th><th>Tipo</th><th class="r">De</th><th class="r">Por</th><th>Período</th><th></th></tr></thead><tbody>
     ${arr.map((p) => { const r = name(p.product_id); return `<tr><td><span class="cell-m">${r.emoji || '🛒'} <span>${esc(r.name)}${p.title ? `<small class="muted"> · ${esc(p.title)}</small>` : ''}</span></span></td>
-      <td>${p.kind === 'exclusiva' ? `<span class="pill pill--excl">Exclusiva</span> <code>${esc(p.code || '')}</code>` : '<span class="pill pill--promo">Geral</span>'}</td>
+      <td>${p.kind === 'exclusiva' ? `<span class="pill pill--excl">Exclusiva</span> <code>${esc(p.code || '')}</code>` : '<span class="pill pill--promo">Geral</span>'} ${unit(p)}</td>
       <td class="r muted">${r.price ? brl(r.price) : '–'}</td><td class="r"><b>${brl(Number(p.promo_price))}</b></td>
       <td class="nowrap">${dateBR(p.starts_at)} – ${dateBR(p.ends_at)}</td>
       <td class="r nowrap">${t !== 'Encerradas' ? `<button class="btn btn--ghost btn--sm" data-editpromo="${p.id}">Editar</button> <button class="btn btn--text btn--sm" data-endpromo="${p.id}">Encerrar</button>` : ''}</td></tr>`; }).join('')}
@@ -905,7 +919,7 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('change', async (e) => {
   const t = e.target;
-  if (t.id === 'mkSelect') { st.mid = Number(t.value); api.store.set('tb.ptMarket', st.mid); st.catalog = st.promos = st.dash = null; renderPicker(); return route(); }
+  if (t.id === 'mkSelect') { st.mid = Number(t.value); api.store.set('tb.ptMarket', st.mid); st.catalog = st.promos = st.dash = st.stores = null; renderPicker(); return route(); }
   if (t.id === 'prodCat') { st.cat = t.value; return renderProductRows(); }
   if (t.dataset.price) {
     const r = st.catalog.find((x) => x.product_id === Number(t.dataset.price));
@@ -1009,7 +1023,7 @@ document.addEventListener('submit', async (e) => {
       if (r && pp >= r.price) return err(`O preço promocional precisa ser menor que o atual (${brl(r.price)}).`);
       if (f.ends_at.value < f.starts_at.value) return err('A data de fim é antes do início.');
       busy(true);
-      await P.savePromo({ id: Number(f.promo_id.value) || null, supermarket_id: st.mid, product_id: pid, kind: f.kind.value, promo_price: pp,
+      await P.savePromo({ id: Number(f.promo_id.value) || null, supermarket_id: st.mid, product_id: pid, store_id: Number(f.store_id?.value) || null, kind: f.kind.value, promo_price: pp,
         max_per_client: Number(f.max_per_client.value) || null, code: f.code.value.trim().toUpperCase() || null, title: f.title.value.trim() || null,
         starts_at: new Date(f.starts_at.value + 'T00:00:00').toISOString(), ends_at: new Date(f.ends_at.value + 'T23:59:00').toISOString() });
       closeSheet(); st.catalog = null; st.promos = null; st.dash = null; toast('Promoção publicada.');

@@ -1,4 +1,7 @@
-// Administração › Mapa de unidades: os supermercados de Manaus no OpenStreetMap, para cadastrar cada unidade com um toque.
+// Mapa de unidades: os supermercados de Manaus no OpenStreetMap, para cadastrar cada unidade com um toque.
+// Usado em dois lugares (render(head, cfg)):
+//   • admin.html#unidades: todas as redes; pode criar rede nova (admin_save_store / admin_save_market)
+//   • parceiros.html#unidades: só as unidades da própria rede (market_save_store, que o banco limita à rede)
 // • Fonte: OpenStreetMap (Overpass API), lojas com shop=supermarket ou shop=wholesale na área de Manaus.
 //   Dados © colaboradores do OpenStreetMap, licença ODbL: podem ser guardados no banco, com os créditos no mapa.
 // • Verde = já cadastrada no site · laranja = de uma rede do site, falta cadastrar · cinza = outros mercados.
@@ -6,7 +9,6 @@
 //   Faltou no OpenStreetMap? Busque o endereço ou toque em qualquer ponto do mapa e cadastre ali.
 // • stores.osm_ref guarda de onde a loja veio (atualizacao-2026-10-mapa-unidades.sql) e impede cadastro repetido.
 import * as api from './api.js';
-import * as A from './admin-api.js';
 import { BAIRROS } from './config.js';
 import { $, esc, logo } from './core.js';
 
@@ -16,7 +18,9 @@ const CACHE_KEY = 'tb.osmMercados';
 const NEAR_M = 150; // uma loja já cadastrada a até 150 m é provavelmente a mesma unidade
 const LEAFLET = 'https://unpkg.com/leaflet@1.9.4/dist/';
 
-const S = { map: null, layer: null, temp: null, osm: [], stores: [], markets: [], filter: 'todas', sel: null, head: null };
+const S = { map: null, layer: null, temp: null, osm: [], stores: [], markets: [], filter: 'todas', sel: null, head: null, cfg: null };
+const isMk = () => S.cfg?.mode === 'market';
+const own = () => (isMk() ? S.markets[0] : null);
 
 // ---------------------------------------------------------------- ajudantes
 const strip = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -106,20 +110,28 @@ async function loadOsm(force = false) {
 }
 
 async function loadStores() {
-  if (A.MODE === 'demo') {
-    const all = await Promise.all(S.markets.map((m) => A.access(m.id).then((d) => d.stores).catch(() => [])));
-    return all.flat();
+  let list;
+  if (S.cfg.demo) list = await S.cfg.demoStores(S.markets);
+  else {
+    const c = await api.sbClient();
+    const { data, error } = await c.from('stores').select('*');
+    if (error) throw error;
+    list = data || [];
   }
-  const c = await api.sbClient();
-  const { data, error } = await c.from('stores').select('*');
-  if (error) throw error;
-  return data || [];
+  // no portal, só as lojas da própria rede contam
+  return isMk() ? list.filter((x) => x.supermarket_id === own()?.id) : list;
 }
 
 // ---------------------------------------------------------------- tela
-export async function render(head) {
-  S.head = head; S.sel = null;
-  $('#ptMain').innerHTML = head('Mapa de unidades', 'Os supermercados de Manaus no OpenStreetMap. Toque numa unidade para cadastrar no site; se faltar alguma, busque o endereço ou toque no lugar certo do mapa.',
+/**
+ * cfg: { mode: 'admin' | 'market', demo, markets(): Promise<[]>, saveStore(p), saveMarket?(p), demoStores(markets): Promise<[]> }
+ * No modo 'market', markets() devolve só a rede do portal.
+ */
+export async function render(head, cfg = S.cfg) {
+  S.head = head; S.cfg = cfg; S.sel = null; S.filter = 'todas';
+  $('#ptMain').innerHTML = head('Mapa de unidades', isMk()
+    ? 'As unidades da sua rede no OpenStreetMap. Toque numa unidade laranja para cadastrar no site; se faltar alguma, busque o endereço ou toque no lugar certo do mapa.'
+    : 'Os supermercados de Manaus no OpenStreetMap. Toque numa unidade para cadastrar no site; se faltar alguma, busque o endereço ou toque no lugar certo do mapa.',
     '<button class="btn btn--ghost" data-um="reload">Atualizar do mapa</button>') + `
     <div class="um-bar">
       <div class="chips" id="umChips"></div>
@@ -131,7 +143,7 @@ export async function render(head) {
   panelIntro('<div class="skeleton" style="height:120px"></div>');
   try {
     await loadLeaflet();
-    S.markets = await A.markets();
+    S.markets = await cfg.markets();
     [S.stores, S.osm] = await Promise.all([loadStores(), loadOsm()]);
   } catch (e) { panelIntro(`<p class="note">${esc(e.message || 'Não consegui carregar.')}</p><button class="btn btn--ghost btn--sm" data-um="reload">Tentar de novo</button>`); return; }
   initMap();
@@ -157,7 +169,7 @@ function draw() {
   // filtros: todas, cada rede do site e "outros"
   const counts = new Map();
   S.osm.forEach((el) => { const k = el.market ? String(el.market.id) : 'outros'; counts.set(k, (counts.get(k) || 0) + 1); });
-  const chips = [['todas', 'Todas', S.osm.length], ...S.markets.map((m) => [String(m.id), short(m), counts.get(String(m.id)) || 0]), ['outros', 'Outros mercados', counts.get('outros') || 0], ['falta', 'Falta cadastrar', S.osm.filter((e) => e.market && !e.match).length]];
+  const chips = [['todas', 'Todas', S.osm.length], ...S.markets.map((m) => [String(m.id), isMk() ? `Minha rede (${short(m)})` : short(m), counts.get(String(m.id)) || 0]), ['outros', 'Outros mercados', counts.get('outros') || 0], ['falta', 'Falta cadastrar', S.osm.filter((e) => e.market && !e.match).length]];
   $('#umChips').innerHTML = chips.map(([k, l, n]) => `<button class="chip ${S.filter === k ? 'is-on' : ''}" data-um-filter="${k}">${esc(l)} <small>${n}</small></button>`).join('');
 
   S.layer.clearLayers();
@@ -185,7 +197,8 @@ function draw() {
 function panelIntro(extra = '') {
   const todo = S.osm.filter((e) => e.market && !e.match);
   $('#umPanel').innerHTML = extra || `<h2>Cadastrar unidades</h2>
-    <p class="small">Toque num ponto <b class="um-t--todo">laranja</b> para cadastrar uma unidade de uma rede do site, ou num <b class="um-t--other">cinza</b> para outros mercados.</p>
+    ${isMk() ? `<p class="small">Toque num ponto <b class="um-t--todo">laranja</b> para cadastrar uma unidade do ${esc(own()?.name || '')}. Os <b class="um-t--other">cinzas</b> são outros mercados; se um deles for uma unidade sua com outro nome no mapa, toque e cadastre.</p>`
+      : '<p class="small">Toque num ponto <b class="um-t--todo">laranja</b> para cadastrar uma unidade de uma rede do site, ou num <b class="um-t--other">cinza</b> para outros mercados.</p>'}
     <p class="small muted">Faltou alguma? Busque o endereço acima ou toque no lugar certo do mapa.</p>
     ${todo.length ? `<h3 class="pd__h" style="margin-top:12px">Falta cadastrar (${todo.length})</h3><ul class="um-list">${todo.slice(0, 40).map((e) => `<li><button data-um-go="${esc(e.ref)}">${logo(e.market, 'xs')} <span>${esc(e.name)}<small class="muted">${esc(e.address || e.suburb || nearestBairro(e))}</small></span></button></li>`).join('')}</ul>` : '<p class="small">Todas as unidades das redes do site que estão no mapa já foram cadastradas. 👏</p>'}`;
 }
@@ -214,7 +227,7 @@ function select(el) {
       <button class="btn btn--ghost btn--sm" data-um="asnew">Não, é outra unidade</button></div></div>`;
     return showPanel();
   }
-  $('#umPanel').innerHTML = `${top(el)}${form({ el, market: el.market, title: 'Cadastrar esta unidade' })}`;
+  $('#umPanel').innerHTML = `${top(el)}${form({ el, market: el.market || own(), title: 'Cadastrar esta unidade' })}`;
   bindForm(); showPanel();
   if (!el.address || !el.suburb) fillAddress(el.lat, el.lng);
 }
@@ -233,7 +246,7 @@ function selectStore(s, m) {
 async function pickPoint(lat, lng, name = '') {
   S.sel = { ref: null, lat, lng, name: name || '' };
   marker(lat, lng);
-  $('#umPanel').innerHTML = `<h2>Nova unidade aqui</h2><p class="small muted">Arraste o marcador até a entrada da loja.</p>${form({ el: S.sel, title: 'Cadastrar unidade' })}`;
+  $('#umPanel').innerHTML = `<h2>Nova unidade aqui</h2><p class="small muted">Arraste o marcador até a entrada da loja.</p>${form({ el: S.sel, market: own(), title: 'Cadastrar unidade' })}`;
   bindForm(); showPanel();
   fillAddress(lat, lng, { force: true }); // endereço e bairro do ponto, pelo próprio OpenStreetMap
 }
@@ -248,7 +261,7 @@ function form({ el = null, store = null, market = null, title }) {
   const opts = S.markets.map((m) => `<option value="${m.id}" ${market?.id === m.id ? 'selected' : ''}>${esc(m.name)}${m.active === false ? ' (fora do site)' : ''}</option>`).join('');
   return `<form class="form um-form" id="umForm" data-store="${store?.id || ''}" data-ref="${esc(el?.ref || store?.osm_ref || '')}" ${!store && market ? 'data-name-guess="1"' : ''}>
     <h3 class="pd__h">${title}</h3>
-    <label>Rede<select name="market" ${store ? 'disabled' : ''}><option value="">Escolha a rede…</option>${opts}<option value="new">+ Nova rede…</option></select></label>
+    <label>Rede<select name="market" ${store || isMk() ? 'disabled' : ''}>${isMk() ? '' : '<option value="">Escolha a rede…</option>'}${opts}${isMk() ? '' : '<option value="new">+ Nova rede…</option>'}</select></label>
     <label class="um-new" hidden>Nome da nova rede<input name="newmarket" placeholder="Ex.: Supermercados São Jorge" /></label>
     <label>Nome da unidade<input name="name" required value="${esc(name)}" placeholder="Ex.: Nova Era Cidade Nova" /></label>
     <div class="form__row"><label>Bairro<input name="neighborhood" value="${esc(bairro)}" ${guess ? 'data-guess="1"' : ''} /></label><label>Horário<input name="hours" value="${esc(store?.opening_hours || hoursPt(el?.hours))}" placeholder="Seg-Sáb 07:00-22:00" /></label></div>
@@ -284,15 +297,15 @@ async function save(e) {
     if (!f.dataset.store && f.market.value === 'new') {
       const nm = f.newmarket.value.trim(); if (!nm) throw new Error('Informe o nome da nova rede.');
       // rede nova entra fora do site: aparece para os clientes quando tiver preços (Supermercados › "Aparece no site")
-      const r = await A.saveMarket({ name: nm, active: false, portal_enabled: true });
-      S.markets = await A.markets();
+      const r = await S.cfg.saveMarket({ name: nm, active: false, portal_enabled: true });
+      S.markets = await S.cfg.markets();
       mid = r?.id ?? S.markets.find((m) => strip(m.name) === strip(nm))?.id;
     }
     if (!mid) throw new Error('Escolha a rede.');
     const p = { id: f.dataset.store || null, supermarket_id: mid, name: f.name.value.trim(), neighborhood: f.neighborhood.value.trim(),
       address: f.address.value.trim(), opening_hours: f.hours.value.trim(), lat, lng, approx: false };
     if (f.dataset.ref) p.osm_ref = f.dataset.ref;
-    await A.saveStore(p);
+    await S.cfg.saveStore(p);
     S.stores = await loadStores();
     S.sel = null; if (S.temp) { S.temp.remove(); S.temp = null; }
     draw();
@@ -304,7 +317,7 @@ async function save(e) {
 async function link(storeId) {
   const s = S.stores.find((x) => x.id === storeId); const el = S.sel; if (!s || !el) return;
   try {
-    await A.saveStore({ id: s.id, supermarket_id: s.supermarket_id, name: s.name, neighborhood: s.neighborhood, address: s.address || el.address || '',
+    await S.cfg.saveStore({ id: s.id, supermarket_id: s.supermarket_id, name: s.name, neighborhood: s.neighborhood, address: s.address || el.address || '',
       opening_hours: s.opening_hours || hoursPt(el.hours), lat: el.lat, lng: el.lng, approx: false, osm_ref: el.ref });
     S.stores = await loadStores(); S.sel = null; draw();
     $('#umPanel').insertAdjacentHTML('afterbegin', `<p class="note">✅ ${esc(s.name)} ligada ao mapa, com a posição do OpenStreetMap.</p>`);
@@ -333,7 +346,7 @@ document.addEventListener('click', async (e) => {
   if (a === 'reload') { try { sessionStorage.removeItem(CACHE_KEY); } catch {} render(S.head); }
   if (a === 'cancel') { S.sel = null; if (S.temp) { S.temp.remove(); S.temp = null; } panelIntro(); }
   if (a === 'link') link(Number(t.dataset.store));
-  if (a === 'asnew' && S.sel) { const el = S.sel; $('#umPanel').innerHTML = `${top(el)}${form({ el, market: el.market, title: 'Cadastrar esta unidade' })}`; bindForm(); }
+  if (a === 'asnew' && S.sel) { const el = S.sel; $('#umPanel').innerHTML = `${top(el)}${form({ el, market: el.market || own(), title: 'Cadastrar esta unidade' })}`; bindForm(); }
 });
 document.addEventListener('submit', (e) => {
   if (e.target.id !== 'umSearch') return;

@@ -2346,3 +2346,26 @@ html.big .tabbar a span:not(.tab-mic__b) { font-size: 12.5px; white-space: nowra
 .pd__disclaimer { display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 10px 12px; border-radius: var(--r-md);
   background: var(--surface-2); color: var(--ink-2); font-size: .85rem; line-height: 1.4; }
 .pd__disclaimer .i { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--muted); }
+
+/* promoção que vale só numa unidade: faixa em cima do card e quadro no detalhe do produto */
+.card__unit {
+  grid-column: 1 / -1; margin: -4px 36px 4px 0; display: flex; align-items: center; gap: 8px; min-width: 0;
+  padding: 6px 10px 6px 6px; border-radius: 10px; font-size: .8rem; line-height: 1.25; color: var(--tag-ink);
+  background: linear-gradient(90deg, var(--tag-soft), color-mix(in srgb, var(--tag-soft) 40%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tag) 45%, transparent);
+}
+.card__unit > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card__unit b { font-variant-numeric: tabular-nums; }
+.card__unit i { font-style: normal; opacity: .75; }
+.card__unit-i { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; background: var(--tag); color: var(--tag-ink); }
+.card__unit-i .i { width: 14px; height: 14px; }
+.unit-promos { display: grid; gap: 8px; }
+.unit-promos .pd__h { display: flex; align-items: center; gap: 6px; }
+.unit-promos .pd__h .i { width: 16px; height: 16px; }
+.unit-promo { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border-radius: var(--r-md);
+  background: var(--tag-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tag) 45%, transparent); color: var(--ink); }
+.unit-promo__t { display: grid; gap: 2px; min-width: 0; }
+.unit-promo__t p { margin: 0; }
+.unit-promo__p { font: 700 1.25rem/1 var(--display); letter-spacing: -.01em; }
+.unit-promo small { line-height: 1.35; }
+@media (max-width: 420px) { .unit-promo { grid-template-columns: auto minmax(0, 1fr); } .unit-promo .btn { grid-column: 1 / -1; justify-self: start; } }

@@ -42,6 +42,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-telegram.sql
       - name: Testes do Mapa de unidades
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-mapa.sql
+      - name: Testes da promoção por unidade
+        run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-promo-unidade.sql
 
   site:
     runs-on: ubuntu-latest
