@@ -238,15 +238,22 @@ export async function savePromo(p) {
   const c = await api.sbClient();
   const row = { supermarket_id: p.supermarket_id, product_id: p.product_id, kind: p.kind, promo_price: p.promo_price, title: p.title || null,
     code: p.code || null, max_per_client: p.max_per_client || null, starts_at: p.starts_at, ends_at: p.ends_at, active: p.active ?? true };
-  if (p.store_id) row.store_id = p.store_id; else if (p.id) row.store_id = null;
+  if (p.store_id || p.id) row.store_id = p.store_id || null; // ao editar, pode voltar a valer em todas as unidades
+  const noCol = (e) => e && /store_id/.test(`${e.message} ${e.details || ''}`);
   if (!p.id) {
     // uma promoção ativa por produto em cada lugar (rede toda, ou cada unidade): encerra a anterior do mesmo lugar
-    let q = c.from('promotions').update({ active: false }).eq('supermarket_id', p.supermarket_id).eq('product_id', p.product_id).eq('active', true);
-    q = p.store_id ? q.eq('store_id', p.store_id) : q.is('store_id', null);
-    const { error: e0 } = await q;
-    if (e0 && /store_id/.test(e0.message)) throw new Error('Falta rodar a atualização do banco (atualizacao-2026-10-promo-unidade.sql).');
+    const base = () => c.from('promotions').update({ active: false }).eq('supermarket_id', p.supermarket_id).eq('product_id', p.product_id).eq('active', true);
+    let { error: e0 } = await (p.store_id ? base().eq('store_id', p.store_id) : base().is('store_id', null));
+    if (noCol(e0)) {
+      // banco ainda sem a promoção por unidade: a de "todas as unidades" funciona como antes
+      if (p.store_id) throw new Error('Promoção numa unidade só ainda não está ativada no banco (atualizacao-2026-10-promo-unidade.sql). Escolha "Todas as unidades".');
+      ({ error: e0 } = await base());
+    }
+    if (e0) throw new Error(e0.message);
   }
-  const { error } = p.id ? await c.from('promotions').update(row).eq('id', p.id) : await c.from('promotions').insert(row);
+  const save = () => (p.id ? c.from('promotions').update(row).eq('id', p.id) : c.from('promotions').insert(row));
+  let { error } = await save();
+  if (noCol(error) && !p.store_id) { delete row.store_id; ({ error } = await save()); } // banco sem a coluna ainda
   if (error) throw new Error(error.message);
 }
 
