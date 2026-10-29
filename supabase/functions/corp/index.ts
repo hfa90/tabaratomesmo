@@ -10,15 +10,22 @@
 //
 // Segredos (Supabase › Edge Functions › Secrets):
 //   CORP_BOT_TOKEN    — token do @corp_tabaratomesmo_bot (do @BotFather; nunca vai para o site nem para o GitHub)
-//   CORP_BOT_SECRET   — uma senha qualquer; o Telegram manda no cabeçalho (setWebhook secret_token)
+//   CORP_BOT_SECRET   — opcional: senha que o Telegram manda no cabeçalho (sem ela, é derivada do token)
 //   NOTIFICAR_SEGREDO — a mesma do agendamento dos avisos (pg_cron chama esta função a cada 15 min)
 //   RESEND_API_KEY + EMAIL_FROM — opcionais: mandam o resumo por e-mail (resend.com). Sem eles, só Telegram.
 //   SITE_URL          — opcional; padrão https://hfa90.github.io/tabaratomesmo/
 // Publicar:  supabase functions deploy corp --no-verify-jwt
+// Ligar o webhook (uma vez): POST com x-segredo e corpo {"setup": true}; a função chama o setWebhook
+// do Telegram com o próprio token, que nunca sai do Supabase.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const TOKEN = Deno.env.get('CORP_BOT_TOKEN');
-const SECRET = Deno.env.get('CORP_BOT_SECRET');
+// senha do webhook: a do segredo ou, sem ele, um resumo (sha-256) do token
+const SECRET: Promise<string | null> = (async () => {
+  const s = Deno.env.get('CORP_BOT_SECRET'); if (s) return s; if (!TOKEN) return null;
+  const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('corp-webhook:' + TOKEN));
+  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 48);
+})();
 const SITE = (Deno.env.get('SITE_URL') || 'https://hfa90.github.io/tabaratomesmo/').replace(/\/?$/, '/');
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 
@@ -178,10 +185,23 @@ Deno.serve(async (req: Request) => {
   if (req.headers.get('x-segredo')) {
     const cron = Deno.env.get('NOTIFICAR_SEGREDO');
     if (!cron || req.headers.get('x-segredo') !== cron) return new Response('não autorizado', { status: 401 });
+    // deno-lint-ignore no-explicit-any
+    let body: any = {}; try { body = await req.json(); } catch { /* corpo vazio */ }
+    if (body?.setup) {
+      const url = `${Deno.env.get('SUPABASE_URL')}/functions/v1/corp`;
+      const w = await tg('setWebhook', { url, secret_token: await SECRET, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true });
+      await tg('setMyCommands', { commands: [
+        { command: 'resumo', description: 'Resumo da semana agora' },
+        { command: 'alertas', description: 'Liga/pausa radar e faltas' },
+        { command: 'sair', description: 'Parar de receber avisos' }] });
+      const me = await tg('getMe', {});
+      return Response.json({ webhook: w.ok, desc: w.description, bot: me?.result?.username });
+    }
     try { return Response.json({ ...(await runAlerts()), ...(await runDigests()) }); }
     catch (e) { console.error('corp', e); return Response.json({ error: String(e) }, { status: 500 }); }
   }
-  if (!SECRET || req.headers.get('x-telegram-bot-api-secret-token') !== SECRET) return new Response('não autorizado', { status: 401 });
+  const secret = await SECRET;
+  if (!secret || req.headers.get('x-telegram-bot-api-secret-token') !== secret) return new Response('não autorizado', { status: 401 });
   // deno-lint-ignore no-explicit-any
   let up: any; try { up = await req.json(); } catch { return new Response('ok'); }
   try {
