@@ -502,7 +502,27 @@ async function runAlerts() {
       if (r?.error_code === 403) await sb.from('tg_contacts').update({ alerts: false }).eq('chat_id', a.chat_id);
     }
   }
-  return { enviados: ok, falharam: fail };
+  // queima de perecíveis perto de casa (uma por dia, só de quem acompanha aquele tipo de produto)
+  let queimas = 0;
+  const q = await sb.rpc('tg_clearance_collect', {});
+  for (const c of (q.data ?? []) as Clear[]) {
+    const r = await send(c.chat_id, clearText(c), { reply_markup: { inline_keyboard: [[{ text: '🌐 Ver no site', url: new URL('./#queima', SITE).href }], [{ text: '🔕 Pausar avisos', callback_data: 'mute' }]] } });
+    if (r?.ok) queimas++;
+  }
+  return { enviados: ok, falharam: fail, queimas };
+}
+
+type Clear = { chat_id: number; id: number; market: string; store: string; title: string; note: string | null; price: number; regular: number; qty: number; expires_on: string };
+function clearText(c: Clear) {
+  const pct = Math.round((1 - c.price / c.regular) * 100);
+  const venc = new Date(c.expires_on + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
+  return [
+    `🔥 <b>Queima no ${esc(c.market)}: ${esc(c.title)}</b>`,
+    '',
+    `De ${brl(c.regular)} por <b>${brl(c.price)}</b> (−${pct}%) · ${c.qty} unidades na loja <b>${esc(c.store)}</b>.`,
+    `⏳ Vence ${venc}. É produto perto do vencimento: confira antes de comprar.`,
+    c.note ? `📍 ${esc(c.note)}` : '',
+  ].filter(Boolean).join('\n');
 }
 
 // ---------------------------------------------------------------- comandos e roteamento

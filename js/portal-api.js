@@ -559,3 +559,126 @@ export async function setShopUrl(mid, url) {
   if (error) throw new Error(isMissingFn(error) ? 'Falta a administração atualizar o banco (atualizacao-2026-10-push-uso-lgpd.sql).' : error.message);
   return data;
 }
+
+// ================================================================ VENDAS COMPROVADAS, CUBRA A DIFERENÇA, DEMANDA E QUEIMA
+const ATUALIZAR = 'Falta a administração atualizar o banco (supabase/atualizacoes/atualizacao-2026-10-parceiros-vendas.sql).';
+async function rpcP(fn, args) {
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc(fn, args);
+  if (error) { const e = new Error(isMissingFn(error) ? ATUALIZAR : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
+  return data;
+}
+// números simulados estáveis (mesmo resultado a cada abertura da demonstração)
+const seeded = (seed) => () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+
+// ---------------------------------------------------------------- vendas comprovadas com nota
+export async function salesProof(mid, days = 30, win = 7) {
+  if (MODE !== 'demo') return rpcP('market_sales_proof', { p_market: mid, p_days: days, p_window: win });
+  const R = seeded(mid * 31 + days); const k = days / 30;
+  const src = [['campanha', 1840, 0.16], ['promocao', 2650, 0.11], ['rota', 610, 0.34], ['publicidade', 980, 0.06], ['cubra', 74, 0.58], ['queima', 260, 0.21]];
+  const by = src.map(([s, people, conv]) => {
+    const logged = Math.round(people * k * 0.62); const buyers = Math.round(logged * conv); const receipts = Math.round(buyers * 1.25);
+    const ticket = s === 'cubra' ? 262 : s === 'queima' ? 96 : 150 + R() * 70; const revenue = Math.round(receipts * ticket * 100) / 100;
+    return { src: s, people: Math.round(people * k), logged, buyers, receipts, revenue: buyers < 3 ? null : revenue, ticket: buyers < 3 ? null : Math.round(ticket * 100) / 100 };
+  });
+  const buyers = by.reduce((s, x) => s + x.buyers, 0), receipts = by.reduce((s, x) => s + x.receipts, 0), revenue = by.reduce((s, x) => s + (x.revenue || 0), 0);
+  const logged = by.reduce((s, x) => s + x.logged, 0);
+  const camps = (demoState().campaigns || []).filter((c) => c.supermarket_id === mid);
+  const names = camps.length ? camps : [{ id: 1, title: 'Terça do hortifrúti', kind: 'aviso' }, { id: 2, title: 'Semana da carne', kind: 'janela' }, { id: 3, title: 'Vitrine de limpeza', kind: 'vitrine' }];
+  const campaigns = names.slice(0, 5).map((c, i) => {
+    const people = Math.round((312 - i * 70) * Math.max(k, 0.4)); const b = Math.round(people * (0.15 - i * 0.025)); const rc = Math.round(b * 1.1);
+    return { id: c.id, title: c.title, kind: c.kind, starts_at: c.starts_at || new Date(Date.now() - (6 + i * 7) * 864e5).toISOString(), ends_at: c.ends_at || new Date(Date.now() - i * 7 * 864e5).toISOString(),
+      people, logged: Math.round(people * 0.6), buyers: b, receipts: rc, revenue: b < 3 ? null : Math.round(rc * 190.2 * 100) / 100, ticket: b < 3 ? null : 190.2 };
+  });
+  const daily = Array.from({ length: Math.min(days, 30) }, (_, i) => { const d = new Date(Date.now() - (Math.min(days, 30) - 1 - i) * 864e5); const r = Math.round(receipts / Math.min(days, 30) * (0.6 + R() * 0.8));
+    return { d: d.toISOString().slice(0, 10), receipts: r, revenue: Math.round(r * (revenue / Math.max(receipts, 1)) * 100) / 100 }; });
+  const promos = [{ promo_id: 1, kind: 'exclusiva', code: 'TABARATO', product: 'Óleo de soja Soya 900 ml', receipts: 58, buyers: 51, units: 96, value: 691.2 },
+    { promo_id: 2, kind: 'geral', code: null, product: 'Arroz Tio João 5 kg', receipts: 41, buyers: 39, units: 44, value: 1183.6 },
+    { promo_id: 3, kind: 'exclusiva', code: 'TABARATO', product: 'Café Três Corações 500 g', receipts: 23, buyers: 21, units: 31, value: 495.69 }];
+  return { days, window: win, hidden: false, demo: true,
+    totals: { people: by.reduce((s, x) => s + x.people, 0), logged, buyers, receipts, revenue, ticket: Math.round(revenue / Math.max(receipts, 1) * 100) / 100,
+      conv: Math.round(buyers / Math.max(logged, 1) * 1000) / 10, ctrl_conv: 4.8, all_receipts: Math.round(receipts * 2.6), all_revenue: Math.round(revenue * 2.4) },
+    by_source: by.sort((a, b) => (b.revenue || 0) - (a.revenue || 0)), campaigns, promos, daily };
+}
+
+// ---------------------------------------------------------------- cubra a diferença
+const COVER_DEFAULT = { active: false, max_diff: 20, min_total: 150, budget_month: 500, extra: 1, valid_days: 4, min_spend_pct: 80 };
+export async function coverGet(mid) {
+  if (MODE !== 'demo') return rpcP('market_cover_get', { p_market: mid });
+  const d = demoState(); const rules = { supermarket_id: mid, ...COVER_DEFAULT, ...(d.cover?.[mid] || {}) };
+  const R = seeded(mid + 7); const coupons = (d.coverCoupons ||= Array.from({ length: 14 }, (_, i) => {
+    const diff = Math.round((3 + R() * 16) * 100) / 100; const st = i < 5 ? 'usado' : i < 8 ? 'aceito' : i < 10 ? 'expirado' : 'oferta';
+    return { id: 700 + i, code: ['usado', 'aceito'].includes(st) ? 'TB' + (4821 + i * 37).toString(36).toUpperCase().padStart(6, '7') : null, value: Math.ceil(diff) + 1, diff,
+      my_total: Math.round((210 + R() * 180) * 100) / 100, min_spend: 0, status: st, created_at: new Date(Date.now() - i * 1.7 * 864e5).toISOString(),
+      expires_at: new Date(Date.now() + (3 - i) * 864e5).toISOString(), used_at: st === 'usado' ? new Date(Date.now() - i * 864e5).toISOString() : null, used_via: st === 'usado' ? (i % 2 ? 'nota' : 'caixa') : null,
+      best_name: ['Nova Era', 'Supermercados DB', 'Veneza'][i % 3] };
+  }));
+  coupons.forEach((c) => { c.min_spend = Math.round(c.my_total * (rules.min_spend_pct / 100) * 100) / 100; });
+  saveDemo(d);
+  const used = coupons.filter((c) => c.status === 'usado'); const acc = coupons.filter((c) => ['usado', 'aceito'].includes(c.status));
+  return { enabled: true, partner: true, rules, spent: acc.reduce((s, c) => s + c.value, 0), recent: coupons, demo: true,
+    month: { offers: coupons.length, accepted: acc.length, used: used.length, used_value: used.reduce((s, c) => s + c.value, 0),
+      pending_value: coupons.filter((c) => c.status === 'aceito').reduce((s, c) => s + c.value, 0),
+      receipts_value: used.reduce((s, c) => s + c.my_total * 1.04, 0), ranchos_value: used.reduce((s, c) => s + c.my_total, 0),
+      avg_diff: Math.round(coupons.reduce((s, c) => s + c.diff, 0) / coupons.length * 100) / 100 } };
+}
+export async function coverSave(mid, rules) {
+  if (MODE !== 'demo') return rpcP('market_cover_save', { p_market: mid, p: rules });
+  const d = demoState(); d.cover ||= {}; d.cover[mid] = { ...COVER_DEFAULT, ...rules }; saveDemo(d); return d.cover[mid];
+}
+export async function coverRedeem(mid, code, total) {
+  if (MODE !== 'demo') return rpcP('market_cover_redeem', { p_market: mid, p_code: code, p_total: total ?? null });
+  const d = demoState(); const c = (d.coverCoupons || []).find((x) => x.code === String(code).trim().toUpperCase());
+  if (!c) throw new Error('Cupom não encontrado para o seu supermercado.');
+  if (c.status === 'usado') throw new Error('Este cupom já foi usado.');
+  if (c.status !== 'aceito') throw new Error('Este cupom não foi ativado pela pessoa.');
+  if (total != null && total < c.min_spend) throw new Error(`A compra mínima para este cupom é ${c.min_spend.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`);
+  Object.assign(c, { status: 'usado', used_at: new Date().toISOString(), used_via: 'caixa' }); saveDemo(d);
+  return { value: c.value, code: c.code, min_spend: c.min_spend };
+}
+
+// ---------------------------------------------------------------- previsão de demanda
+export async function demand(mid) {
+  if (MODE !== 'demo') return rpcP('market_demand', { p_market: mid, p_limit: 40 });
+  const cat = await demoCatalog(mid); const R = seeded(mid * 13);
+  const products = cat.filter((p) => p.active).slice(0, 60).map((p) => {
+    const n = Math.round(40 + R() * 1160); const considered = Math.round(n * (0.7 + R() * 0.25));
+    const others = p.min_other ?? p.price * (0.95 + R() * 0.1);
+    // preço a bater de cada lista: em volta do menor preço dos outros (cada pessoa compara mercados diferentes)
+    const steps = [-0.4, -0.2, -0.1, 0, 0.1, 0.25, 0.5].map((dx) => Math.max(0.5, Math.round((others + dx) * 100) / 100));
+    const w = [0.08, 0.14, 0.2, 0.26, 0.14, 0.1, 0.08]; const free = Math.round(considered * 0.04);
+    const beats = steps.map((b, i) => [b, Math.round((considered - free) * w[i])]).filter((x) => x[1] > 0).sort((a, b) => b[0] - a[0]);
+    const wins = free + beats.filter(([b]) => p.price <= b).reduce((s, [, c]) => s + c, 0);
+    return { product_id: p.product_id, name: p.name, brand: p.brand, unit: p.unit, emoji: p.emoji, image_url: p.image_url, my_price: p.price, min_other: p.min_other,
+      min_other_name: p.min_other != null ? 'Nova Era' : null, n_lists: n, units: Math.round(n * 1.4), n_considered: considered, wins, free, n_watch: Math.round(n * 0.18), beats };
+  }).sort((a, b) => b.n_lists + b.n_watch - (a.n_lists + a.n_watch)).slice(0, 40);
+  return { lists: 1840, products, missing: [{ product_id: 0, name: 'Leite condensado Moça', brand: 'Nestlé', unit: '395 g', n_lists: 212 }], demo: true };
+}
+
+// ---------------------------------------------------------------- queima de perecíveis
+export async function clearanceList(mid) {
+  if (MODE !== 'demo') return rpcP('market_clearance_list', { p_market: mid });
+  const d = demoState();
+  d.clearance ||= [{ id: 1, supermarket_id: mid, store_id: null, product_id: null, category_slug: 'laticinios', title: 'Iogurte natural 170 g', note: 'Gôndola de refrigerados, perto do caixa 3',
+    regular_price: 4.29, price: 2.49, qty: 60, expires_on: new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(),
+    radius_km: 2, status: 'ativa', claims: 37, notified: 412, created_at: new Date(Date.now() - 864e5).toISOString(), views: 655, proven_units: 41 },
+    { id: 2, supermarket_id: mid, store_id: null, product_id: null, category_slug: 'hortifruti', title: 'Banana prata (kg)', note: null, regular_price: 6.99, price: 3.49, qty: 80,
+    expires_on: new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10), ends_at: new Date(Date.now() - 3 * 864e5).toISOString(), radius_km: 3, status: 'esgotada', claims: 58, notified: 530,
+    created_at: new Date(Date.now() - 5 * 864e5).toISOString(), views: 890, proven_units: 74 }];
+  saveDemo(d);
+  return d.clearance.filter((c) => c.supermarket_id === mid || c.supermarket_id == null).map((c) => ({ ...c, live: c.status === 'ativa' && new Date(c.ends_at) > Date.now(),
+    pct: Math.round(100 * (1 - c.price / c.regular_price)) }));
+}
+export async function clearanceSave(p) {
+  if (MODE !== 'demo') return rpcP('market_clearance_save', { p });
+  if (!(Number(p.price) < Number(p.regular_price))) throw new Error('O preço da queima tem que ser menor que o normal.');
+  const d = demoState(); d.clearance ||= [];
+  const ends = p.ends_at || `${p.expires_on}T21:00:00-04:00`;
+  if (p.id) { const x = d.clearance.find((c) => c.id === p.id); Object.assign(x, p, { ends_at: ends }); }
+  else d.clearance.unshift({ ...p, id: (d.nextClear = (d.nextClear || 100) + 1), ends_at: ends, status: 'ativa', claims: 0, notified: 0, views: 0, proven_units: 0, created_at: new Date().toISOString() });
+  saveDemo(d); return p.id || d.nextClear;
+}
+export async function clearanceStatus(id, status) {
+  if (MODE !== 'demo') return rpcP('market_clearance_status', { p_id: id, p_status: status });
+  const d = demoState(); const x = (d.clearance || []).find((c) => c.id === id); if (x) x.status = status; saveDemo(d);
+}

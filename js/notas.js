@@ -194,7 +194,8 @@ function draw() {
   const r = cur; const m = S.markets.get(r.mid);
   const known = r.items.filter((i) => i.pid).length;
   const wb = wholeBasket(r.items);
-  const est = 20 + 2 * known;
+  const dbl = !!r.mid && S.partners?.has(r.mid) && !isFoto;
+  const est = (20 + 2 * known) * (dbl ? 2 : 1);
   const isFoto = r.source === 'foto';
   openTool(`<div class="tool nota">
     <div class="cupom-head">${m ? logo(m, 'md') : ('<span class="nota-ic" aria-hidden="true">' + ic('receipt') + '</span>')}<span><b id="toolTitle">${esc(r.store?.name || m?.name || 'Nota fiscal')}</b><small>${esc(r.date || '')}${r.demo ? ' · nota de exemplo' : ''}${isFoto ? ' · lida pela foto' : ''}</small></span>${r.total != null ? `<em>${brl(Number(r.total))}</em>` : ''}</div>
@@ -211,7 +212,8 @@ function draw() {
 
     <div class="tool__actions">
       ${r.already ? '<p class="ok-box">✓ Você já enviou esta nota. Ela está em Minhas notas.</p>'
-        : `<button class="btn btn--primary btn--xl" data-nota="send" ${!r.mid ? 'disabled' : ''}>${ic('send')} ${isFoto ? 'Enviar os preços' : 'Enviar nota'} e ganhar ${isFoto ? 'pontos' : `até +${Math.min(150, est)} pts`}</button>
+        : `<button class="btn btn--primary btn--xl" data-nota="send" ${!r.mid ? 'disabled' : ''}>${ic('send')} ${isFoto ? 'Enviar os preços' : 'Enviar nota'} e ganhar ${isFoto ? 'pontos' : `até +${Math.min(dbl ? 300 : 150, est)} pts`}</button>
+           ${dbl ? `<p class="ok-box small center">${ic('star')} <b>Pontos em dobro:</b> o ${esc(m?.name || 'mercado')} é parceiro do Tá Barato Mesmo?.</p>` : ''}
            <p class="muted small center">${!r.mid ? 'Escolha o mercado acima para enviar.' : isFoto ? 'Sem o QR, os preços passam pela confirmação da comunidade.' : `Você ganha pontos e +10 comparações. O site atualiza ${known} ${known === 1 ? 'preço' : 'preços'} com a data da compra.`}</p>`}
       <button class="btn btn--ghost btn--block" data-nota="keep">${ic('save')} Só guardar no meu controle de gastos</button>
     </div>
@@ -285,6 +287,8 @@ function done(sv) {
            ${sv.market_confirmed === false ? ('<li>' + ic('search') + ' <span>Ainda não conhecemos o CNPJ desta loja: os preços entram assim que confirmarmos o mercado.</span></li>') : ''}
            ${sv.old ? ('<li>' + ic('calendar') + ' <span>Nota com mais de 30 dias: guardada no histórico, sem atualizar preços.</span></li>') : ''}
            ${lvlUp ? ('<li>' + ic('unlock') + ' <span><b>+10 comparações</b> liberadas para você</span></li>') : ''}`}
+      ${sv.partner_bonus ? `<li>${ic('star')} <span><b>Pontos em dobro</b>: nota de mercado parceiro</span></li>` : ''}
+      ${sv.coupon_used ? `<li>${ic('ticket')} <span>Seu cupom <b>${esc(sv.coupon_used.code)}</b> (${brl(Number(sv.coupon_used.value))}) foi comprovado por esta nota</span></li>` : ''}
       <li>${ic('chart')} <span>A compra entrou no seu <b>controle de gastos</b></span></li>
     </ul>
     <div class="tool__actions"><a class="btn btn--primary btn--xl" href="#notas" data-close>Ver minhas notas</a>

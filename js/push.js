@@ -69,6 +69,13 @@ export async function unsubscribe() {
   api.store.set('tb.pushHash', null);
 }
 
+/** a conta saiu deste aparelho: tira a inscrição dela do servidor (o navegador continua inscrito e,
+ *  na próxima atualização, o aparelho volta a receber avisos sem conta, sem os favoritos de quem saiu) */
+export async function leave() {
+  try { const sub = await current(); if (sub) await api.pushUnsubscribe(sub.endpoint).catch(() => {}); } catch {}
+  api.store.set('tb.pushHash', null);
+}
+
 const hash = (p) => JSON.stringify([p.endpoint, p.prefs, p.markets, p.watch_ids, p.lat, p.lng, p.family_code, p.family_by]);
 
 /** mantém o que o servidor acompanha em dia (favoritos novos, lista da família, mudou de bairro…) */

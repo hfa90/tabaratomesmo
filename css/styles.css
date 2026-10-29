@@ -2369,3 +2369,32 @@ html.big .tabbar a span:not(.tab-mic__b) { font-size: 12.5px; white-space: nowra
 .unit-promo__p { font: 700 1.25rem/1 var(--display); letter-spacing: -.01em; }
 .unit-promo small { line-height: 1.35; }
 @media (max-width: 420px) { .unit-promo { grid-template-columns: auto minmax(0, 1fr); } .unit-promo .btn { grid-column: 1 / -1; justify-self: start; } }
+
+/* ---------- Cubra a diferença (relatório do rancho) ---------- */
+.cover { margin: 14px 0 0; padding: 16px; border-radius: var(--r-lg); border: 2px dashed color-mix(in srgb, var(--brand) 45%, var(--line)); background: var(--surface); display: grid; gap: 10px; }
+.cover.is-on { border-style: solid; background: var(--brand-soft); }
+.cover__h { display: flex; gap: 12px; align-items: center; }
+.cover__k { font-size: .8rem; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: .04em; }
+.cover__v { font: 700 1.15rem/1.25 var(--display); }
+.cover__code { font: 700 1.9rem/1 var(--display); letter-spacing: .14em; text-align: center; padding: 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); user-select: all; }
+
+/* ---------- Queima de perecíveis (ofertas e boas-vindas) ---------- */
+.qm-strip { display: grid; gap: 10px; }
+.qm-strip__h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.qm-strip__h h2 { font-size: 1.05rem; display: flex; gap: 8px; align-items: center; }
+.qm-strip__h h2 svg { width: 20px; height: 20px; color: var(--up); }
+.qm-list { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; scrollbar-width: thin; }
+.qm-item { flex: 0 0 min(280px, 82%); scroll-snap-align: start; display: grid; gap: 6px; padding: 14px; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--line); }
+.qm-item__h { display: flex; gap: 10px; align-items: center; }
+.qm-item__h b { display: block; line-height: 1.2; }
+.qm-off { margin-left: auto; font-weight: 700; font-size: .85rem; color: #fff; background: var(--up); padding: 2px 8px; border-radius: 8px; white-space: nowrap; }
+.qm-item__p { display: flex; gap: 8px; align-items: baseline; }
+.qm-item__p b { font: 700 1.2rem var(--display); }
+.qm-item small { color: var(--muted); }
+.qm-strip__h { flex-wrap: wrap; row-gap: 2px; }
+.qm-strip__h small { flex-basis: 100%; }
+
+/* ---------- versão do site no rodapé (js/versao.js) ---------- */
+.versao { font-variant-numeric: tabular-nums; color: var(--muted); display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.versao__nova { font: inherit; font-weight: 700; color: var(--brand-ink); background: var(--brand); border: 0; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.site-foot--min { padding-top: 16px; }

@@ -2,6 +2,14 @@
 
 Comparador de preços de supermercados de Manaus: Nova Era, Supermercados DB, Veneza, Baratão da Carne e Coema.
 
+- **Versão no rodapé** (`js/versao.js`, `.github/workflows/versao.yml`): todas as páginas mostram “Versão 1.<nº do envio>.<AAMMDD>.<HHMM> · dia às hora” (horário de Manaus). O GitHub carimba sozinho a cada envio para o `main` (não precisa mexer em nada). Se o aparelho estiver com uma versão antiga e já houver outra no ar, aparece o botão “Nova versão …: atualizar”. Rodando no computador, sem carimbo, aparece “dev”.
+- **Dados de cada conta ficam só nela** (`js/dono.js`): o aparelho marca de quem são os dados guardados (`tb.owner`). Sair da conta apaga lista, ranchos, compras, notas e economia do aparelho (depois de mandar para a conta o que faltava); entrar com outra conta começa limpo e baixa só o dela. A checagem roda antes de qualquer tela ler o aparelho. Preferências do aparelho (letra grande, vibração, tema) ficam. O que foi montado sem conta continua indo para a conta na primeira entrada.
+- **Página de cada supermercado no portal** (`parceiros.html?m=nova-era`, `js/marca.js`): login e portal com as cores da logomarca (principal e destaque), com contraste conferido no tema claro e no escuro. A administração ajusta as cores em Supermercados › Editar; o convite já manda o link da página do mercado.
+- **Portal › Vendas comprovadas** (`js/portal-vendas.js`, `market_sales_proof`): quem viu campanha, promoção, rota, anúncio, cupom ou queima do mercado e, em até 7 dias (3, 7 ou 14), mandou nota com o CNPJ dele. "Sua campanha: 312 pessoas viram, 47 compraram, R$ 8.940 em notas, ticket médio R$ 190", por origem, por campanha, comparação com quem não viu e prova direta (produto da promoção na nota pelo preço da promoção). Cada nota conta uma vez (último contato); grupos com menos de 3 compradores não mostram valores. **Nota de mercado parceiro vale pontos em dobro** (chave `partner_double_points`).
+- **Portal › Cubra a diferença** (`js/portal-cubra.js`, `cover_offer`): ao concluir o Rancho do mês, se outro mercado ganhou por pouco, o parceiro oferece um cupom que cobre a diferença (+ um valor a mais). Regras do mercado: diferença máxima, rancho mínimo, orçamento por mês, validade e compra mínima. O banco recalcula com os preços de agora (só itens que existem nos dois). Paga só o cupom usado: validado no portal (caixa) ou comprovado sozinho pela nota.
+- **Portal › Previsão de demanda** (`js/portal-demanda.js`, `market_demand`): produtos nas listas do mês abertas, listas da família e favoritos com aviso de preço; em quantas listas o mercado é o mais barato (entre os mercados que cada pessoa compara) e um simulador: "baixando R$ 0,40 passa a ganhar em 85%", com botão para aplicar o preço. Também mostra produtos muito pedidos que o mercado não tem no site.
+- **Portal › Queima de perecíveis** (`js/portal-queima.js`, `js/queima.js`): "iogurte vence sexta, 40% off, 60 unidades". Aviso no celular e no Telegram só para quem está no raio da loja e acompanha o produto ou a categoria (1 por dia), boas-vindas na loja e faixa nas ofertas com "Vou buscar". O portal mostra avisados, reservas e unidades comprovadas por nota (R$ recuperado).
+- Tudo isso precisa de [`supabase/atualizacoes/atualizacao-2026-10-parceiros-vendas.sql`](supabase/atualizacoes/atualizacao-2026-10-parceiros-vendas.sql) e de [`atualizacao-2026-10-dono-aparelho.sql`](supabase/atualizacoes/atualizacao-2026-10-dono-aparelho.sql). Republique a função `telegram` para as queimas irem pelo Telegram.
 - **Página inicial** (`#inicio`, `js/inicio.js`): na primeira visita mostra o que o site faz, um exemplo com preços reais do dia, "O que você quer fazer agora?", como usar em 3 momentos (em casa, no mercado, depois de pagar), confiança e perguntas rápidas. O logo leva de volta para ela.
 - **Marca e movimento**: logo da etiqueta com "visto", tela de carregamento animada, páginas que deslizam ao trocar de aba, aba ativa destacada e retorno ao toque (vibração curta e a bolinha que voa até a Lista; desliga em Você › Preferências).
 - **Avisos de preço** (`js/alerts.js`): o aparelho guarda o preço de cada favorito e avisa quando baixar, com o quadro "Baixou!" no topo das ofertas e notificação do celular (com o site aberto ou em segundo plano).
@@ -98,6 +106,7 @@ O e-mail `haydenfernandes.ti@gmail.com` já vem cadastrado como administrador ma
 - baixa relatórios em CSV e adiciona ou remove outros administradores. Tudo fica no registro de atividades (`admin_log`).
 
 ### 1b. Dar acesso a um supermercado
+Pelo site: **admin.html › Supermercados › Acessos e convites** (no cartão de cada mercado): gera o código, copia a mensagem pronta (com o link da página do mercado) ou dá acesso a uma conta que já existe. Pelo SQL:
 1. No SQL Editor, gere um código de convite para o mercado (o `id` está na tabela `supermarkets`):
    ```sql
    insert into public.market_invites (supermarket_id) values (5) returning code;
@@ -177,6 +186,12 @@ Rode [`supabase/atualizacoes/atualizacao-2026-10-promo-unidade.sql`](supabase/at
 - **Portal › Mapa de unidades** (`parceiros.html#unidades`): o mesmo mapa do admin, só com as unidades da própria rede. O supermercado cadastra e corrige as próprias lojas (`market_save_store`); o banco recusa mexer nas de outra rede.
 - **Promoção só numa unidade** (Portal › Promoções › "Vale em"): `promotions.store_id`. Não muda o preço da rede na comparação (`v_products` ignora); o site mostra uma faixa em cima do produto ("R$ 15,50 só no Coema Flores · Flores", com a distância quando a localização está ligada) e, no detalhe, o quadro com bairro, validade, código (se exclusiva), rota e o aviso de que nas outras unidades vale o preço normal (`v_store_promos`). O robô do Telegram também mostra.
 - **Encarte (IA)**: o encarte em andamento não se perde ao sair da tela nem ao recarregar (fica no aparelho por 7 dias); dá para enviar mais páginas depois. "Começar outro encarte" limpa.
+
+### 1i. Parceiros: vendas comprovadas, cubra a diferença, demanda e queima (outubro/2026)
+1. **Banco:** SQL Editor › rode [`supabase/atualizacoes/atualizacao-2026-10-dono-aparelho.sql`](supabase/atualizacoes/atualizacao-2026-10-dono-aparelho.sql) e [`supabase/atualizacoes/atualizacao-2026-10-parceiros-vendas.sql`](supabase/atualizacoes/atualizacao-2026-10-parceiros-vendas.sql) (podem rodar de novo sem problema). Admin › Saúde do banco confere.
+2. **Telegram (queimas):** `supabase functions deploy telegram --no-verify-jwt`. O agendamento dos avisos já existente passa a mandar as queimas também.
+3. **Chaves** (admin › Configurações / `app_settings`): `partner_double_points`, `cover_enabled`, `clearance_enabled` (todas ligadas por padrão).
+4. Se alguém já criou conta num aparelho que tinha dados de outra conta antes desta correção, peça para usar **Você › Preferências › Zerar meu histórico** nessa conta nova: os dados herdados foram enviados para ela antes da correção.
 
 ### 2. Logomarcas oficiais
 Coloque os arquivos em `assets/logos/` com estes nomes (PNG ou troque a extensão na coluna `logo_url`):

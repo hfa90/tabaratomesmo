@@ -28,6 +28,8 @@ import './resumo.js';
 import * as familia from './familia.js';
 import './zerar.js';
 import * as sync from './sync.js';
+import * as dono from './dono.js';
+import * as queima from './queima.js';
 import * as campanhas from './campanhas.js';
 import * as especial from './especial.js';
 import { parse as parseSpeech, match as fuzzyMatch } from './voice.js';
@@ -226,6 +228,7 @@ function setPos(pos) {
   if (location.hash === '#lista') renderList();
   fiscal.checkAtStore();
   campanhas.onPosition();
+  queima.load(); // queimas perto da nova posição
 }
 
 // A mesma folha de localização serve para "onde estou" e "onde fica minha casa"
@@ -857,7 +860,15 @@ document.addEventListener('click', async (e) => {
   if (t.id === 'locBtn') return openLoc('pos');
   if (t.id === 'themeBtn') return toggleTheme();
   if (t.id === 'useGps') return requestGps();
-  if (t.id === 'logout') { await api.signOut(); location.hash = '#ofertas'; toast('Você saiu da conta.'); }
+  if (t.id === 'logout') {
+    t.disabled = true;
+    await sync.flushNow();                       // o que ainda não subiu vai para a conta antes de limpar
+    try { await push.leave(); } catch {}         // avisos deste aparelho param de ir para a conta que saiu
+    sync.stop();
+    location.hash = '#ofertas';
+    try { sessionStorage.setItem('tb.saiu', '1'); } catch {}
+    await api.signOut();                         // onAuth('signout') apaga os dados do aparelho e recarrega
+  }
 });
 
 document.addEventListener('keydown', (e) => {
@@ -954,6 +965,7 @@ async function boot() {
   const data = await api.loadCatalog();
   data.supermarkets.forEach((m) => S.markets.set(m.id, m));
   S.settings = await api.loadSettings();
+  api.partnerMarkets().then((ids) => { S.partners = new Set(ids); }).catch(() => {}); // nota de parceiro vale pontos em dobro
   applySettings();
   await ads.load();
   gridAd = ads.htmlFor('grid');
@@ -965,7 +977,8 @@ async function boot() {
   if (S.pos) { computeNearest(); $('#locLabel').textContent = S.pos.label || 'Minha localização'; $('#locBtn').classList.add('is-set'); }
   rancho.meta();
   renderChips(); renderNearby(); renderDeals(); renderGrid(); renderSaveStrip(); route(); hideSplash();
-  familia.init(); campanhas.init(); especial.init();
+  familia.init(); campanhas.init(); especial.init(); queima.load();
+  try { if (sessionStorage.getItem('tb.saiu')) { sessionStorage.removeItem('tb.saiu'); toast('Você saiu da conta. Os dados dela foram removidos deste aparelho.'); } } catch {}
   try { if (sessionStorage.getItem('tb.wipedElsewhere')) { sessionStorage.removeItem('tb.wipedElsewhere'); toast('O histórico desta conta foi zerado em outro aparelho. Este aparelho também recomeçou do zero.'); } } catch {}
   if (location.hash === '#refeicoes') refeicoes.render();
   fiscal.renderHome(); fiscal.checkAtStore();
@@ -990,7 +1003,10 @@ async function boot() {
     // sem localização: não abre nada sozinho; a pessoa pede quando quiser ver a loja mais perto (linha de comparação e mapa)
   } catch {}
 
-  api.onAuth(async (user) => {
+  api.onAuth(async (user, why) => {
+    // 1º de tudo: os dados do aparelho são desta conta? (senão, uma conta nova via e herdava o histórico de outra)
+    if (user && await dono.claim(user.id)) { location.reload(); return; }
+    if (!user && why === 'signout' && await dono.release()) { location.reload(); return; }
     S.user = user;
     S.profile = user ? await api.getProfile().catch(() => null) : null;
     api.setListGen(S.profile?.history_gen); // listas só da "geração" atual (depois de zerar o histórico)

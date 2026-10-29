@@ -233,3 +233,76 @@ test('nenhum segredo no código do site', async () => {
     expect(s, f).not.toMatch(/VAPID_PRIVATE_KEY\s*[:=]\s*['"][A-Za-z0-9_-]{30,}/);
   }
 });
+
+// ---------------------------------------------------------------- dados de uma conta não podem aparecer em outra
+test('conta nova no mesmo aparelho não herda o histórico da conta anterior', async ({ page }) => {
+  const A = '11111111-1111-1111-1111-111111111111', B = '22222222-2222-2222-2222-222222222222';
+  await page.goto('/privacidade.html');
+  await page.evaluate(({ A, B }) => {
+    localStorage.clear();
+    localStorage.setItem('tb.history', JSON.stringify({ '2026-10': { month: '2026-10', savings: 10 } }));
+    localStorage.setItem('tb.purchases', JSON.stringify([{ market: 1, total: 55.88 }]));
+    localStorage.setItem('tb.haptics', 'false');
+    localStorage.setItem('tb.owner', A);
+    localStorage.setItem('sb-teste-auth-token', JSON.stringify({ user: { id: B } })); // sessão de outra pessoa
+  }, { A, B });
+  const errs = await open(page, '/#conta');
+  await page.waitForTimeout(1200);
+  const st = await page.evaluate(() => ({ owner: localStorage.getItem('tb.owner'), h: localStorage.getItem('tb.history'), p: localStorage.getItem('tb.purchases'), hap: localStorage.getItem('tb.haptics') }));
+  expect(st.owner).toBe(B);
+  expect(st.h).toBeNull();
+  expect(st.p).toBeNull();
+  expect(st.hap).toBe('false'); // preferência do aparelho fica
+  expect(errs).toEqual([]);
+});
+
+test('sair da conta limpa os dados dela do aparelho', async ({ page }) => {
+  await page.goto('/privacidade.html');
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('tb.history', JSON.stringify({ '2026-10': { month: '2026-10', savings: 10 } }));
+    localStorage.setItem('tb.owner', '11111111-1111-1111-1111-111111111111'); // sem sessão = a conta saiu
+  });
+  await open(page, '/#ofertas');
+  await page.waitForTimeout(800);
+  expect(await page.evaluate(() => localStorage.getItem('tb.history'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('tb.owner'))).toBe('anon');
+});
+
+// ---------------------------------------------------------------- página de cada supermercado e módulos novos do portal
+test('parceiros.html?m=slug abre com as cores e a logo do mercado', async ({ page }) => {
+  const errs = await open(page, '/parceiros.html?m=veneza');
+  await expect(page.locator('.mk-hero h1')).toHaveText('Veneza', { timeout: 15_000 });
+  await expect(page.locator('body')).toHaveClass(/is-branded/);
+  const brand = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--brand').trim().toLowerCase());
+  expect(brand).not.toBe('#0f5a3e'); // não é o verde padrão
+  expect(errs).toEqual([]);
+});
+
+test('portal: vendas comprovadas, cubra a diferença, demanda e queima abrem sem erro', async ({ page }) => {
+  const errs = await open(page, '/parceiros.html');
+  await page.click('[data-demo]');
+  await page.goto('/parceiros.html#vendas');
+  await expect(page.locator('.proof-hero')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.src-card')).toHaveCount(6);
+  await page.goto('/parceiros.html#cubra');
+  await expect(page.locator('#cvForm')).toBeVisible();
+  await page.locator('#cvActive').check({ force: true });
+  await page.locator('#cvForm .btn--primary').click();
+  await expect(page.locator('.toast').last()).toContainText('Regras salvas');
+  await page.goto('/parceiros.html#demanda');
+  await expect(page.locator('.dm-row').first()).toBeVisible();
+  const r = page.locator('[data-dm-range]').first();
+  await r.evaluate((el) => { el.value = el.max; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await expect(page.locator('[data-dm-txt]').first()).toContainText('mais barato em');
+  await page.goto('/parceiros.html#queima');
+  await page.locator('[data-qm="new"]').first().click();
+  const f = page.locator('#qmForm');
+  await f.locator('[name=title]').fill('Pão de forma');
+  await f.locator('[name=category_slug]').selectOption({ index: 1 });
+  await f.locator('[name=regular_price]').fill('8,99');
+  await f.locator('[name=price]').fill('4,99');
+  await f.locator('.btn--primary').click();
+  await expect(page.locator('.qm-card h3', { hasText: 'Pão de forma' })).toBeVisible();
+  expect(errs).toEqual([]);
+});

@@ -8,6 +8,7 @@ import * as api from './api.js';
 import { S, $, esc, brl, logo, logoFull, haversine, hooks, isOn, media } from './core.js';
 import { track } from './track.js';
 import * as interrupt from './interrupt.js';
+import * as queima from './queima.js';
 
 let watchId = null, streak = { id: null, n: 0 }, lastPosSent = null;
 const radiusKm = () => Math.max(50, Number(S.settings?.welcome_radius) || 150) / 1000;
@@ -89,6 +90,7 @@ function render(store, m) {
       ${offers.length ? `<div><p class="pd__h">Hoje vale a pena aqui</p><ul class="wl-offers">${offers.map(({ p, x, save }) => `<li><button data-wl-product="${p.id}">${media(p, 'rx-media')}
         <span class="rx-txt"><span class="rx-name">${esc(p.name)}</span><span class="rx-meta"><span>${esc([p.brand, p.unit].filter(Boolean).join(' · '))}</span></span></span>
         <span class="wl-price"><b>${brl(x.price)}</b>${x.promo ? `<small class="pill ${x.promo.kind === 'exclusiva' ? 'pill--excl' : 'pill--promo'}">${x.promo.kind === 'exclusiva' ? 'Só pelo app' : 'Oferta'}</small>` : save > 0.01 ? `<small class="down">${brl(save)} a menos</small>` : ''}</span></button></li>`).join('')}</ul></div>` : ''}
+      ${queima.welcomeHTML(m.id, store.id)}
       ${ranchoTxt ? `<p class="wl-rancho">${ranchoTxt} <a class="linkish" href="#lista" data-close>Ver o rancho</a></p>` : ''}
       <div class="wl-actions">
         <a class="btn btn--primary btn--block" href="#carrinho" data-close data-autofocus>Começar meu carrinho aqui</a>

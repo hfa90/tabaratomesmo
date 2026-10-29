@@ -18,6 +18,7 @@ export const S = {
   anonUsed: api.store.get('tb.anonUsed', 0),
   map: null, mapLayers: null, mapFilter: null,
   settings: {}, // app_settings (admin): collab_enabled, banner…
+  partners: new Set(), // mercados parceiros (pontos em dobro na nota)
 };
 
 export const $ = (s, r = document) => r.querySelector(s);

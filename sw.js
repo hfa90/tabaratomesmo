@@ -2,11 +2,11 @@
 //  - arquivos do site: rede primeiro, cópia salva quando não há sinal
 //  - bibliotecas de CDN e fontes (Supabase, leitor de código, mapa): cópia salva primeiro (endereços com versão fixa)
 //  - API do Supabase: sempre ao vivo (o app guarda o catálogo no aparelho e enfileira os envios)
-const CACHE = 'tb-v27';
+const CACHE = 'tb-v28';
 const CDN = 'tb-cdn-v1';
 const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/api.js', 'js/config.js', 'js/chart.js', 'js/core.js', 'js/rancho.js',
   'js/fiscal.js', 'js/account.js', 'js/telegram.js', 'js/track.js', 'js/carrinho.js', 'js/voice.js', 'js/fila.js', 'js/ads.js', 'js/presence.js',
-  'js/ajudantes.js', 'js/scanner.js', 'js/unitprice.js', 'js/offline.js', 'js/deals.js', 'js/cupom.js', 'js/demo-data.js', 'js/notas.js', 'js/fotopreco.js', 'js/ia.js', 'js/calc.js', 'js/refeicoes.js', 'js/receitas-data.js', 'js/inicio.js', 'js/icons.js', 'js/fx.js', 'js/alerts.js', 'js/resumo.js', 'js/familia.js', 'js/zerar.js', 'js/sync.js', 'js/campanhas.js', 'js/temas.js', 'js/especial.js', 'js/push.js', 'js/interrupt.js', 'js/privacidade.js',
+  'js/ajudantes.js', 'js/scanner.js', 'js/unitprice.js', 'js/offline.js', 'js/deals.js', 'js/cupom.js', 'js/demo-data.js', 'js/notas.js', 'js/fotopreco.js', 'js/ia.js', 'js/calc.js', 'js/refeicoes.js', 'js/receitas-data.js', 'js/inicio.js', 'js/icons.js', 'js/fx.js', 'js/alerts.js', 'js/resumo.js', 'js/familia.js', 'js/zerar.js', 'js/sync.js', 'js/campanhas.js', 'js/temas.js', 'js/especial.js', 'js/push.js', 'js/interrupt.js', 'js/privacidade.js', 'js/dono.js', 'js/queima.js', 'js/versao.js',
   'assets/icon.svg', 'assets/icon-192.png', 'assets/apple-touch-icon.png', 'manifest.webmanifest'];
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
@@ -54,6 +54,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (url.origin !== location.origin) return; // Supabase e outros serviços: sempre ao vivo
+  if (url.pathname.endsWith('/versao.json')) return; // versão no ar: sempre do servidor, nunca guardada
   e.respondWith(fetch(req).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); } return r; })
     .catch(async () => (await caches.match(req, { ignoreSearch: true })) || (req.mode === 'navigate' ? caches.match('index.html') : Response.error())));
 });

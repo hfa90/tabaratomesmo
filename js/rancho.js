@@ -635,6 +635,7 @@ export async function renderReport(scroll = true) {
         </div>
       </header>
 
+      ${m.status === 'concluida' ? '<div id="repCover"></div>' : ''}
       <div class="rep__box bought" id="repBought">${boughtBox(r, m)}</div>
 
       <p class="rep__more">Quer economizar mais? Toque para abrir:</p>
@@ -679,6 +680,7 @@ export async function renderReport(scroll = true) {
     </section>`;
 
   opened.forEach((id) => { const d = document.getElementById(id); if (d) d.open = true; });
+  if (m.status === 'concluida') coverFill(r);
   if (scroll) el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
 
   const pi = await proteinInsights(r.its);
@@ -701,6 +703,62 @@ export async function renderReport(scroll = true) {
     </div>
     <p class="muted small" style="margin-top:8px">${!pi.fromList ? 'Sua lista não tem proteínas; estes são os mais buscados. ' : ''}Média das últimas semanas; quanto mais verde, menor o preço.</p>`;
 }
+
+// ---------------------------------------------------------------- Cubra a diferença
+// O mercado que perdeu por pouco cobre a diferença com um cupom (regras dele no portal; o banco calcula).
+let coverCache = null; // { key, offer }
+const coverKey = () => `${meta().month}:${[...S.list].map(([p, q]) => p + 'x' + q).sort().join(',')}`;
+const dayName = (iso) => new Date(iso).toLocaleDateString('pt-BR', { weekday: 'long' });
+async function coverFill(r) {
+  const box = document.getElementById('repCover'); if (!box) return;
+  if (api.MODE === 'live' && !S.user) return;
+  const k = coverKey();
+  let o = coverCache?.key === k ? coverCache.offer : undefined;
+  if (o === undefined) {
+    o = api.MODE === 'demo' ? api.coverDemoOffer(r) : await api.coverOffer([...S.list].map(([product_id, qty]) => ({ product_id, qty }))).catch(() => null);
+    coverCache = { key: k, offer: o };
+    if (o) track('cover_view', { market_id: o.supermarket_id, campaign_id: o.id, value: o.value });
+  }
+  const el = document.getElementById('repCover'); if (!el) return;
+  el.innerHTML = o && ['oferta', 'aceito'].includes(o.status) ? coverCard(o) : '';
+}
+function coverCard(o) {
+  const mk = S.markets.get(o.supermarket_id) || { name: o.market_name, id: o.supermarket_id };
+  const until = dayName(o.expires_at);
+  if (o.status === 'aceito') return `<section class="cover is-on" aria-label="Seu cupom">
+    <div class="cover__h">${logo(mk, 'md')}<div><p class="cover__k">Seu cupom do ${esc(mk.name)}</p><p class="cover__v">${brl(Number(o.value))} de desconto</p></div></div>
+    <p class="cover__code" aria-label="Código do cupom">${esc(o.code || '')}</p>
+    <p class="small">Mostre este código no caixa do ${esc(mk.name)} até <b>${until}</b> (${new Date(o.expires_at).toLocaleDateString('pt-BR')}), em compras a partir de <b>${brl(Number(o.min_spend))}</b>. Ou mande a nota da compra aqui no site: o cupom é comprovado sozinho.</p>
+    <div class="row-actions"><button class="btn btn--ghost btn--sm" data-cover="copy" data-code="${esc(o.code || '')}">${ic('copy')} Copiar código</button>
+      ${(() => { const st = homePos() ? nearestStore(mk.id, homePos())?.store : S.stores.find((x) => x.supermarket_id === mk.id); return st ? `<a class="btn btn--ghost btn--sm" href="https://www.google.com/maps/dir/?api=1&destination=${st.lat},${st.lng}" target="_blank" rel="noopener" data-route="${mk.id}">Abrir rota</a>` : ''; })()}</div>
+  </section>`;
+  return `<section class="cover" aria-label="Contraoferta">
+    <p class="small muted">Só nos produtos, o ${esc(o.best_name || '')} sai ${brl(Number(o.diff))} mais barato que o ${esc(mk.name)}. Mas…</p>
+    <div class="cover__h">${logo(mk, 'md')}<div><p class="cover__k">O ${esc(mk.name)} cobre a diferença</p>
+      <p class="cover__v">Cupom de ${brl(Number(o.value))} se fizer o rancho lá até ${until}</p></div></div>
+    <p class="small muted">Para compras a partir de ${brl(Number(o.min_spend))}. Um cupom por mês de cada mercado.</p>
+    <div class="row-actions"><button class="btn btn--primary" data-cover="accept" data-id="${o.id}">${ic('ticket')} Quero o cupom</button>
+      <button class="btn btn--text btn--sm" data-cover="no" data-id="${o.id}">Agora não</button></div>
+  </section>`;
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-cover]'); if (!b) return;
+  const act = b.dataset.cover;
+  if (act === 'copy') { navigator.clipboard?.writeText(b.dataset.code).then(() => hooks.toast?.('Código copiado.')).catch(() => {}); return; }
+  const id = Number(b.dataset.id);
+  if (act === 'no') { api.coverDecline(id).catch(() => {}); if (coverCache?.offer) coverCache.offer.status = 'recusado'; const el = document.getElementById('repCover'); if (el) el.innerHTML = ''; return; }
+  if (act === 'accept') {
+    b.disabled = true;
+    try {
+      const o = await api.coverAccept(id);
+      const full = { ...(coverCache?.offer || {}), ...o };
+      coverCache = { key: coverKey(), offer: full };
+      track('cover_accept', { market_id: full.supermarket_id, campaign_id: full.id, value: full.value });
+      const el = document.getElementById('repCover'); if (el) el.innerHTML = coverCard(full);
+      hooks.toast?.('Cupom ativado. Ele fica salvo aqui no relatório.');
+    } catch (x) { b.disabled = false; hooks.toast?.(x.message, 'warn'); }
+  }
+});
 
 /** "Onde você comprou?": alimenta a página Você e as métricas dos mercados */
 function boughtBox(r, m) {

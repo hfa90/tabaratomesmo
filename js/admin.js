@@ -8,6 +8,7 @@ import * as adsUI from './ads.js';
 import * as encarte from './encarte.js';
 import { THEMES, nextDates } from './temas.js';
 import * as mapa from './admin-mapa.js';
+import * as marca from './marca.js';
 
 const st = { user: null, days: 30, usersQ: '', usersFilter: 'all', usersPage: 0, repStatus: 'pendente', modTab: 'precos', prodQ: '', overview: null, markets: null, adStatus: 'pendente', ads: null };
 const PAGE = 50;
@@ -277,6 +278,7 @@ async function renderMarkets() {
         <button class="btn btn--primary btn--sm" data-mk-access="${m.id}">Acessos e convites</button>
         <button class="btn btn--ghost btn--sm" data-mk-stores="${m.id}">Lojas</button>
         <button class="btn btn--ghost btn--sm" data-mk-edit="${m.id}">Editar</button>
+        ${m.slug ? `<a class="btn btn--ghost btn--sm" href="parceiros.html?m=${encodeURIComponent(m.slug)}" target="_blank" rel="noopener">Página do parceiro</a>` : ''}
         <button class="btn btn--text btn--sm" data-mk-del="${m.id}">Excluir</button>
       </div>
     </article>`).join('')}</div>`;
@@ -288,6 +290,10 @@ function marketForm(m = {}) {
       <label>Nome<input name="mname" required value="${esc(m.name || '')}" /></label>
       <div class="form__row"><label>Identificador (slug)<input name="slug" value="${esc(m.slug || '')}" placeholder="gerado do nome" /></label>
         <label>Cor da marca<input name="color" type="color" value="${esc(m.color || '#0F5A3E')}" style="padding:4px;height:48px" /></label></div>
+      <fieldset class="form__row" style="border:0;padding:0;margin:0"><legend class="small" style="font-weight:600;margin-bottom:6px">Cores da página do parceiro (tiradas da logomarca)</legend>
+        <label>Principal<input name="brand_primary" type="color" value="${esc(marca.palette(m).primary)}" style="padding:4px;height:48px" /></label>
+        <label>Destaque<input name="brand_accent" type="color" value="${esc(marca.palette(m).accent)}" style="padding:4px;height:48px" /></label></fieldset>
+      ${m.slug ? `<p class="small muted">Página do parceiro: <a class="linkish" href="parceiros.html?m=${encodeURIComponent(m.slug)}" target="_blank" rel="noopener">parceiros.html?m=${esc(m.slug)}</a></p>` : ''}
       <label>Logomarca (URL ou caminho, ex.: assets/logos/coema.png)<input name="logo_url" value="${esc(m.logo_url || '')}" /></label>
       <label>Site<input name="website" value="${esc(m.website || '')}" placeholder="https://" /></label>
       <label>Loja online ou app (para "comprar esta lista")<input name="shop_url" value="${esc(m.shop_url || '')}" placeholder="https://" /></label>
@@ -299,7 +305,7 @@ async function accessSheet(id) {
   openSheet(`<h2 class="sheet__title" id="ptSheetTitle">${logo(m, 'sm')} Acessos do ${esc(m.name)}</h2><div id="accBody"><div class="skeleton" style="height:200px"></div></div>`);
   let D;
   try { D = await A.access(id); } catch (e) { $('#accBody').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
-  const link = new URL('parceiros.html', SITE).href;
+  const link = new URL(`parceiros.html${m.slug ? `?m=${encodeURIComponent(m.slug)}` : ''}`, SITE).href;
   $('#accBody').innerHTML = `
     <h3 class="pd__h" style="margin-top:8px">Pessoas com acesso</h3>
     ${D.members.length ? `<div class="tbl-wrap"><table class="tbl tbl--sm"><thead><tr><th>Pessoa</th><th>Papel</th><th>Último acesso</th><th>Ativo</th><th></th></tr></thead><tbody>
@@ -322,7 +328,7 @@ async function accessSheet(id) {
     ${D.invites.length ? `<div class="tbl-wrap"><table class="tbl tbl--sm"><thead><tr><th>Código</th><th>Papel</th><th class="r">Usos restantes</th><th>Expira</th><th>Status</th><th></th></tr></thead><tbody>
       ${D.invites.map((i) => `<tr class="${i.valid ? '' : 'is-off'}"><td><code class="code-big">${esc(i.code)}</code></td><td>${i.role === 'editor' ? 'Editor' : 'Gerente'}</td><td class="r">${i.uses_left}</td><td>${dateBR(i.expires_at)}</td>
         <td>${i.valid ? '<span class="pill pill--ok">Válido</span>' : '<span class="pill pill--soft">Expirado</span>'}</td>
-        <td class="r nowrap"><button class="btn btn--ghost btn--sm" data-inv-copy="${esc(i.code)}" data-mkname="${esc(m.name)}">Copiar mensagem</button> <button class="btn btn--text btn--sm" data-inv-del="${esc(i.code)}" data-mk="${id}">Excluir</button></td></tr>`).join('')}
+        <td class="r nowrap"><button class="btn btn--ghost btn--sm" data-inv-copy="${esc(i.code)}" data-mkname="${esc(m.name)}" data-mkslug="${esc(m.slug || '')}">Copiar mensagem</button> <button class="btn btn--text btn--sm" data-inv-del="${esc(i.code)}" data-mk="${id}">Excluir</button></td></tr>`).join('')}
     </tbody></table></div>` : ''}
     <p class="muted small" style="margin-top:10px">O responsável abre <a href="${link}" target="_blank" rel="noopener">${link}</a>, toca em “Criar conta com código de convite” e entra direto no portal do ${esc(m.name)}.</p>`;
 }
@@ -752,7 +758,7 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (d.invCopy) {
-    const msg = `Olá! Seu acesso à Área do supermercado do Tá Barato Mesmo? (${d.mkname}) está liberado.\n\n1. Abra ${new URL('parceiros.html', SITE).href}\n2. Toque em "Criar conta com código de convite"\n3. Use o código: ${d.invCopy}`;
+    const msg = `Olá! Seu acesso à Área do supermercado do Tá Barato Mesmo? (${d.mkname}) está liberado.\n\n1. Abra ${new URL(`parceiros.html${d.mkslug ? `?m=${encodeURIComponent(d.mkslug)}` : ''}`, SITE).href}\n2. Toque em "Criar conta com código de convite"\n3. Use o código: ${d.invCopy}`;
     try { await navigator.clipboard.writeText(msg); toast('Mensagem copiada. É só colar no WhatsApp ou e-mail.'); } catch { prompt('Copie a mensagem:', msg); }
     return;
   }
@@ -833,7 +839,9 @@ document.addEventListener('submit', async (e) => {
     if (fid === 'admLogin') {
       await api.signIn({ email: f.email.value.trim(), password: f.password.value });
     } else if (fid === 'mkForm') {
-      await A.saveMarket({ id: f.mid.value || null, name: f.mname.value.trim(), slug: f.slug.value.trim(), color: f.color.value, logo_url: f.logo_url.value.trim(), website: f.website.value.trim(), shop_url: f.shop_url.value.trim() });
+      const saved = await A.saveMarket({ id: f.mid.value || null, name: f.mname.value.trim(), slug: f.slug.value.trim(), color: f.color.value, logo_url: f.logo_url.value.trim(), website: f.website.value.trim(), shop_url: f.shop_url.value.trim() });
+      const mkId = Number(f.mid.value || saved?.id);
+      if (mkId) await A.setMarketBrand(mkId, f.brand_primary.value.toUpperCase(), f.brand_accent.value.toUpperCase()).catch((x) => toast(`Cores não salvas: ${x.message}`, 'warn'));
       closeSheet(); toast('Supermercado salvo.'); renderMarkets();
     } else if (fid === 'memAdd') {
       await A.addMember(f.email.value.trim(), Number(f.dataset.mk), f.role.value); toast('Acesso liberado.'); accessSheet(Number(f.dataset.mk)); refreshMarketsSoon();
@@ -843,7 +851,7 @@ document.addEventListener('submit', async (e) => {
       await accessSheet(mk);
       const m = st.markets.find((x) => x.id === mk);
       $('#invNewOut').innerHTML = `<div class="ok-box" style="margin:10px 0"><p>Novo código: <code class="code-big">${esc(code)}</code></p>
-        <button class="btn btn--primary btn--sm" style="margin-top:8px" data-inv-copy="${esc(code)}" data-mkname="${esc(m.name)}">Copiar mensagem para enviar</button></div>`;
+        <button class="btn btn--primary btn--sm" style="margin-top:8px" data-inv-copy="${esc(code)}" data-mkname="${esc(m.name)}" data-mkslug="${esc(m.slug || '')}">Copiar mensagem para enviar</button></div>`;
       refreshMarketsSoon();
     } else if (fid === 'stForm') {
       const lat = parseFloat(String(f.lat.value).replace(',', '.')), lng = parseFloat(String(f.lng.value).replace(',', '.'));

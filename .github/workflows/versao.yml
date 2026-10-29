@@ -1,0 +1,44 @@
+# Versão do site: a cada envio para o main, carimba um número novo e a data/hora.
+# O rodapé de todas as páginas mostra "Versão 1.<nº do envio>.<AAMMDD>.<HHMM>" (horário de Manaus).
+# Assim dá para saber, olhando o rodapé, se o aparelho já está com a versão que acabou de ser publicada.
+# Arquivos carimbados: js/versao.js (o que o aparelho está rodando), versao.json (o que está no ar) e sw.js (cache novo).
+name: Versão
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: versao
+  cancel-in-progress: false
+
+jobs:
+  carimbar:
+    # o próprio carimbo não gera outro carimbo
+    if: ${{ !startsWith(github.event.head_commit.message, 'Versão ') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Carimbar versão
+        run: |
+          export TZ=America/Manaus
+          VER="1.${{ github.run_number }}.$(date +%y%m%d).$(date +%H%M)"
+          DATA="$(date -Iseconds)"
+          SHA="${{ github.sha }}"
+          sed -i -E "s|^export const VERSAO = .*;$|export const VERSAO = { versao: '${VER}', data: '${DATA}', commit: '${SHA}' };|" js/versao.js
+          printf '{ "versao": "%s", "data": "%s", "commit": "%s" }\n' "$VER" "$DATA" "$SHA" > versao.json
+          sed -i -E "s|^const CACHE = '[^']*';|const CACHE = 'tb-${VER}';|" sw.js
+          grep -q "versao: '${VER}'" js/versao.js
+          echo "VER=$VER" >> "$GITHUB_ENV"
+      - name: Gravar
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/versao.js versao.json sw.js
+          git commit -m "Versão ${VER} [skip ci]"
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 3; done

@@ -1,4 +1,5 @@
 // Camada de dados: Supabase (produção) com fallback para dados de demonstração.
+import './dono.js'; // 1º: confere de quem são os dados do aparelho antes de qualquer leitura
 import { CONFIG } from './config.js';
 import * as off from './offline.js';
 
@@ -193,16 +194,22 @@ export const store = ls;
 
 const authListeners = new Set();
 export function onAuth(cb) { authListeners.add(cb); }
-const emitAuth = (u) => authListeners.forEach((cb) => cb(u));
+// 2º argumento: por que mudou. 'signout' = a sessão acabou de verdade (botão, outra aba, expirou);
+// 'unknown' = não deu para saber (sem internet): nesse caso os dados do aparelho NÃO podem ser apagados.
+const emitAuth = (u, why = 'session') => authListeners.forEach((cb) => cb(u, why));
 
 export async function initAuth() {
   if (MODE === 'demo') { emitAuth(ls.get(DEMO_KEY)); return; }
   try {
     const c = await client();
-    const { data } = await c.auth.getSession();
-    emitAuth(data.session?.user ?? null);
-    c.auth.onAuthStateChange((_e, session) => emitAuth(session?.user ?? null));
-  } catch (e) { console.warn('[TáBarato] conta indisponível agora', e); emitAuth(null); }
+    const { data, error } = await c.auth.getSession();
+    const u = data.session?.user ?? null;
+    emitAuth(u, u ? 'session' : error ? 'unknown' : 'signout');
+    c.auth.onAuthStateChange((e, session) => {
+      if (e === 'INITIAL_SESSION') return; // já tratado acima
+      emitAuth(session?.user ?? null, e === 'SIGNED_OUT' ? 'signout' : 'session');
+    });
+  } catch (e) { console.warn('[TáBarato] conta indisponível agora', e); emitAuth(null, 'unknown'); }
 }
 
 /** página que recebe os links dos e-mails (auth.html), no mesmo endereço do site */
@@ -252,7 +259,7 @@ export async function verifyRecoveryCode(email, code) {
 }
 
 export async function signOut() {
-  if (MODE === 'demo') { ls.del(DEMO_KEY); ls.del('tb.demoProfile'); emitAuth(null); return; }
+  if (MODE === 'demo') { ls.del(DEMO_KEY); ls.del('tb.demoProfile'); emitAuth(null, 'signout'); return; }
   const c = await client();
   await c.auth.signOut();
 }
@@ -814,3 +821,83 @@ export const deleteMyAccount = (confirm) => rpc('delete_my_account', { p_confirm
 export const adminUsage = (days = 30) => rpc('admin_usage', { p_days: days }, 20000);
 export const dbHealth = () => rpc('db_health', {});
 export const marketSetShopUrl = (market, url) => rpc('market_set_shop_url', { p_market: market, p_url: url });
+
+// ---------------------------------------------------------------- parceiros: pontos em dobro, cubra a diferença e queima de perecíveis
+let partnersP = null;
+/** ids dos mercados parceiros (nota deles vale pontos em dobro) */
+export function partnerMarkets() {
+  if (MODE === 'demo') return Promise.resolve([5]);
+  if (MODE !== 'live') return Promise.resolve([]);
+  return (partnersP ||= client().then((c) => withTimeout(c.rpc('partner_markets'), 6000)).then(({ data, error }) => (error ? [] : data || [])).catch(() => []));
+}
+const coverDemo = () => ls.get('tb.coverDemo', []);
+/** contraoferta ao concluir o rancho (o banco recalcula com os preços de agora) */
+export async function coverOffer(items) {
+  if (MODE === 'demo') return null; // a demonstração usa coverDemoOffer (precisa do relatório do rancho)
+  if (MODE !== 'live') return null;
+  const c = await client();
+  const { data, error } = await withTimeout(c.rpc('cover_offer', { p_items: items }), 8000);
+  if (error) return null; // banco sem a atualização ou sem conta: segue sem oferta
+  return data;
+}
+/** demonstração: monta a oferta a partir do relatório já calculado no aparelho */
+export function coverDemoOffer(r) {
+  if (MODE !== 'demo' || !r || r.its.length < 5) return null;
+  const saved = coverDemo().find((x) => x.month === new Date().toISOString().slice(0, 7) && ['oferta', 'aceito'].includes(x.status));
+  if (saved) return saved;
+  // como no banco: só produtos (sem deslocamento), entre mercados que têm quase tudo
+  const ok = r.rows.filter((x) => x.missing.length <= r.its.length * 0.2).sort((a, b) => a.goods - b.goods); // demonstração tem menos preços: 80% (o banco exige 90%)
+  const [win, second] = ok; if (!second) return null;
+  const diff = Math.round((second.goods - win.goods) * 100) / 100;
+  if (diff <= 0.5 || diff > 40) return null;
+  const exp = new Date(); exp.setDate(exp.getDate() + 4); exp.setHours(23, 59, 0, 0);
+  const o = { id: Date.now(), supermarket_id: second.m.id, market_name: second.m.name, best_market: win.m.id, best_name: win.m.name, best_total: Math.round(win.goods * 100) / 100,
+    my_total: Math.round(second.goods * 100) / 100, diff, value: Math.ceil(diff) + 1, min_spend: Math.round(second.goods * 0.8 * 100) / 100, status: 'oferta', expires_at: exp.toISOString(),
+    month: new Date().toISOString().slice(0, 7), demo: true };
+  ls.set('tb.coverDemo', [o, ...coverDemo()].slice(0, 10)); return o;
+}
+export async function coverAccept(id) {
+  if (MODE === 'demo') {
+    const l = coverDemo(); const o = l.find((x) => x.id === id); if (!o) throw new Error('Cupom não encontrado.');
+    Object.assign(o, { status: 'aceito', code: 'TB' + Math.random().toString(36).slice(2, 8).toUpperCase(), accepted_at: new Date().toISOString() });
+    ls.set('tb.coverDemo', l); return o;
+  }
+  const c = await client();
+  const { data, error } = await c.rpc('cover_accept', { p_id: id });
+  if (error) throw new Error(error.message);
+  return data;
+}
+export async function coverDecline(id) {
+  if (MODE === 'demo') { const l = coverDemo(); const o = l.find((x) => x.id === id); if (o) o.status = 'recusado'; ls.set('tb.coverDemo', l); return; }
+  const c = await client(); await c.rpc('cover_decline', { p_id: id });
+}
+export async function myCoupons() {
+  if (MODE === 'demo') return coverDemo();
+  if (MODE !== 'live') return [];
+  try { const c = await client(); const { data, error } = await withTimeout(c.rpc('my_cover_coupons'), 6000); return error ? [] : data || []; } catch { return []; }
+}
+
+/** queimas de perecíveis no ar (perto da posição, se houver) */
+export async function clearanceLive(pos) {
+  if (MODE === 'demo') {
+    const d = ls.get('tb.portalDemo', null)?.clearance || [];
+    const live = d.filter((c) => c.status === 'ativa' && new Date(c.ends_at) > Date.now());
+    const base = live.length ? live : [{ id: 9101, supermarket_id: 5, title: 'Iogurte natural 170 g', note: 'Gôndola de refrigerados', regular_price: 4.29, price: 2.49, qty: 60,
+      expires_on: new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(), radius_km: 2, claims: 37, category_slug: 'laticinios', demo: true }];
+    return base.map((c) => ({ ...c, pct: Math.round(100 * (1 - c.price / c.regular_price)) }));
+  }
+  if (MODE !== 'live') return [];
+  try {
+    const c = await client();
+    const { data, error } = await withTimeout(c.rpc('clearance_live', { p_lat: pos?.lat ?? null, p_lng: pos?.lng ?? null }), 6000);
+    return error ? [] : data || [];
+  } catch { return []; }
+}
+export async function clearanceClaim(id) {
+  if (MODE !== 'live') return 1;
+  const c = await client();
+  let dev = null; try { dev = localStorage.getItem('tb.dev'); } catch {}
+  const { data, error } = await c.rpc('clearance_claim', { p_id: id, p_device: dev });
+  if (error) throw new Error(error.message);
+  return data;
+}

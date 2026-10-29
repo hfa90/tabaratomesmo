@@ -55,6 +55,12 @@ export async function pending() {
   try { return await tx('outbox', 'readonly', (s) => s.getAll()); } catch { return []; }
 }
 
+/** descarta os envios guardados (a conta que os fez saiu deste aparelho) */
+export async function clearQueue() {
+  try { await tx('outbox', 'readwrite', (s) => s.clear()); } catch {}
+  status();
+}
+
 let flushing = false;
 /** tenta mandar o que está na fila; o que falhar por rede continua lá */
 export async function flush() {

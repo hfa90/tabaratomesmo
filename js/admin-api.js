@@ -136,6 +136,10 @@ export async function saveMarket(p) {
   else d.markets.push({ ...p, id: Math.max(...d.markets.map((m) => m.id)) + 1, slug: p.slug || p.name.toLowerCase().normalize('NFD').replace(/[^\w]+/g, '-'), active: true, portal_enabled: true });
   note('salvar mercado', { name: p.name }); saveDemo();
 }
+export async function setMarketBrand(id, primary, accent) {
+  if (MODE !== 'demo') return rpc('admin_set_market_brand', { p_market: id, p_primary: primary, p_accent: accent });
+  const d = await demo(); Object.assign(d.markets.find((m) => m.id === id) || {}, { brand_primary: primary, brand_accent: accent }); saveDemo();
+}
 export async function setMarketFlag(id, flag, on) {
   if (MODE !== 'demo') return rpc('admin_set_market_flag', { p_market: id, p_flag: flag, p_on: on });
   const d = await demo(); d.markets.find((m) => m.id === id)[flag] = on; note('mercado ' + flag, { market: id, on }); saveDemo();

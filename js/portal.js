@@ -11,13 +11,35 @@ import * as clientes from './portal-clientes.js';
 import * as campanhas from './portal-campanhas.js';
 import * as especiais from './portal-especiais.js';
 import * as mapa from './admin-mapa.js';
+import * as marca from './marca.js';
+import * as vendas from './portal-vendas.js';
+import * as cubra from './portal-cubra.js';
+import * as demanda from './portal-demanda.js';
+import * as queima from './portal-queima.js';
 
 const st = {
-  user: null, markets: [], mid: null, categories: [],
+  user: null, markets: [], mid: null, categories: [], pub: [], pubStores: [], // pub = mercados do catálogo público (cores, logo, lojas)
   catalog: null, promos: null, dash: null, days: 30, rankPeriod: 'm',
   q: '', filter: 'all', cat: 'all', importRows: null, importPhotos: new Map(),
 };
 const market = () => st.markets.find((m) => m.id === st.mid);
+// página de um mercado: parceiros.html?m=nova-era
+const slugParam = (() => { try { return new URLSearchParams(location.search).get('m') || ''; } catch { return ''; } })();
+const pageMarket = () => st.pub.find((m) => m.slug === slugParam) || null;
+const withBrand = (m) => (m ? { ...(st.pub.find((x) => x.id === m.id) || {}), ...m } : m);
+function themeFor(m) { marca.apply(m ? withBrand(m) : pageMarket()); }
+function mkHero(m, { auth = false, sub = '' } = {}) {
+  const full = withBrand(m) || {};
+  const img = full.logo_url ? `<img src="${esc(full.logo_url)}" alt="" />` : logo(full, 'lg');
+  const nStores = (full.stores_count ?? null);
+  return `<section class="mk-hero ${auth ? 'mk-hero--auth' : ''}">
+    <span class="mk-hero__logo">${img}</span>
+    <div class="mk-hero__t"><span class="mk-hero__k">Área do parceiro</span>
+      ${auth ? `<h1>${esc(full.name)}</h1>` : `<h2>${esc(full.name)}</h2>`}
+      ${sub ? `<p>${sub}</p>` : ''}
+      ${nStores ? `<div class="mk-hero__chips"><span>${nStores} ${nStores > 1 ? 'lojas' : 'loja'}</span></div>` : ''}
+    </div></section>`;
+}
 const dateBR = (d) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '');
 const GENDER = { feminino: 'Mulheres', masculino: 'Homens', outro: 'Outro' };
 
@@ -61,10 +83,12 @@ const banner = () => P.MODE === 'demo'
 function renderLogin(mode = 'login', msg = '') {
   $('#ptNav').hidden = true; $('#logoutBtn').hidden = true; $('#marketPicker').innerHTML = '';
   const pending = P.MODE === 'pending';
+  const pm = pageMarket();
+  themeFor(null);
   $('#ptMain').innerHTML = `
     <section class="pt-auth">
       <div class="pt-auth__intro">
-        <h1>Área do supermercado</h1>
+        ${pm ? mkHero(pm, { auth: true, sub: `Esta é a página do ${esc(pm.name)} no Tá Barato Mesmo?. Entre com o acesso que a equipe enviou.` }) : '<h1>Área do supermercado</h1>'}
         <p class="muted">Cadastre e atualize seus produtos e fotos, crie promoções só para quem vem pelo Tá Barato Mesmo? e veja o que o público de Manaus está procurando.</p>
         <ul class="pt-bullets">
           <li><b>Métricas</b> de buscas, marcas, regiões, público e horários de pico</li>
@@ -72,7 +96,7 @@ function renderLogin(mode = 'login', msg = '') {
           <li><b>Importação</b> de centenas de produtos de uma vez pela planilha</li>
         </ul>
       </div>
-      <div class="pt-auth__card">
+      <div class="pt-auth__card ${pm ? 'is-branded-card' : ''}">
         ${pending ? `<p class="note">O banco ainda não tem as funções do portal. Rode o <b>supabase/schema.sql</b> atualizado no SQL Editor do Supabase.</p>
           <button class="btn btn--ghost btn--block" data-demo style="margin-top:12px">Ver demonstração do portal</button>` : ''}
         ${!pending && P.MODE === 'demo' ? `<p class="note">Modo demonstração: o banco não respondeu. Entre para conhecer o portal com dados simulados do Coema.</p>
@@ -124,7 +148,10 @@ async function enter() {
   }
   st.markets = usable;
   const saved = api.store.get('tb.ptMarket');
-  st.mid = st.markets.some((m) => m.id === saved) ? saved : st.markets[0].id;
+  const pm = pageMarket();
+  st.mid = pm && st.markets.some((m) => m.id === pm.id) ? pm.id : st.markets.some((m) => m.id === saved) ? saved : st.markets[0].id;
+  st.markets = st.markets.map(withBrand);
+  themeFor(market());
   st.catalog = st.promos = st.dash = null;
   $('#ptNav').hidden = false; $('#logoutBtn').hidden = false;
   renderPicker();
@@ -139,16 +166,18 @@ function renderPicker() {
 }
 
 // contexto que as abas novas (Clientes, Campanhas) recebem
-const ctx = () => ({ main: $('#ptMain'), mid: st.mid, market, banner: banner(), toast, openSheet, closeSheet,
-  catalog: async () => { await loadCatalog(); return st.catalog; } });
+const ctx = () => ({ main: $('#ptMain'), mid: st.mid, market: () => withBrand(market()), banner: banner(), toast, openSheet, closeSheet,
+  catalog: async () => { await loadCatalog(); return st.catalog; }, categories: () => st.categories,
+  stores: () => st.pubStores.filter((x) => x.supermarket_id === st.mid), go: (h) => { location.hash = h; },
+  invalidateCatalog: () => { st.catalog = null; } });
 
 // ---------------------------------------------------------------- rotas
 function route() {
   if (!st.mid) return;
   const v = (location.hash || '#painel').slice(1);
-  const view = ['painel', 'clientes', 'campanhas', 'datas', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte', 'unidades'].includes(v) ? v : 'painel';
+  const view = ['painel', 'vendas', 'cubra', 'demanda', 'queima', 'clientes', 'campanhas', 'datas', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte', 'unidades'].includes(v) ? v : 'painel';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
-  ({ painel: renderDashboard, clientes: () => clientes.render(ctx()), campanhas: () => campanhas.render(ctx()), datas: () => especiais.render(ctx()), produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte, unidades: renderUnidades })[view]();
+  ({ painel: renderDashboard, vendas: () => vendas.render(ctx()), cubra: () => cubra.render(ctx()), demanda: () => demanda.render(ctx()), queima: () => queima.render(ctx()), clientes: () => clientes.render(ctx()), campanhas: () => campanhas.render(ctx()), datas: () => especiais.render(ctx()), produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte, unidades: renderUnidades })[view]();
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
@@ -177,6 +206,7 @@ async function renderDashboard() {
   const main = $('#ptMain');
   const m = market();
   main.innerHTML = `${banner()}
+    ${mkHero(m, { sub: 'Como o público do Tá Barato Mesmo? se comporta e onde vocês estão ganhando ou perdendo.' })}
     <header class="pt-head">
       <div><h1>Painel</h1><p class="muted">Como o público do Tá Barato Mesmo? se comporta e onde o ${esc(m.name)} está ganhando ou perdendo.</p></div>
       <div class="seg" role="radiogroup" aria-label="Período">${[[1, 'Hoje'], [7, '7 dias'], [30, '30 dias'], [90, '90 dias']].map(([d, l]) => `<button role="radio" aria-checked="${st.days === d}" data-days="${d}">${l}</button>`).join('')}</div>
@@ -919,7 +949,7 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('change', async (e) => {
   const t = e.target;
-  if (t.id === 'mkSelect') { st.mid = Number(t.value); api.store.set('tb.ptMarket', st.mid); st.catalog = st.promos = st.dash = st.stores = null; renderPicker(); return route(); }
+  if (t.id === 'mkSelect') { st.mid = Number(t.value); api.store.set('tb.ptMarket', st.mid); themeFor(market()); st.catalog = st.promos = st.dash = st.stores = null; renderPicker(); return route(); }
   if (t.id === 'prodCat') { st.cat = t.value; return renderProductRows(); }
   if (t.dataset.price) {
     const r = st.catalog.find((x) => x.product_id === Number(t.dataset.price));
@@ -1038,7 +1068,12 @@ document.addEventListener('change', (e) => {
 
 // ================================================================ início
 async function boot() {
-  await api.loadCatalog().then((d) => { st.categories = d.categories; }).catch(() => {});
+  await api.loadCatalog().then((d) => {
+    st.categories = d.categories;
+    st.pubStores = d.stores || [];
+    st.pub = (d.supermarkets || []).map((m) => ({ ...m, stores_count: (d.stores || []).filter((x) => x.supermarket_id === m.id).length }));
+  }).catch(() => {});
+  themeFor(null); // ?m=slug: a página já abre com as cores do mercado
   await P.init().catch(() => {});
   if (P.MODE !== 'live') return renderLogin();
   api.onAuth(async (user) => {
