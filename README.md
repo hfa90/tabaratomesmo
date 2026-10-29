@@ -219,7 +219,7 @@ As cores ficam na coluna `supermarkets.color` e podem ser ajustadas para as core
 - O seed simula um dia de oferta de carnes por rede para o quadro de proteínas; com dados reais, o quadro passa a refletir as coletas.
 
 ### 4. Publicar (GitHub Pages)
-O site já está publicado em https://hfa90.github.io/tabaratomesmo/ a partir da branch `gh-pages` (mantida igual à `main`). O arquivo `.nojekyll` já está no repositório.
+O site já está publicado em https://hfa90.github.io/tabaratomesmo/ a partir da branch `gh-pages`. Não precisa copiar nada à mão: a cada envio para a `main`, o GitHub carimba a versão e copia a `main` para a `gh-pages` sozinho (`.github/workflows/versao.yml`). Em uns 2 minutos o rodapé do site mostra a versão nova. O arquivo `.nojekyll` já está no repositório.
 
 ## Rodar localmente
 ```bash

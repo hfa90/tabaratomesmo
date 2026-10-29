@@ -2,6 +2,7 @@
 # O rodapé de todas as páginas mostra "Versão 1.<nº do envio>.<AAMMDD>.<HHMM>" (horário de Manaus).
 # Assim dá para saber, olhando o rodapé, se o aparelho já está com a versão que acabou de ser publicada.
 # Arquivos carimbados: js/versao.js (o que o aparelho está rodando), versao.json (o que está no ar) e sw.js (cache novo).
+# Depois publica: copia a main para a branch gh-pages, que é a que o GitHub Pages coloca no ar.
 name: Versão
 
 on:
@@ -24,6 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
       - name: Carimbar versão
         run: |
           export TZ=America/Manaus
@@ -42,3 +44,5 @@ jobs:
           git add js/versao.js versao.json sw.js
           git commit -m "Versão ${VER} [skip ci]"
           for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 3; done
+      - name: Publicar no site (gh-pages = main)
+        run: git push --force origin HEAD:gh-pages
