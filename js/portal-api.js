@@ -686,3 +686,103 @@ export async function clearanceStatus(id, status) {
   if (MODE !== 'demo') return rpcP('market_clearance_status', { p_id: id, p_status: status });
   const d = demoState(); const x = (d.clearance || []).find((c) => c.id === id); if (x) x.status = status; saveDemo(d);
 }
+
+// ================================================================ DONO DO MERCADO: resumo, radar, página, faltas, lojas
+const DONO_UPD = 'Falta a administração atualizar o banco (supabase/atualizacoes/atualizacao-2026-10-dono-mercado.sql).';
+async function rpcD(fn, args) {
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc(fn, args);
+  if (error) { const e = new Error(isMissingFn(error) ? DONO_UPD : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
+  return data;
+}
+
+// ---------------------------------------------------------------- resumo da semana
+export async function weeklyDigest(mid) {
+  if (MODE !== 'demo') return rpcD('market_weekly_digest', { p_market: mid, p_days: 7 });
+  const name = (await myMarkets()).find((m) => m.id === mid)?.name || 'Coema';
+  const d = { market: name, from: new Date(Date.now() - 7 * 864e5).toISOString(), to: new Date().toISOString(), days: 7, clients: 214, visits: 168, buyers: 61, receipts: 74,
+    revenue: 41230.5, prev_revenue: 36410, ticket: 557.17, spend: 1200, spend_ads: 834, spend_cover: 366, roi: 34.4, ranchos_won: 96, ranchos_total: 410,
+    lost: [{ market: 'Supermercados DB', n: 3, diff: 21.4, products: ['Óleo de soja', 'Arroz tipo 1'] }, { market: 'Nova Era', n: 1, diff: 6.2, products: ['Café torrado e moído'] }],
+    missing: { n: 5, open: 2, top: ['Leite UHT integral', 'Açúcar cristal'] }, radar: { n: 4, matched: 2 }, position: { cheapest: 38, total: 112 }, demo: true };
+  d.text = `📊 <b>${name}: sua semana no Tá Barato Mesmo?</b>\n${new Date(d.from).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} a ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}\n\n`
+    + `👥 <b>214</b> clientes vieram pelo site (168 chegaram na loja com o site aberto)\n🧾 <b>R$ 41.230,50</b> em notas comprovadas (74 notas, +13% na semana)\n`
+    + `💸 Você gastou <b>R$ 1.200,00</b> em anúncios e cupons: retorno de <b>34 vezes</b>\n🛒 96 ranchos saíram mais baratos no ${name}\n`
+    + `⚠️ Você perdeu <b>3 ranchos</b> por pouco para o Supermercados DB por causa do óleo de soja e do arroz tipo 1\n⚠️ Você perdeu <b>1 rancho</b> por pouco para o Nova Era por causa do café torrado e moído\n`
+    + `🔎 5 avisos de “não achei na loja”: Leite UHT integral, Açúcar cristal\n📡 4 alertas de preço da concorrência (2 igualados)\n🏷️ Você é o mais barato em 38 de 112 produtos hoje.`;
+  return d;
+}
+export async function corpGet(mid) {
+  if (MODE !== 'demo') return rpcD('market_corp_get', { p_market: mid });
+  const d = demoState(); return d.corp?.[mid] || { telegram: [], emails: [], last_sent: null, pending_now: false };
+}
+export async function corpSet(mid, p) {
+  if (MODE !== 'demo') return rpcD('market_corp_set', { p_market: mid, p });
+  const d = demoState(); d.corp ||= {}; const c = d.corp[mid] ||= { telegram: [], emails: [], last_sent: null, pending_now: false };
+  if (p.email) { const e = p.email.trim().toLowerCase(); c.emails = p.remove ? c.emails.filter((x) => x !== e) : [...new Set([...c.emails, e])]; }
+  if (p.chat_id) { const t = c.telegram.find((x) => x.chat_id === p.chat_id); if (t) Object.assign(t, p); if (p.remove) c.telegram = c.telegram.filter((x) => x.chat_id !== p.chat_id); }
+  if (p.send_now) c.pending_now = true;
+  saveDemo(d);
+}
+export async function corpLinkCode(mid) {
+  if (MODE !== 'demo') return rpcD('market_corp_link_code', { p_market: mid });
+  const d = demoState(); d.corp ||= {}; const c = d.corp[mid] ||= { telegram: [], emails: [], last_sent: null, pending_now: false };
+  if (!c.telegram.length) c.telegram.push({ chat_id: 1001, first_name: 'Você (demonstração)', email: 'demonstracao@coema', mine: true, weekly: true, radar: true, missing: true, linked_at: new Date().toISOString() });
+  saveDemo(d); return 'KQM482';
+}
+
+// ---------------------------------------------------------------- radar da concorrência
+export async function radar(mid) {
+  if (MODE !== 'demo') return rpcD('market_radar', { p_market: mid, p_days: 14 });
+  const d = demoState(); const cat = (await demoCatalog(mid)).filter((r) => r.active && r.min_other != null);
+  const comp = ['Supermercados DB', 'Veneza', 'Nova Era']; const R = seeded(mid * 3);
+  d.radarMatched ||= [];
+  const alerts = cat.slice(0, 6).map((r, i) => {
+    const comp_price = Math.round((r.price - 0.4 - R() * 2) * 100) / 100;
+    return { id: 300 + i, product_id: r.product_id, product_name: r.name, brand: r.brand, unit: r.unit, emoji: r.emoji, image_url: r.image_url, competitor_name: comp[i % 3],
+      comp_price, comp_prev: Math.round((comp_price + 0.8 + R()) * 100) / 100, my_price: r.price, my_now: r.price, comp_now: comp_price, lists: Math.round(40 + R() * 400),
+      near: ['Flores', 'Centro'].slice(0, 1 + (i % 2)), created_at: new Date(Date.now() - i * 5 * 36e5).toISOString(), matched_at: d.radarMatched.includes(300 + i) ? new Date().toISOString() : null };
+  });
+  return { settings: d.radarSet?.[mid] || { min_diff: 0.10, min_lists: 0 }, alerts, demo: true };
+}
+export async function radarSet(mid, p) {
+  if (MODE !== 'demo') return rpcD('market_radar_set', { p_market: mid, p });
+  const d = demoState();
+  if (p.matched) { d.radarMatched = [...new Set([...(d.radarMatched || []), p.matched])]; }
+  else { d.radarSet ||= {}; d.radarSet[mid] = { min_diff: p.min_diff, min_lists: p.min_lists }; }
+  saveDemo(d);
+}
+
+// ---------------------------------------------------------------- página da rede (diferenciais)
+export async function setProfile(mid, p) {
+  if (MODE !== 'demo') return rpcD('market_set_profile', { p_market: mid, p });
+  const d = demoState(); d.profile ||= {}; d.profile[mid] = { ...p }; saveDemo(d); return p;
+}
+export function demoProfile(mid) { return demoState().profile?.[mid] || null; }
+
+// ---------------------------------------------------------------- não achei na loja
+export async function missing(mid) {
+  if (MODE !== 'demo') return rpcD('market_missing', { p_market: mid, p_days: 14 });
+  const d = demoState(); const cat = (await demoCatalog(mid)).filter((r) => r.active); const st = await stores(mid);
+  d.missingOk ||= [];
+  return cat.slice(3, 9).map((r, i) => { const s = st[i % Math.max(1, st.length)] || { id: 1, name: 'Loja', neighborhood: '' }; const k = `${s.id}:${r.product_id}`;
+    return { store_id: s.id, store_name: s.name, neighborhood: s.neighborhood, product_id: r.product_id, product_name: r.name, brand: r.brand, unit: r.unit, emoji: r.emoji, image_url: r.image_url,
+      n: 5 - (i % 4), open: d.missingOk.includes(k) ? 0 : 5 - (i % 4), last: new Date(Date.now() - (i * 3 + 1) * 36e5).toISOString(), first: new Date(Date.now() - (i * 3 + 9) * 36e5).toISOString(),
+      resolved_at: d.missingOk.includes(k) ? new Date().toISOString() : null }; });
+}
+export async function missingResolve(mid, store, product) {
+  if (MODE !== 'demo') return rpcD('market_missing_resolve', { p_market: mid, p_store: store, p_product: product });
+  const d = demoState(); d.missingOk = [...new Set([...(d.missingOk || []), `${store}:${product}`])]; saveDemo(d); return 1;
+}
+
+// ---------------------------------------------------------------- comparar as lojas
+export async function storesCompare(mid) {
+  if (MODE !== 'demo') return rpcD('market_stores_compare', { p_market: mid, p_days: 30 });
+  const st = await stores(mid); const R = seeded(mid * 17);
+  const comp = ['Supermercados DB', 'Nova Era', 'Veneza'];
+  return st.map((s, i) => { const won = Math.round(20 + R() * 60), lost = Math.round(8 + R() * 40);
+    return { id: s.id, name: s.name, neighborhood: s.neighborhood, visits: Math.round(120 + R() * 600), receipts: Math.round(30 + R() * 200), revenue: Math.round((8000 + R() * 40000) * 100) / 100,
+      missing: Math.round(R() * 6), promos: Math.round(R() * 4), won, lost,
+      lost_to: comp.map((c, j) => ({ market: c, n: Math.max(0, Math.round(lost * [0.55, 0.3, 0.15][j])) })).filter((x) => x.n),
+      bairros: [s.neighborhood || 'Centro', 'Aleixo', 'Parque 10', 'Adrianópolis'].map((b, j) => ({ name: b, n: Math.round((5 - j) * (8 + R() * 10)) })) }; })
+    .sort((a, b) => b.visits + b.receipts - (a.visits + a.receipts));
+}

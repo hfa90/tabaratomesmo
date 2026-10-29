@@ -6,7 +6,7 @@ const CACHE = 'tb-1.4.261029.1423';
 const CDN = 'tb-cdn-v1';
 const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/api.js', 'js/config.js', 'js/chart.js', 'js/core.js', 'js/rancho.js',
   'js/fiscal.js', 'js/account.js', 'js/telegram.js', 'js/track.js', 'js/carrinho.js', 'js/voice.js', 'js/fila.js', 'js/ads.js', 'js/presence.js',
-  'js/ajudantes.js', 'js/scanner.js', 'js/unitprice.js', 'js/offline.js', 'js/deals.js', 'js/cupom.js', 'js/demo-data.js', 'js/notas.js', 'js/fotopreco.js', 'js/ia.js', 'js/calc.js', 'js/refeicoes.js', 'js/receitas-data.js', 'js/inicio.js', 'js/icons.js', 'js/fx.js', 'js/alerts.js', 'js/resumo.js', 'js/familia.js', 'js/zerar.js', 'js/sync.js', 'js/campanhas.js', 'js/temas.js', 'js/especial.js', 'js/push.js', 'js/interrupt.js', 'js/privacidade.js', 'js/dono.js', 'js/queima.js', 'js/versao.js',
+  'js/ajudantes.js', 'js/scanner.js', 'js/unitprice.js', 'js/offline.js', 'js/deals.js', 'js/cupom.js', 'js/demo-data.js', 'js/notas.js', 'js/fotopreco.js', 'js/ia.js', 'js/calc.js', 'js/refeicoes.js', 'js/receitas-data.js', 'js/inicio.js', 'js/icons.js', 'js/fx.js', 'js/alerts.js', 'js/resumo.js', 'js/familia.js', 'js/zerar.js', 'js/sync.js', 'js/campanhas.js', 'js/temas.js', 'js/especial.js', 'js/push.js', 'js/interrupt.js', 'js/privacidade.js', 'js/dono.js', 'js/queima.js', 'js/versao.js', 'js/falta.js', 'js/servicos.js',
   'assets/icon.svg', 'assets/icon-192.png', 'assets/apple-touch-icon.png', 'manifest.webmanifest'];
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 

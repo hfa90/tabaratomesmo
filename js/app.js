@@ -30,6 +30,7 @@ import './zerar.js';
 import * as sync from './sync.js';
 import * as dono from './dono.js';
 import * as queima from './queima.js';
+import './falta.js';
 import * as campanhas from './campanhas.js';
 import * as especial from './especial.js';
 import { parse as parseSpeech, match as fuzzyMatch } from './voice.js';
@@ -423,6 +424,7 @@ async function openProduct(pid) {
       <div class="pd__actions">
         ${S.list.get(p.id) ? stepper(p.id) : `<button class="btn btn--primary" data-add="${p.id}">Adicionar ao rancho</button>`}
         <button class="btn btn--ghost" data-report="${p.id}">Viu outro preço?</button>
+        <button class="btn btn--text" data-missing="${p.id}">Não achei na loja</button>
       </div>
       <p class="muted small pd__trust"><span class="trust-legend"><i class="trust--fresh"></i>até 2 dias <i class="trust--ok"></i>até 1 semana <i class="trust--old"></i>mais antigo, pode ter mudado</span>${api.MODE === 'demo' ? ' Dados de demonstração.' : ''}</p>
     </div>`;

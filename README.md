@@ -2,6 +2,13 @@
 
 Comparador de preços de supermercados de Manaus: Nova Era, Supermercados DB, Veneza, Baratão da Carne e Coema.
 
+- **O que o dono do mercado quer ver** (portal; `js/portal-dono.js`, função `corp`):
+  - **Resumo da semana** (`#resumo`): clientes que vieram pelo site, notas comprovadas, gasto em anúncios e cupons e o retorno, ranchos ganhos e os perdidos por pouco (e por quais produtos), faltas e alertas do radar. Toda segunda, 8h, chega pronto no Telegram **@corp_tabaratomesmo_bot** e por e-mail. Cada pessoa liga o próprio Telegram pelo botão do portal (código de 6 caracteres, vale 30 min).
+  - **Radar da concorrência** (`#radar`): quando outro mercado baixa o preço de um produto seu e fica mais barato, avisa na hora no robô, com quantas listas abertas têm o produto e quais lojas suas estão perto do concorrente. O botão **Igualar** grava o preço novo (no robô ou no portal).
+  - **Minha página** (`#pagina`): diferenciais (açougue, padaria, entrega, estacionamento, vale-alimentação…), uma frase sobre a rede, WhatsApp e horário de cada loja. Aparecem em `mercado.html?m=slug` e embaixo de cada mercado no relatório do rancho, para o cliente decidir também pela conveniência.
+  - **Não achei na loja** (`#faltas`): no detalhe do produto, o cliente avisa em qual loja não encontrou; o gerente recebe no robô e marca **Já repus**.
+  - **Minhas lojas** (`#lojas`): as unidades lado a lado (visitas, notas, ranchos de quem mora perto ganhos e perdidos e para quem, faltas, bairros de onde vêm os clientes) e onde reforçar.
+  - Precisa de [`supabase/atualizacoes/atualizacao-2026-10-dono-mercado.sql`](supabase/atualizacoes/atualizacao-2026-10-dono-mercado.sql) e da função `corp` publicada (veja 1k).
 - **Publicidade inteligente** (portal › Publicidade, `js/ads.js`): três formatos novos, sempre de **um produto** do mercado, com o preço atual dele e quanto está abaixo da média: **Busca patrocinada** (no topo de quem busca o produto, a marca, a categoria ou palavras escolhidas pelo mercado), **Sugestão na lista** (quem põe na lista um produto do mesmo tipo recebe “Trocar”; só promete economia comparando a mesma embalagem) e **Hora de repor** (para quem já comprou aquele produto ou um do mesmo tipo, quando costuma estar acabando; a conta é feita no celular, com as compras guardadas nele, sem mandar nada para o mercado). O portal mostra vistos, cliques e quantas vezes o produto foi para a lista. Precisa de [`supabase/atualizacoes/atualizacao-2026-10-publicidade-inteligente.sql`](supabase/atualizacoes/atualizacao-2026-10-publicidade-inteligente.sql).
 - **Versão no rodapé** (`js/versao.js`, `.github/workflows/versao.yml`): todas as páginas mostram “Versão 1.<nº do envio>.<AAMMDD>.<HHMM> · dia às hora” (horário de Manaus). O GitHub carimba sozinho a cada envio para o `main` (não precisa mexer em nada). Se o aparelho estiver com uma versão antiga e já houver outra no ar, aparece o botão “Nova versão …: atualizar”. Rodando no computador, sem carimbo, aparece “dev”.
 - **Dados de cada conta ficam só nela** (`js/dono.js`): o aparelho marca de quem são os dados guardados (`tb.owner`). Sair da conta apaga lista, ranchos, compras, notas e economia do aparelho (depois de mandar para a conta o que faltava); entrar com outra conta começa limpo e baixa só o dela. A checagem roda antes de qualquer tela ler o aparelho. Preferências do aparelho (letra grande, vibração, tema) ficam. O que foi montado sem conta continua indo para a conta na primeira entrada.
@@ -196,6 +203,19 @@ Rode [`supabase/atualizacoes/atualizacao-2026-10-promo-unidade.sql`](supabase/at
 
 ### 1j. Publicidade inteligente (outubro/2026)
 SQL Editor › rode [`supabase/atualizacoes/atualizacao-2026-10-publicidade-inteligente.sql`](supabase/atualizacoes/atualizacao-2026-10-publicidade-inteligente.sql). Os três espaços novos (Busca patrocinada, Sugestão na lista, Hora de repor) aparecem no portal; preço e vagas se ajustam em admin › Publicidade, como os outros.
+
+### 1k. Robô dos supermercados @corp_tabaratomesmo_bot (outubro/2026)
+1. **Banco:** SQL Editor › rode [`supabase/atualizacoes/atualizacao-2026-10-dono-mercado.sql`](supabase/atualizacoes/atualizacao-2026-10-dono-mercado.sql).
+2. **Segredos** (Supabase › Edge Functions › Secrets): `CORP_BOT_TOKEN` = token do @corp_tabaratomesmo_bot (do @BotFather; **nunca** no GitHub) e `CORP_BOT_SECRET` = uma senha qualquer. Para o e-mail (opcional): `RESEND_API_KEY` e `EMAIL_FROM` (ex.: `Tá Barato Mesmo? <resumo@seudominio.com.br>`, de uma conta em resend.com). Sem eles, o resumo vai só pelo Telegram.
+3. **Publicar:** `supabase functions deploy corp --no-verify-jwt`.
+4. **Ligar o robô à função:** abra no navegador
+   `https://api.telegram.org/bot<CORP_BOT_TOKEN>/setWebhook?url=https://lygqyliiebcxwxioxbvd.supabase.co/functions/v1/corp&secret_token=<CORP_BOT_SECRET>&allowed_updates=["message","callback_query"]`
+5. **Agendamento** (a cada 15 min: radar, faltas e, na segunda às 8h, o resumo; usa a mesma senha da função `notificar`):
+```sql
+select cron.schedule('tb-corp', '4,19,34,49 * * * *',
+  replace(command, '/functions/v1/notificar', '/functions/v1/corp')) from cron.job where jobname = 'tb-notificar';
+```
+No portal, cada responsável abre **Resumo da semana › Ligar meu Telegram**. Trocar o token: `/revoke` no @BotFather, ponha o novo em `CORP_BOT_TOKEN` e repita o passo 4.
 
 ### 2. Logomarcas oficiais
 Coloque os arquivos em `assets/logos/` com estes nomes (PNG ou troque a extensão na coluna `logo_url`):

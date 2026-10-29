@@ -5,6 +5,7 @@ import * as api from './api.js';
 import { S, esc, brl, logo, logoFull, media, trustTag } from './core.js';
 import { initAccount } from './pagina.js';
 import { ic } from './icons.js';
+import { chips } from './servicos.js';
 
 const SITE = 'https://hfa90.github.io/tabaratomesmo/';
 const $ = (s) => document.querySelector(s);
@@ -66,12 +67,16 @@ function marketPage(data, m) {
       <span class="mk-hero__logo">${logoFull(m)}</span>
       <div><p class="pg-kicker">Supermercado em Manaus</p><h1>${esc(m.name)}</h1>
         <p class="pg-lead">${stores.length} ${stores.length === 1 ? 'loja' : 'lojas'} · ${has} produtos com preço no comparador${win.length ? ` · <b>mais barato em ${win.length}</b> hoje` : ''}</p>
+        ${m.about ? `<p class="mk-about">${esc(m.about)}</p>` : ''}
         <div class="row-actions">
           <a class="btn btn--primary" href="./#ofertas">${ic('search')} Comparar com os outros</a>
           ${/^https:\/\//.test(m.shop_url || '') ? `<a class="btn btn--ghost" href="${esc(m.shop_url)}" target="_blank" rel="noopener">${ic('cart')} Comprar online</a>` : ''}
           ${/^https?:\/\//.test(m.website || '') ? `<a class="btn btn--text" href="${esc(m.website)}" target="_blank" rel="noopener">Site oficial</a>` : ''}
+          ${/^\d{10,13}$/.test(m.whatsapp || '') ? `<a class="btn btn--ghost" href="https://wa.me/55${esc(m.whatsapp.replace(/^55(?=\d{10,11}$)/, ''))}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
         </div></div>
     </header>
+
+    ${(m.services || []).length ? `<section class="pg-sec"><h2>Na loja você encontra</h2>${chips(m, 99, 'svc svc--lg')}</section>` : ''}
 
     <section class="pg-sec"><h2>Mais barato aqui hoje</h2>
       ${win.length ? `<ul class="mk-deals">${win.slice(0, 12).map(({ p, x, next, save }) => `<li><a href="./#ofertas" class="mk-deal">

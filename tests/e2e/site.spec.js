@@ -339,3 +339,35 @@ test('portal: pedir anúncio de busca patrocinada de um produto', async ({ page 
   await expect(page.locator('#adList')).toContainText('publicidade inteligente', { timeout: 15_000 });
   expect(errs).toEqual([]);
 });
+
+// ---------------------------------------------------------------- dono do mercado
+test('portal: resumo da semana, radar, minhas lojas, faltas e minha página', async ({ page }) => {
+  const errs = await open(page, '/parceiros.html');
+  await page.click('[data-demo]');
+  await page.goto('/parceiros.html#resumo');
+  await expect(page.locator('.tg-msg')).toContainText('clientes vieram pelo site', { timeout: 15_000 });
+  await page.goto('/parceiros.html#radar');
+  await expect(page.locator('[data-rd-match]').first()).toBeVisible();
+  await page.goto('/parceiros.html#lojas');
+  await expect(page.locator('.ls-card').first()).toBeVisible();
+  await page.goto('/parceiros.html#faltas');
+  await page.locator('[data-ft-ok]').first().click();
+  await expect(page.locator('.toast').last()).toContainText('reposto');
+  await page.goto('/parceiros.html#pagina');
+  await page.locator('[name=svc][value=wifi]').check();
+  await page.locator('#pgForm .btn--primary').click();
+  await expect(page.locator('.toast').last()).toContainText('Página salva');
+  expect(errs).toEqual([]);
+});
+
+test('site: diferenciais na página da rede e "não achei na loja"', async ({ page }) => {
+  const errs = await open(page, '/mercado.html?m=nova-era');
+  await expect(page.locator('.svc--lg')).toContainText('Açougue', { timeout: 15_000 });
+  await page.evaluate(() => localStorage.setItem('tb.seenHome', '1'));
+  await ofertas(page);
+  await page.locator('.card').first().click();
+  await page.locator('[data-missing]').click();
+  await page.locator('[data-falta-send]').click();
+  await expect(page.locator('.toast').last()).toContainText('Obrigado');
+  expect(errs).toEqual([]);
+});

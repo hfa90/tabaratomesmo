@@ -591,3 +591,40 @@ body.is-branded .pt-nav { background: color-mix(in srgb, var(--bg) 92%, var(--br
 .form .price-in { height: 44px; }
 .ad-group { margin: 14px 0 8px; font-size: .85rem; color: var(--ink-2); }
 .ad-group b { color: var(--brand); }
+
+/* =====================================================================
+   Dono do mercado: resumo, radar, minha página, faltas, minhas lojas (js/portal-dono.js)
+   ===================================================================== */
+.dono-body { display: grid; gap: 16px; min-width: 0; }
+.rs-lost { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.rs-lost em { font-style: normal; font-weight: 700; color: var(--up); }
+.rs-sig { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.rs-sig li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; align-items: start; font-size: .92rem; }
+.tg-msg { background: color-mix(in srgb, #2AABEE 8%, var(--surface)); border: 1px solid color-mix(in srgb, #2AABEE 25%, var(--line)); border-radius: 14px 14px 14px 4px; padding: 12px 14px; font-size: .88rem; line-height: 1.45; }
+.tg-msg p { margin: 0; }
+.rs-who { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 8px; }
+.rs-who li { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.rs-who li > span:first-child { display: grid; }
+.rs-flags { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.check-mini { display: inline-flex; gap: 4px; align-items: center; font-size: .82rem; }
+.check-mini input { accent-color: var(--brand); }
+.rd-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.rd-row:last-child { border-bottom: 0; }
+.rd-row.is-off { opacity: .6; }
+.rd-row p { margin: 0 0 2px; }
+.rd-act { display: grid; gap: 6px; justify-items: end; }
+@media (max-width: 599px) { .rd-row { grid-template-columns: 44px minmax(0, 1fr); } .rd-act { grid-column: 2; justify-items: start; grid-auto-flow: column; } }
+.svc-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.opt-mini { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 12px; cursor: pointer; font-size: .9rem; }
+.opt-mini:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
+.opt-mini input { accent-color: var(--brand); }
+.opt-mini i { font-style: normal; margin-right: 6px; }
+.vs-prev { padding: 12px 14px; border: 1px dashed var(--line-2); border-radius: 12px; display: grid; gap: 6px; }
+.ls-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.ls-card { gap: 10px; }
+.ls-card h3 { font-size: 1.05rem; }
+.ls-bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.ls-bar span { display: block; height: 100%; width: var(--w); background: var(--brand); }
+.ls-dl { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 1.4fr); gap: 4px 10px; margin: 0; font-size: .86rem; }
+.ls-dl dt { color: var(--muted); }
+.ls-dl dd { margin: 0; text-align: right; font-weight: 600; }

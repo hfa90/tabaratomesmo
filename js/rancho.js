@@ -8,6 +8,7 @@ import { BAIRROS } from './config.js';
 import { currentMarket } from './carrinho.js';
 import { openTool } from './ajudantes.js';
 import * as deals from './deals.js';
+import { chips } from './servicos.js';
 import {
   S, $, $$, esc, brl, km, haversine, isOn, logo, logoFull, priceTag, stepper, hooks, DOW, DOW_SHORT, reduceMotion, media,
 } from './core.js';
@@ -658,6 +659,7 @@ export async function renderReport(scroll = true) {
               <b class="vs__t">${brl(x.total)}</b></div>
             <div class="vs__bar"><span style="--w:${(x.total / maxTotal) * 100}%"></span></div>
             ${x.verdict ? `<p class="vs__v"><em>${x.verdict.label}</em> ${x.verdict.text}</p>` : ''}
+            ${chips(x.m, 4)}
             ${x.missing.length ? `<p class="vs__miss">${x.missing.length} sem preço lá (conta o mais barato de outro mercado)</p>` : ''}
           </li>`).join('')}
         </ol>`)}

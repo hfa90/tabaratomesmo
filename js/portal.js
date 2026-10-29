@@ -16,6 +16,7 @@ import * as vendas from './portal-vendas.js';
 import * as cubra from './portal-cubra.js';
 import * as demanda from './portal-demanda.js';
 import * as queima from './portal-queima.js';
+import * as dono from './portal-dono.js';
 
 const st = {
   user: null, markets: [], mid: null, categories: [], pub: [], pubStores: [], // pub = mercados do catálogo público (cores, logo, lojas)
@@ -175,9 +176,9 @@ const ctx = () => ({ main: $('#ptMain'), mid: st.mid, market: () => withBrand(ma
 function route() {
   if (!st.mid) return;
   const v = (location.hash || '#painel').slice(1);
-  const view = ['painel', 'vendas', 'cubra', 'demanda', 'queima', 'clientes', 'campanhas', 'datas', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte', 'unidades'].includes(v) ? v : 'painel';
+  const view = ['painel', 'resumo', 'radar', 'pagina', 'faltas', 'lojas', 'vendas', 'cubra', 'demanda', 'queima', 'clientes', 'campanhas', 'datas', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte', 'unidades'].includes(v) ? v : 'painel';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
-  ({ painel: renderDashboard, vendas: () => vendas.render(ctx()), cubra: () => cubra.render(ctx()), demanda: () => demanda.render(ctx()), queima: () => queima.render(ctx()), clientes: () => clientes.render(ctx()), campanhas: () => campanhas.render(ctx()), datas: () => especiais.render(ctx()), produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte, unidades: renderUnidades })[view]();
+  ({ painel: renderDashboard, resumo: () => dono.renderResumo(ctx()), radar: () => dono.renderRadar(ctx()), pagina: () => dono.renderPagina(ctx()), faltas: () => dono.renderFaltas(ctx()), lojas: () => dono.renderLojas(ctx()), vendas: () => vendas.render(ctx()), cubra: () => cubra.render(ctx()), demanda: () => demanda.render(ctx()), queima: () => queima.render(ctx()), clientes: () => clientes.render(ctx()), campanhas: () => campanhas.render(ctx()), datas: () => especiais.render(ctx()), produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte, unidades: renderUnidades })[view]();
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
@@ -214,7 +215,7 @@ async function renderDashboard() {
     <div id="dash"><div class="skeleton" style="height:420px"></div></div>`;
   let D;
   try { D = st.dash?.days === st.days && st.dash.mid === st.mid ? st.dash.data : await P.dashboard(st.mid, st.days); }
-  catch (e) { $('#dash').innerHTML = `<p class="note">Não foi possível carregar as métricas: ${esc(e.message)}</p>`; return; }
+  catch (e) { if ($('#dash')) $('#dash').innerHTML = `<p class="note">Não foi possível carregar as métricas: ${esc(e.message)}</p>`; return; }
   st.dash = { days: st.days, mid: st.mid, data: D };
   const K = D.kpis;
   const share = K.ranchos ? Math.round((K.rancho_wins / K.ranchos) * 100) : 0;
@@ -229,6 +230,7 @@ async function renderDashboard() {
     { id: 3, name: 'Adicionados ao rancho', color: '#1baf7a', points: daily.map((x) => ({ t: new Date(x.d + 'T12:00').getTime(), v: x.adds })) },
   ] : [];
   const gTotal = (D.gender || []).reduce((s, g) => s + g.ranchos, 0) || 1;
+  if (!$('#dash')) return; // a pessoa já foi para outra aba enquanto carregava
 
   $('#dash').innerHTML = `
     <section class="kpis">

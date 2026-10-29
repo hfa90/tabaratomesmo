@@ -48,6 +48,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-parceiros.sql
       - name: Testes da publicidade inteligente
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-publicidade.sql
+      - name: Testes do dono do mercado (resumo, radar, faltas, lojas)
+        run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-dono.sql
 
   site:
     runs-on: ubuntu-latest

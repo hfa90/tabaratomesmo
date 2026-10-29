@@ -45,7 +45,12 @@ export async function loadCatalog() {
     console.warn('[TáBarato] usando dados de demonstração:', e.message || e);
     MODE = 'demo';
     const { DEMO } = await import('./demo-data.js');
-    return { ...DEMO, products: applyPortalDemo(buildDemoProducts(DEMO), DEMO.stores) };
+    // demonstração: diferenciais de exemplo (e os que o portal de demonstração salvou)
+    const SV = { 'nova-era': ['acougue', 'padaria', 'estacionamento', 'entrega', 'vale'], db: ['estacionamento', 'vale', 'cartao_loja', 'pix'], veneza: ['entrega', 'retirada', 'pix'],
+      'baratao-da-carne': ['acougue', 'peixaria', 'vale'], coema: ['hortifruti', 'acougue', 'padaria', 'climatizado'] };
+    const prof = ls.get('tb.portalDemo', null)?.profile || {};
+    const supermarkets = DEMO.supermarkets.map((m) => ({ ...m, services: SV[m.slug] || [], ...(prof[m.id] || {}) }));
+    return { ...DEMO, supermarkets, products: applyPortalDemo(buildDemoProducts(DEMO), DEMO.stores) };
   }
 }
 
@@ -903,5 +908,15 @@ export async function clearanceClaim(id) {
   let dev = null; try { dev = localStorage.getItem('tb.dev'); } catch {}
   const { data, error } = await c.rpc('clearance_claim', { p_id: id, p_device: dev });
   if (error) throw new Error(error.message);
+  return data;
+}
+
+/** "não achei na loja": devolve quantas pessoas avisaram o mesmo nas últimas 24 h */
+export async function reportMissing(product_id, store_id) {
+  if (MODE !== 'live') return 1;
+  const c = await client();
+  let dev = null; try { dev = localStorage.getItem('tb.dev'); if (!dev) { dev = Math.random().toString(36).slice(2, 10); localStorage.setItem('tb.dev', dev); } } catch {}
+  const { data, error } = await c.rpc('report_missing', { p_product: product_id, p_store: store_id, p_device: dev });
+  if (error) throw new Error(/function|PGRST202/i.test(error.message + error.code) ? 'Ainda não dá para avisar por aqui. Tente mais tarde.' : error.message);
   return data;
 }

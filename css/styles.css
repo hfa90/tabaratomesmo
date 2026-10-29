@@ -2420,3 +2420,16 @@ html.big .tabbar a span:not(.tab-mic__b) { font-size: 12.5px; white-space: nowra
 .ad-nudge .ad { box-shadow: var(--shadow-pop); }
 @media (max-width: 599px) { .ad-nudge .adp { grid-template-columns: 56px minmax(0, 1fr); } .ad-nudge .adp__media { width: 56px; height: 56px; font-size: 1.6rem; } .ad-nudge .adp__msg { display: none; } }
 @media (prefers-reduced-motion: reduce) { .ad-nudge { transition: none; } }
+
+/* ---------- diferenciais da rede (js/servicos.js) ---------- */
+.svc { display: flex; flex-wrap: wrap; gap: 6px; }
+.svc > span { display: inline-flex; align-items: center; gap: 4px; font-size: .75rem; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
+.svc i { font-style: normal; }
+.svc .svc__more { background: none; color: var(--muted); }
+.vs__row .svc { margin-top: 6px; }
+.svc--lg > span { font-size: .9rem; padding: 6px 12px; }
+.mk-about { margin: 6px 0 0; color: var(--ink-2); max-width: 60ch; }
+.falta-list label { display: flex; align-items: center; gap: 8px; }
+.falta-list label > span { display: grid; }
+.radios.falta-list { display: grid; gap: 8px; margin: 12px 0; }
+.radios.falta-list label { height: auto !important; padding: 10px 12px; border-radius: 12px; }
