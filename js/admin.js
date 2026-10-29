@@ -571,12 +571,15 @@ async function renderAdsAdmin() {
     <div class="chips">${[['pendente', 'Aguardando'], ['live', 'No ar'], ['aprovada', 'Aprovadas'], ['recusada', 'Recusadas'], ['all', 'Todas']].map(([k, l]) => `<button class="chip ${st.adStatus === k ? 'is-on' : ''}" data-adstatus="${k}">${l}</button>`).join('')}</div>
     <div class="ad-admin-list">${D.campaigns.map((a) => { const live = a.status === 'aprovada' && a.paid && new Date(a.starts_at) <= now && new Date(a.ends_at) > now;
       return `<article class="panel ad-admin">
-        <div class="ad-admin__prev">${adsUI.html({ ...a, id: 0 }, { preview: true })}</div>
+        <div class="ad-admin__prev">${['busca', 'troca', 'recompra'].includes(a.slot)
+          ? adsUI.productHTML({ ...a, id: 0, product: { name: a.title, prices: [], emoji: '🛒' } }, { kick: `Publicidade inteligente · ${esc(a.slot_name || a.slot)}`, preview: true })
+          : adsUI.html({ ...a, id: 0 }, { preview: true })}</div>
         <div class="ad-admin__info">
           <p><span class="cell-m">${logo({ name: a.market, color: a.color, logo_url: a.logo_url }, 'xs')} <b>${esc(a.market)}</b></span> · ${esc(a.slot_name || a.slot)} · ${esc(a.plan_name || '')}</p>
           <p class="small">${new Date(a.starts_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} até ${new Date(a.ends_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
           <p><b>${brl(Number(a.price))}</b> ${a.paid ? '<span class="pill pill--ok">Pago</span>' : '<span class="pill pill--warn">A pagar</span>'} ${live ? '<span class="pill pill--ok">No ar</span>' : `<span class="pill pill--soft">${esc(a.status)}</span>`}</p>
           ${a.target_type !== 'none' ? `<p class="small muted">Botão leva para: ${a.target_type === 'product' ? 'produto' : a.target_type === 'store' ? 'rota até a loja' : esc(a.target_value || '')}</p>` : ''}
+          ${(a.keywords || []).length ? `<p class="small muted">Palavras: ${a.keywords.map(esc).join(', ')}</p>` : ''}
           ${a.reject_reason ? `<p class="small up">Motivo: ${esc(a.reject_reason)}</p>` : ''}
           <p class="small muted">${fmtN(a.views)} vistos · ${fmtN(a.reveals)} abertos · ${fmtN(a.clicks)} cliques${a.views ? ` (${((a.clicks / a.views) * 100).toFixed(1).replace('.', ',')}%)` : ''}</p>
           <div class="row-actions">

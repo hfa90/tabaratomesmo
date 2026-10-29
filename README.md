@@ -2,6 +2,7 @@
 
 Comparador de preços de supermercados de Manaus: Nova Era, Supermercados DB, Veneza, Baratão da Carne e Coema.
 
+- **Publicidade inteligente** (portal › Publicidade, `js/ads.js`): três formatos novos, sempre de **um produto** do mercado, com o preço atual dele e quanto está abaixo da média: **Busca patrocinada** (no topo de quem busca o produto, a marca, a categoria ou palavras escolhidas pelo mercado), **Sugestão na lista** (quem põe na lista um produto do mesmo tipo recebe “Trocar”; só promete economia comparando a mesma embalagem) e **Hora de repor** (para quem já comprou aquele produto ou um do mesmo tipo, quando costuma estar acabando; a conta é feita no celular, com as compras guardadas nele, sem mandar nada para o mercado). O portal mostra vistos, cliques e quantas vezes o produto foi para a lista. Precisa de [`supabase/atualizacoes/atualizacao-2026-10-publicidade-inteligente.sql`](supabase/atualizacoes/atualizacao-2026-10-publicidade-inteligente.sql).
 - **Versão no rodapé** (`js/versao.js`, `.github/workflows/versao.yml`): todas as páginas mostram “Versão 1.<nº do envio>.<AAMMDD>.<HHMM> · dia às hora” (horário de Manaus). O GitHub carimba sozinho a cada envio para o `main` (não precisa mexer em nada). Se o aparelho estiver com uma versão antiga e já houver outra no ar, aparece o botão “Nova versão …: atualizar”. Rodando no computador, sem carimbo, aparece “dev”.
 - **Dados de cada conta ficam só nela** (`js/dono.js`): o aparelho marca de quem são os dados guardados (`tb.owner`). Sair da conta apaga lista, ranchos, compras, notas e economia do aparelho (depois de mandar para a conta o que faltava); entrar com outra conta começa limpo e baixa só o dela. A checagem roda antes de qualquer tela ler o aparelho. Preferências do aparelho (letra grande, vibração, tema) ficam. O que foi montado sem conta continua indo para a conta na primeira entrada.
 - **Página de cada supermercado no portal** (`parceiros.html?m=nova-era`, `js/marca.js`): login e portal com as cores da logomarca (principal e destaque), com contraste conferido no tema claro e no escuro. A administração ajusta as cores em Supermercados › Editar; o convite já manda o link da página do mercado.
@@ -192,6 +193,9 @@ Rode [`supabase/atualizacoes/atualizacao-2026-10-promo-unidade.sql`](supabase/at
 2. **Telegram (queimas):** `supabase functions deploy telegram --no-verify-jwt`. O agendamento dos avisos já existente passa a mandar as queimas também.
 3. **Chaves** (admin › Configurações / `app_settings`): `partner_double_points`, `cover_enabled`, `clearance_enabled` (todas ligadas por padrão).
 4. Se alguém já criou conta num aparelho que tinha dados de outra conta antes desta correção, peça para usar **Você › Preferências › Zerar meu histórico** nessa conta nova: os dados herdados foram enviados para ela antes da correção.
+
+### 1j. Publicidade inteligente (outubro/2026)
+SQL Editor › rode [`supabase/atualizacoes/atualizacao-2026-10-publicidade-inteligente.sql`](supabase/atualizacoes/atualizacao-2026-10-publicidade-inteligente.sql). Os três espaços novos (Busca patrocinada, Sugestão na lista, Hora de repor) aparecem no portal; preço e vagas se ajustam em admin › Publicidade, como os outros.
 
 ### 2. Logomarcas oficiais
 Coloque os arquivos em `assets/logos/` com estes nomes (PNG ou troque a extensão na coluna `logo_url`):

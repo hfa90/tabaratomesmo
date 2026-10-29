@@ -380,6 +380,9 @@ export const DEMO_SLOTS = [
   { key: 'rancho', name: 'Rancho do mês', description: 'No resumo de quem está montando a lista do mês.', multiplier: 1.2, max_concurrent: 1, active: true, sort: 3 },
   { key: 'carrinho', name: 'Carrinho', description: 'Na tela de quem está comprando agora, dentro da loja.', multiplier: 1.3, max_concurrent: 1, active: true, sort: 4 },
   { key: 'fila', name: 'Fila do caixa', description: 'No modo fila, enquanto a pessoa espera para pagar.', multiplier: 0.8, max_concurrent: 2, active: true, sort: 5 },
+  { key: 'busca', name: 'Busca patrocinada', description: 'Seu produto no topo quando alguém procura por ele, pela marca, pela categoria ou pelas palavras que você escolher.', multiplier: 1.4, max_concurrent: 3, active: true, sort: 6, smart: true },
+  { key: 'troca', name: 'Sugestão na lista', description: 'Quem põe na lista um produto parecido recebe a sugestão de trocar pelo seu, com o seu preço.', multiplier: 1.3, max_concurrent: 2, active: true, sort: 7, smart: true },
+  { key: 'recompra', name: 'Hora de repor', description: 'Para quem já comprou esse produto ou um parecido, quando costuma estar acabando. A conta é feita no celular da pessoa.', multiplier: 1.1, max_concurrent: 3, active: true, sort: 8, smart: true },
 ];
 const demoAdState = () => ls.get('tb.adminDemo', null)?.adPlans ? ls.get('tb.adminDemo') : null;
 
@@ -405,7 +408,8 @@ export async function adAvailability(slot, start, end) {
 export async function marketAds(mid) {
   if (MODE === 'demo') {
     return (demoState().ads || []).filter((a) => a.supermarket_id === mid).map((a) => ({ ...a, plan_name: DEMO_PLANS.find((p) => p.id === a.plan_id)?.name, slot_name: DEMO_SLOTS.find((s) => s.key === a.slot)?.name,
-      views: a.status === 'aprovada' ? 420 : 0, reveals: a.status === 'aprovada' ? 96 : 0, clicks: a.status === 'aprovada' ? 31 : 0 }));
+      views: a.status === 'aprovada' ? 420 : 0, reveals: a.status === 'aprovada' ? 96 : 0, clicks: a.status === 'aprovada' ? 31 : 0, adds: a.status === 'aprovada' && a.target_type === 'product' ? 18 : 0,
+      smart: !!DEMO_SLOTS.find((s) => s.key === a.slot)?.smart }));
   }
   const c = await api.sbClient();
   const { data, error } = await c.rpc('market_ads', { p_market: mid });

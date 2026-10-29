@@ -137,7 +137,9 @@ function renderGrid() {
   const cards = arr.map(card);
   // um card de curiosidade patrocinado depois do 8º produto (só na lista completa)
   if (gridAd && cards.length > 10) cards.splice(8, 0, gridAd);
-  grid.innerHTML = (S.fuzzy ? `<p class="fuzzy-note">${ic('search')} Não achei “${esc(S.q.trim())}” do jeito que foi escrito. Estes são os mais parecidos:</p>` : '') + cards.join('');
+  // publicidade inteligente: produto patrocinado no topo de quem buscou por ele
+  const sAd = S.q.trim() ? ads.searchHTML(S.q) : '';
+  grid.innerHTML = sAd + (S.fuzzy ? `<p class="fuzzy-note">${ic('search')} Não achei “${esc(S.q.trim())}” do jeito que foi escrito. Estes são os mais parecidos:</p>` : '') + cards.join('');
   ads.observeAll(grid);
   grid.classList.toggle('is-anim', !reduceMotion);
   $('#emptyState').hidden = arr.length > 0;
@@ -466,14 +468,16 @@ function updateListBadge() {
   const n = S.list.size;
   $$('[data-list-count]').forEach((b) => { b.hidden = !n; b.textContent = n; });
 }
-function setQty(pid, q) {
-  if (q > 0 && !S.list.has(pid)) { const p = S.products.find((x) => x.id === pid); track('add', { product_id: pid, market_id: p && visiblePrices(p)[0]?.market_id }); }
+function setQty(pid, q, opts = {}) {
+  const isNew = q > 0 && !S.list.has(pid);
+  if (isNew) { const p = S.products.find((x) => x.id === pid); track('add', { product_id: pid, market_id: opts.ad ? opts.ad.supermarket_id : p && visiblePrices(p)[0]?.market_id, ...(opts.ad?.id > 0 ? { ad_id: opts.ad.id } : {}) }); }
   if (q <= 0) S.list.delete(pid); else S.list.set(pid, q);
   saveList(); rancho.onListChange();
   $$(`[data-pid="${pid}"] .card__foot .stepper, [data-pid="${pid}"] .card__foot .add-btn`).forEach((el) => (el.outerHTML = stepper(pid)));
   const pd = $('#productSheet');
   if (!pd.hidden && Number(pd.dataset.pid) === pid) { const a = $('.pd__actions > .stepper, .pd__actions > [data-add]', pd); if (a) a.outerHTML = q > 0 ? stepper(pid) : `<button class="btn btn--primary" data-add="${pid}">Adicionar ao rancho</button>`; }
   if (location.hash === '#lista') renderList();
+  if (isNew && !opts.ad && !opts.silent) ads.swapAfterAdd(pid); // publicidade inteligente: sugestão na lista
 }
 const renderList = () => rancho.render();
 
@@ -977,6 +981,7 @@ async function boot() {
   if (S.pos) { computeNearest(); $('#locLabel').textContent = S.pos.label || 'Minha localização'; $('#locBtn').classList.add('is-set'); }
   rancho.meta();
   renderChips(); renderNearby(); renderDeals(); renderGrid(); renderSaveStrip(); route(); hideSplash();
+  ads.renderRestock($('#adRestock')); // "hora de repor", calculado com as compras guardadas no aparelho
   familia.init(); campanhas.init(); especial.init(); queima.load();
   try { if (sessionStorage.getItem('tb.saiu')) { sessionStorage.removeItem('tb.saiu'); toast('Você saiu da conta. Os dados dela foram removidos deste aparelho.'); } } catch {}
   try { if (sessionStorage.getItem('tb.wipedElsewhere')) { sessionStorage.removeItem('tb.wipedElsewhere'); toast('O histórico desta conta foi zerado em outro aparelho. Este aparelho também recomeçou do zero.'); } } catch {}

@@ -589,3 +589,5 @@ body.is-branded .pt-nav { background: color-mix(in srgb, var(--bg) 92%, var(--br
 .form .price-in input, .cv-rules .price-in input { border: 0 !important; box-shadow: none !important; height: auto; padding: 0; background: none; border-radius: 0; flex: 1; min-width: 0; width: 70px; }
 .cv-rules .price-in, .qm-form .price-in { height: 44px; width: 100%; }
 .form .price-in { height: 44px; }
+.ad-group { margin: 14px 0 8px; font-size: .85rem; color: var(--ink-2); }
+.ad-group b { color: var(--brand); }

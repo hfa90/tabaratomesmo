@@ -750,11 +750,25 @@ async function exportCatalog() {
 
 // ================================================================ PUBLICIDADE
 const CTAS = ['Ver oferta', 'Conhecer', 'Aproveitar', 'Ver no mapa', 'Quero saber'];
-const ad = { slot: 'home', plan: 2, date: '', hour: 8, title: '', teaser: '', body: '', cta: 'Ver oferta', target: 'none', targetValue: '', image: null, imageFile: null, cat: null };
+const ad = { slot: 'home', plan: 2, date: '', hour: 8, title: '', teaser: '', body: '', cta: 'Ver oferta', target: 'none', targetValue: '', image: null, imageFile: null, cat: null, product: '', keywords: '' };
+const isSmart = () => !!ad.cat?.slots.find((x) => x.key === ad.slot)?.smart;
+const SMART_HOW = { busca: 'Aparece no topo dos resultados para quem busca o produto, a marca, a categoria ou as palavras abaixo.', troca: 'Quando alguém põe na lista um produto do mesmo tipo (de outra marca ou de outro mercado), sugerimos o seu, com o botão “Trocar”.', recompra: 'Calculado no celular de cada pessoa, com as compras guardadas nele: aparece para quem já comprou esse produto (ou um do mesmo tipo) quando costuma estar acabando. Nenhum dado pessoal vai para o mercado.' };
 const AD_STATUS = { pendente: ['pill--soft', 'Aguardando aprovação'], aprovada: ['pill--ok', 'Aprovada'], recusada: ['pill--warn', 'Recusada'], pausada: ['pill--soft', 'Pausada'], cancelada: ['pill--soft', 'Cancelada'] };
 
 /** regras para o anúncio não poluir: curto, sem gritar, sem link no texto, poucos emojis */
 function adChecks() {
+  if (isSmart()) {
+    const all = ad.body; const letters = all.replace(/[^A-Za-zÀ-ú]/g, '');
+    const caps = letters ? letters.replace(/[^A-ZÀ-Ý]/g, '').length / letters.length : 0;
+    return [
+      [!!ad.product, 'Produto escolhido (com preço no seu mercado)'],
+      [ad.body.trim().length >= 10 && ad.body.trim().length <= 120, 'Mensagem entre 10 e 120 letras'],
+      [caps <= 0.4, 'Sem texto em CAIXA ALTA'],
+      [(all.match(/!/g) || []).length <= 1, 'No máximo um ponto de exclamação'],
+      [!/(https?:|www\.|\.com)/i.test(all), 'Sem links no texto'],
+      [(all.match(/\p{Extended_Pictographic}/gu) || []).length <= 1, 'No máximo um emoji'],
+    ];
+  }
   const all = `${ad.title} ${ad.teaser} ${ad.body}`;
   const letters = all.replace(/[^A-Za-zÀ-ú]/g, '');
   const caps = letters ? letters.replace(/[^A-ZÀ-Ý]/g, '').length / letters.length : 0;
@@ -773,13 +787,19 @@ function adChecks() {
 
 function adPreview() {
   const m = market();
+  if (isSmart()) {
+    const r = (st.catalog || []).find((x) => String(x.product_id) === String(ad.product));
+    const product = r ? { id: r.product_id, name: r.name, brand: r.brand, unit: r.unit, image_url: r.image_url, emoji: r.emoji, prices: [] } : { name: 'Escolha o produto', emoji: '🛒', prices: [] };
+    const kick = { busca: `Para quem procura “${esc((ad.keywords.split(',')[0] || r?.name || 'café').trim())}”`, troca: 'Você pôs um parecido na lista. Que tal este?', recompra: 'Hora de repor? Sua última compra foi há 26 dias' }[ad.slot];
+    return ads.productHTML({ id: 0, product, price: r?.price ?? null, image_url: ad.image || '', body: ad.body || 'Sua mensagem aparece aqui.', market: m.name, supermarket_id: st.mid }, { kick, preview: true });
+  }
   return ads.html({ id: 0, title: ad.title || 'Sua pergunta aparece aqui?', teaser: ad.teaser || 'Toque para descobrir.', body: ad.body || 'Aqui aparece a oferta quando a pessoa toca.',
     image_url: ad.image || m.logo_url || 'assets/icon.svg', cta: ad.cta, market: m.name }, { preview: true });
 }
 
 async function renderAds() {
   const main = $('#ptMain');
-  main.innerHTML = `${banner()}<header class="pt-head"><div><h1>Publicidade</h1><p class="muted">Anúncios em formato de curiosidade: a pessoa vê uma pergunta e a imagem desfocada, e toca para descobrir a oferta. Nada de pop-up ou banner piscando.</p></div></header>
+  main.innerHTML = `${banner()}<header class="pt-head"><div><h1>Publicidade</h1><p class="muted">Dois jeitos de anunciar: o card de curiosidade (a pessoa vê uma pergunta e toca para descobrir a oferta) e a publicidade inteligente, de um produto seu, que aparece só para quem tem chance real de comprar: na busca, na lista ou na hora de repor. Nada de pop-up ou banner piscando.</p></div></header>
     <div id="adWrap"><div class="skeleton" style="height:320px"></div></div>`;
   try { ad.cat ||= await P.adCatalog(); await loadCatalog().catch(() => {}); } catch (e) { $('#adWrap').innerHTML = `<p class="note">${esc(e.message)}${P.MODE === 'live' ? ' Rode o schema.sql atualizado para ativar a publicidade.' : ''}</p>`; return; }
   const { plans, slots } = ad.cat;
@@ -791,14 +811,25 @@ async function renderAds() {
     <div class="ad-builder">
       <form class="form panel" id="adForm" style="margin:0">
         <fieldset class="pick"><legend>1. Onde aparece</legend>
-          <div class="opt-grid">${slots.map((x) => `<label class="opt"><input type="radio" name="slot" value="${x.key}" ${x.key === slot.key ? 'checked' : ''} /><span><b>${esc(x.name)}</b><small>${esc(x.description || '')}</small><em>a partir de ${brl(Math.round(plans[0].price * x.multiplier))}</em></span></label>`).join('')}</div></fieldset>
+          ${(() => { const opt = (x) => `<label class="opt"><input type="radio" name="slot" value="${x.key}" ${x.key === slot.key ? 'checked' : ''} /><span><b>${esc(x.name)}</b><small>${esc(x.description || '')}</small><em>a partir de ${brl(Math.round(plans[0].price * x.multiplier))}</em></span></label>`;
+            const cur = slots.filter((x) => !x.smart), sm = slots.filter((x) => x.smart);
+            return `<div class="opt-grid">${cur.map(opt).join('')}</div>${sm.length ? `<p class="ad-group"><b>Publicidade inteligente</b> de um produto seu: aparece só para quem tem chance real de comprar</p><div class="opt-grid">${sm.map(opt).join('')}</div>` : ''}`; })()}</fieldset>
         <fieldset class="pick"><legend>2. Por quanto tempo</legend>
           <div class="opt-grid opt-grid--plans">${plans.map((p) => `<label class="opt"><input type="radio" name="plan" value="${p.id}" ${p.id === plan.id ? 'checked' : ''} /><span><b>${esc(p.name)}</b><small>${esc(p.blurb || `${p.hours} horas`)}</small><em>${brl(Math.round(p.price * slot.multiplier))}</em></span></label>`).join('')}</div></fieldset>
         <fieldset class="pick"><legend>3. Quando começa</legend>
           <div class="form__row"><label>Dia<input type="date" name="date" min="${new Date().toISOString().slice(0, 10)}" value="${ad.date}" required /></label>
           <label>Hora<select name="hour">${[...Array(24).keys()].map((h) => `<option value="${h}" ${h === ad.hour ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('')}</select></label></div>
           <p class="small" id="adAvail"></p></fieldset>
-        <fieldset class="pick"><legend>4. O anúncio</legend>
+        ${isSmart() ? `<fieldset class="pick"><legend>4. O produto</legend>
+          <p class="small muted">${SMART_HOW[slot.key] || ''}</p>
+          <label>Produto do seu catálogo<select name="product" required><option value="">Escolha…</option>${(st.catalog || []).filter((r) => r.active).map((r) => `<option value="${r.product_id}" ${String(r.product_id) === String(ad.product) ? 'selected' : ''}>${esc(r.name)} ${esc(r.brand || '')} ${esc(r.unit || '')} · ${brl(r.price)}</option>`).join('')}</select></label>
+          <label>Mensagem (o porquê de levar o seu)<textarea name="body" maxlength="120" placeholder="Ex.: Pilão 500 g com preço de atacado até domingo.">${esc(ad.body)}</textarea></label>
+          ${slot.key === 'busca' ? `<label>Palavras de busca extras (opcional, separadas por vírgula, até 8)<input name="keywords" maxlength="240" value="${esc(ad.keywords)}" placeholder="Ex.: café, expresso, café forte" /></label>` : ''}
+          ${slot.key === 'troca' ? `<label>Também sugerir quando puserem na lista (opcional, palavras separadas por vírgula)<input name="keywords" maxlength="240" value="${esc(ad.keywords)}" placeholder="Ex.: leite, leite integral" /></label>` : ''}
+          <div class="photo-pick"><button type="button" class="thumb thumb--lg" data-adimg>${ad.image ? `<img src="${esc(ad.image)}" alt="" />` : '<span>🖼️</span><i>Foto (opcional)</i>'}</button>
+            <p class="muted small">Sem foto, usamos a foto do produto no catálogo. O preço mostrado é sempre o atual do seu mercado.</p>
+            <input type="file" id="adImgInput" accept="image/*" hidden /></div>
+        </fieldset>` : `<fieldset class="pick"><legend>4. O anúncio</legend>
           <label>Chamada (uma pergunta ou mistério)<input name="title" maxlength="40" value="${esc(ad.title)}" placeholder="Ex.: Qual carne baixou 18% hoje?" /></label>
           <label>Dica curta (opcional)<input name="teaser" maxlength="70" value="${esc(ad.teaser)}" placeholder="Ex.: Só quem abrir descobre." /></label>
           <label>A revelação: qual é a oferta<textarea name="body" maxlength="120" placeholder="Ex.: Picanha com 18% de desconto até domingo.">${esc(ad.body)}</textarea></label>
@@ -809,7 +840,7 @@ async function renderAds() {
           <div class="photo-pick"><button type="button" class="thumb thumb--lg" data-adimg>${ad.image ? `<img src="${esc(ad.image)}" alt="" />` : '<span>🖼️</span><i>Escolher imagem</i>'}</button>
             <p class="muted small">Foto real do produto ou da loja, quadrada, de pelo menos 600 × 600. Evite imagens com muito texto: a pergunta já está no anúncio.</p>
             <input type="file" id="adImgInput" accept="image/*" hidden /></div>
-        </fieldset>
+        </fieldset>`}
         <ul class="checks">${checks.map(([ok, t]) => `<li class="${ok ? 'ok' : ''}">${ok ? '✓' : '○'} ${t}</li>`).join('')}</ul>
         <div class="ad-total"><span>Total</span><b>${brl(price)}</b><small>${esc(plan.name)} · ${esc(slot.name)}</small></div>
         <p class="form__err" role="alert"></p>
@@ -817,19 +848,19 @@ async function renderAds() {
         <p class="muted small">A equipe do Tá Barato Mesmo? confere o anúncio e combina o pagamento (PIX). Depois de pago, ele entra no ar sozinho no horário escolhido.</p>
       </form>
       <div class="ad-side"><p class="pd__h">Como as pessoas veem</p><div id="adPrev">${adPreview()}</div>
-        <p class="muted small">Toque em “Descobrir” na prévia para ver a oferta revelada.</p></div>
+        <p class="muted small">${isSmart() ? 'O card mostra o preço de agora do seu mercado e o quanto está abaixo da média dos outros.' : 'Toque em “Descobrir” na prévia para ver a oferta revelada.'}</p></div>
     </div>
     <section class="panel" style="margin-top:16px"><div class="panel__head"><h2>Suas campanhas</h2></div><div id="adList"><div class="skeleton" style="height:120px"></div></div></section>`;
   checkAvail();
   try {
     const list = await P.marketAds(st.mid);
-    $('#adList').innerHTML = list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>Anúncio</th><th>Espaço</th><th>Período</th><th class="r">Valor</th><th>Situação</th><th class="r">Vistos</th><th class="r">Abertos</th><th class="r">Cliques</th><th></th></tr></thead><tbody>
+    $('#adList').innerHTML = list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>Anúncio</th><th>Espaço</th><th>Período</th><th class="r">Valor</th><th>Situação</th><th class="r">Vistos</th><th class="r">Abertos</th><th class="r">Cliques</th><th class="r">Foram p/ lista</th><th></th></tr></thead><tbody>
       ${list.map((a) => { const [cls, lbl] = AD_STATUS[a.status] || ['pill--soft', a.status]; const live = a.status === 'aprovada' && a.paid && new Date(a.starts_at) <= Date.now() && new Date(a.ends_at) > Date.now();
-        return `<tr><td><img class="mini-photo" src="${esc(a.image_url)}" alt="" /></td><td><b>${esc(a.title)}</b>${a.reject_reason ? `<small class="up">${esc(a.reject_reason)}</small>` : ''}</td><td>${esc(a.slot_name || a.slot)}<small class="muted">${esc(a.plan_name || '')}</small></td>
+        return `<tr><td>${a.image_url ? `<img class="mini-photo" src="${esc(a.image_url)}" alt="" />` : ''}</td><td><b>${esc(a.smart && a.product_name ? a.product_name : a.title)}</b>${a.smart ? '<small class="muted">publicidade inteligente</small>' : ''}${a.reject_reason ? `<small class="up">${esc(a.reject_reason)}</small>` : ''}</td><td>${esc(a.slot_name || a.slot)}<small class="muted">${esc(a.plan_name || '')}</small></td>
         <td class="nowrap">${new Date(a.starts_at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}<small class="muted">até ${new Date(a.ends_at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></td>
         <td class="r">${brl(Number(a.price))}<small class="muted">${a.paid ? 'pago' : 'a pagar'}</small></td>
         <td>${live ? '<span class="pill pill--ok">No ar</span>' : `<span class="pill ${cls}">${lbl}</span>`}</td>
-        <td class="r">${fmtN(a.views)}</td><td class="r">${fmtN(a.reveals)}</td><td class="r">${fmtN(a.clicks)}${a.views ? `<small class="muted">${((a.clicks / a.views) * 100).toFixed(1).replace('.', ',')}%</small>` : ''}</td>
+        <td class="r">${fmtN(a.views)}</td><td class="r">${fmtN(a.reveals)}</td><td class="r">${fmtN(a.clicks)}${a.views ? `<small class="muted">${((a.clicks / a.views) * 100).toFixed(1).replace('.', ',')}%</small>` : ''}</td><td class="r">${a.smart ? fmtN(a.adds || 0) : '–'}</td>
         <td class="r">${['pendente', 'aprovada'].includes(a.status) && new Date(a.starts_at) > Date.now() ? `<button class="btn btn--text btn--sm" data-adcancel="${a.id}">Cancelar</button>` : ''}</td></tr>`; }).join('')}
       </tbody></table></div>` : '<p class="muted small">Nenhuma campanha ainda.</p>';
   } catch (e) { $('#adList').innerHTML = `<p class="note">${esc(e.message)}</p>`; }
@@ -864,7 +895,7 @@ function adImageCheck(file) {
 
 document.addEventListener('input', (e) => {
   const f = e.target.closest('#adForm'); if (!f) return;
-  const n = e.target.name; if (!['title', 'teaser', 'body'].includes(n)) return;
+  const n = e.target.name; if (!['title', 'teaser', 'body', 'keywords'].includes(n)) return;
   ad[n] = e.target.value;
   $('#adPrev').innerHTML = adPreview();
   const checks = adChecks();
@@ -886,6 +917,7 @@ document.addEventListener('change', async (e) => {
   else if (n === 'cta') { ad.cta = e.target.value; $('#adPrev').innerHTML = adPreview(); return; }
   else if (n === 'target') { ad.target = e.target.value; ad.targetValue = ''; }
   else if (n === 'targetValue') { ad.targetValue = e.target.value; return; }
+  else if (n === 'product') { ad.product = e.target.value; $('#adPrev').innerHTML = adPreview(); const c = adChecks(); $('#adForm .checks').innerHTML = c.map(([ok, t]) => `<li class="${ok ? 'ok' : ''}">${ok ? '✓' : '○'} ${t}</li>`).join(''); $('#adForm button.btn--primary').disabled = !c.every((x) => x[0]); return; }
   else return;
   renderAds();
 });
@@ -904,6 +936,16 @@ document.addEventListener('submit', async (e) => {
   const btn = $('button.btn--primary', f); btn.disabled = true;
   try {
     const url = ad.imageFile ? await P.uploadPhoto(st.mid, ad.imageFile, 'anuncio') : ad.image;
+    if (isSmart()) {
+      if (!ad.product) throw new Error('Escolha o produto.');
+      const r = (st.catalog || []).find((x) => String(x.product_id) === String(ad.product));
+      await P.requestAd({ supermarket_id: st.mid, slot: ad.slot, plan_id: ad.plan, title: r ? `${r.name} ${r.brand || ''}`.trim().slice(0, 40) : '', body: ad.body.trim(), cta: 'Ver produto',
+        image_url: url || r?.image_url || '', target_type: 'product', target_value: String(ad.product),
+        keywords: ad.keywords.split(',').map((k) => k.trim()).filter(Boolean).slice(0, 8),
+        starts_at: new Date(`${ad.date}T${String(ad.hour).padStart(2, '0')}:00:00`).toISOString() });
+      Object.assign(ad, { body: '', image: null, imageFile: null, product: '', keywords: '' });
+      toast('Anúncio enviado para aprovação.'); return renderAds();
+    }
     await P.requestAd({ supermarket_id: st.mid, slot: ad.slot, plan_id: ad.plan, title: ad.title.trim(), teaser: ad.teaser.trim(), body: ad.body.trim(), cta: ad.cta,
       image_url: url, target_type: ad.target, target_value: ad.target === 'store' ? String(st.mid) : ad.targetValue || null,
       starts_at: new Date(`${ad.date}T${String(ad.hour).padStart(2, '0')}:00:00`).toISOString() });

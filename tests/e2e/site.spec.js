@@ -306,3 +306,36 @@ test('portal: vendas comprovadas, cubra a diferença, demanda e queima abrem sem
   await expect(page.locator('.qm-card h3', { hasText: 'Pão de forma' })).toBeVisible();
   expect(errs).toEqual([]);
 });
+
+// ---------------------------------------------------------------- publicidade inteligente (sempre de um produto)
+test('publicidade inteligente: busca patrocinada, sugestão na lista e hora de repor', async ({ page }) => {
+  await page.goto('/privacidade.html');
+  await page.evaluate(() => {
+    localStorage.clear(); localStorage.setItem('tb.seenHome', '1');
+    // comprou Coca-Cola há 31 dias (guardado só no aparelho)
+    localStorage.setItem('tb.receipts', JSON.stringify([{ key: 'r1', at: new Date(Date.now() - 31 * 864e5).toISOString(), items: [{ name: 'COCA', pid: 35, qty: 1, unit_price: 9 }] }]));
+  });
+  const errs = await ofertas(page);
+  await expect(page.locator('#adRestock .ad--prod')).toContainText('Hora de repor');
+  await page.fill('#searchInput', 'café');
+  await expect(page.locator('#productGrid > .ad--prod').first()).toContainText('Para quem procura');
+  await page.fill('#searchInput', 'ninho');
+  await page.locator('[data-add="9"]').first().evaluate((b) => b.click());
+  await expect(page.locator('.ad-nudge .ad--prod')).toBeVisible();
+  await page.locator('.ad-nudge [data-ad-swap]').click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('tb.list')).map((x) => x[0]))).toEqual([24]);
+  expect(errs).toEqual([]);
+});
+
+test('portal: pedir anúncio de busca patrocinada de um produto', async ({ page }) => {
+  const errs = await open(page, '/parceiros.html');
+  await page.click('[data-demo]');
+  await page.goto('/parceiros.html#publicidade');
+  await page.locator('input[name=slot][value=busca]').check({ force: true });
+  await page.locator('select[name=product]').selectOption({ index: 1 });
+  await page.fill('textarea[name=body]', 'Com preço de atacado até domingo.');
+  await page.fill('input[name=keywords]', 'cafe, expresso');
+  await page.locator('#adForm button.btn--primary').click();
+  await expect(page.locator('#adList')).toContainText('publicidade inteligente', { timeout: 15_000 });
+  expect(errs).toEqual([]);
+});
