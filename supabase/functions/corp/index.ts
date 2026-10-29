@@ -188,6 +188,27 @@ Deno.serve(async (req: Request) => {
     // deno-lint-ignore no-explicit-any
     let body: any = {}; try { body = await req.json(); } catch { /* corpo vazio */ }
     if (body?.setup) {
+      // garante que o robô dos CLIENTES continua apontando para a função "telegram"
+      const tt = Deno.env.get('TELEGRAM_TOKEN'), ts = Deno.env.get('TELEGRAM_SECRET');
+      let clientes: unknown = null;
+      if (tt && ts) {
+        const r = await fetch(`https://api.telegram.org/bot${tt}/setWebhook`, { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/telegram`, secret_token: ts, allowed_updates: ['message', 'callback_query'] }) });
+        clientes = (await r.json().catch(() => ({}))).ok ?? false;
+      }
+      const tme = tt ? await (await fetch(`https://api.telegram.org/bot${tt}/getMe`)).json().catch(() => ({})) : {};
+      // trava: o token salvo tem de ser o do robô dos supermercados, nunca o dos clientes
+      const who = await tg('getMe', {});
+      if (who?.result?.username !== 'corp_tabaratomesmo_bot') {
+        // se é o dos clientes, devolve o webhook dele para a função "telegram"
+        let volta: unknown = null;
+        if (who?.result?.username === 'tabaratomesmo_bot' && ts) {
+          const r = await tg('setWebhook', { url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/telegram`, secret_token: ts, allowed_updates: ['message', 'callback_query'] });
+          volta = r.ok;
+        }
+        return Response.json({ clientes, volta, telegram_token: tme?.ok ? tme.result.username : (tme?.description ?? 'sem'), webhook: false,
+          desc: `CORP_BOT_TOKEN é de @${who?.result?.username ?? '?'}, não do @corp_tabaratomesmo_bot` }, { status: 400 });
+      }
       const url = `${Deno.env.get('SUPABASE_URL')}/functions/v1/corp`;
       const w = await tg('setWebhook', { url, secret_token: await SECRET, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true });
       await tg('setMyCommands', { commands: [
@@ -195,8 +216,9 @@ Deno.serve(async (req: Request) => {
         { command: 'alertas', description: 'Liga/pausa radar e faltas' },
         { command: 'sair', description: 'Parar de receber avisos' }] });
       const me = await tg('getMe', {});
-      return Response.json({ webhook: w.ok, desc: w.description, bot: me?.result?.username });
+      return Response.json({ clientes, webhook: w.ok, desc: w.description, bot: me?.result?.username });
     }
+    if (TOKEN === Deno.env.get('TELEGRAM_TOKEN')) return new Response('CORP_BOT_TOKEN está com o token do robô dos clientes', { status: 500 });
     try { return Response.json({ ...(await runAlerts()), ...(await runDigests()) }); }
     catch (e) { console.error('corp', e); return Response.json({ error: String(e) }, { status: 500 }); }
   }
