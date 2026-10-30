@@ -17,7 +17,7 @@ let list = [];
 let shownThisSession = new Set();
 let popupTimer = null;
 const DAY = 864e5;
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => { const t = new Date(); return new Date(t.getTime() - t.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }; // dia local, não UTC
 const hide = () => api.store.get('tb.campHide', {});
 const log = () => { const l = api.store.get('tb.campLog', null); return l?.day === today() ? l : { day: today(), popups: 0, notifs: 0 }; };
 const bump = (k) => { const l = log(); l[k]++; api.store.set('tb.campLog', l); };

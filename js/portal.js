@@ -17,6 +17,8 @@ import * as cubra from './portal-cubra.js';
 import * as demanda from './portal-demanda.js';
 import * as queima from './portal-queima.js';
 import * as dono from './portal-dono.js';
+// data AAAA-MM-DD no fuso do aparelho (toISOString é UTC: depois das 20h em Manaus já seria amanhã)
+const ymd = (x = new Date()) => { const t = new Date(x); return new Date(t.getTime() - t.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
 
 const st = {
   user: null, markets: [], mid: null, categories: [], pub: [], pubStores: [], // pub = mercados do catálogo público (cores, logo, lojas)
@@ -482,7 +484,7 @@ async function savePhoto(file, url, key) {
 async function promoForm(r, existing = null) {
   const now = new Date(); const end = new Date(Date.now() + 7 * 864e5);
   if (!st.stores) st.stores = await P.stores(st.mid).catch(() => []);
-  const d = (x) => new Date(x).toISOString().slice(0, 10);
+  const d = (x) => ymd(x);
   const p = existing || {};
   openSheet(`<h2 class="sheet__title" id="ptSheetTitle">${p.id ? 'Editar promoção' : 'Nova promoção'}</h2>
     <form class="form" id="promoForm">
@@ -548,7 +550,7 @@ async function renderDeals() {
   main.innerHTML = `${banner()}<header class="pt-head"><div><h1>Dias de desconto</h1><p class="muted">Descontos que se repetem: “Terça do Hortifrúti”, “5% no Pix”. Aparecem no site no dia certo, no detalhe dos produtos e no cálculo do melhor dia para o rancho.</p></div>
     <button class="btn btn--primary" data-newdeal>+ Novo desconto</button></header><div id="dealWrap"><div class="skeleton" style="height:200px"></div></div>`;
   try { await loadCatalog().catch(() => {}); st.deals = await P.deals(st.mid); } catch (e) { $('#dealWrap').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = ymd();
   const on = st.deals.filter((x) => x.active && (!x.ends_on || x.ends_on >= today));
   const old = st.deals.filter((x) => !on.includes(x)).slice(0, 20);
   const table = (arr, live) => arr.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Desconto</th><th>Dias</th><th>Em quê</th><th>Pagamento</th><th>Período</th><th></th></tr></thead><tbody>
@@ -561,7 +563,7 @@ async function renderDeals() {
 }
 
 function dealForm(x = {}) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = ymd();
   openSheet(`<h2 class="sheet__title" id="ptSheetTitle">${x.id ? 'Editar desconto' : 'Novo dia de desconto'}</h2>
     <form class="form" id="dealForm">
       <input type="hidden" name="deal_id" value="${x.id || ''}" />
@@ -747,7 +749,7 @@ async function exportCatalog() {
   }));
   const ws = X.utils.json_to_sheet(rows); ws['!cols'] = [16, 14, 32, 16, 14, 18, 14, 14, 18, 14, 14, 30, 8].map((w) => ({ wch: w }));
   const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, 'Produtos');
-  X.writeFile(wb, `produtos-${market().slug || st.mid}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  X.writeFile(wb, `produtos-${market().slug || st.mid}-${ymd()}.xlsx`);
 }
 
 // ================================================================ PUBLICIDADE
@@ -805,7 +807,7 @@ async function renderAds() {
     <div id="adWrap"><div class="skeleton" style="height:320px"></div></div>`;
   try { ad.cat ||= await P.adCatalog(); await loadCatalog().catch(() => {}); } catch (e) { $('#adWrap').innerHTML = `<p class="note">${esc(e.message)}${P.MODE === 'live' ? ' Rode o schema.sql atualizado para ativar a publicidade.' : ''}</p>`; return; }
   const { plans, slots } = ad.cat;
-  if (!ad.date) { const d = new Date(Date.now() + 864e5); ad.date = d.toISOString().slice(0, 10); }
+  if (!ad.date) ad.date = ymd(Date.now() + 864e5);
   const slot = slots.find((x) => x.key === ad.slot) || slots[0]; const plan = plans.find((x) => x.id === ad.plan) || plans[0];
   const price = Math.round(plan.price * slot.multiplier);
   const checks = adChecks();
@@ -819,7 +821,7 @@ async function renderAds() {
         <fieldset class="pick"><legend>2. Por quanto tempo</legend>
           <div class="opt-grid opt-grid--plans">${plans.map((p) => `<label class="opt"><input type="radio" name="plan" value="${p.id}" ${p.id === plan.id ? 'checked' : ''} /><span><b>${esc(p.name)}</b><small>${esc(p.blurb || `${p.hours} horas`)}</small><em>${brl(Math.round(p.price * slot.multiplier))}</em></span></label>`).join('')}</div></fieldset>
         <fieldset class="pick"><legend>3. Quando começa</legend>
-          <div class="form__row"><label>Dia<input type="date" name="date" min="${new Date().toISOString().slice(0, 10)}" value="${ad.date}" required /></label>
+          <div class="form__row"><label>Dia<input type="date" name="date" min="${ymd()}" value="${ad.date}" required /></label>
           <label>Hora<select name="hour">${[...Array(24).keys()].map((h) => `<option value="${h}" ${h === ad.hour ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('')}</select></label></div>
           <p class="small" id="adAvail"></p></fieldset>
         ${isSmart() ? `<fieldset class="pick"><legend>4. O produto</legend>

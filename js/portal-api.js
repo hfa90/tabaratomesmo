@@ -607,15 +607,18 @@ export async function salesProof(mid, days = 30, win = 7) {
 
 // ---------------------------------------------------------------- cubra a diferença
 const COVER_DEFAULT = { active: false, max_diff: 20, min_total: 150, budget_month: 500, extra: 1, valid_days: 4, min_spend_pct: 80 };
+// demonstração: nomes das outras redes (nunca a própria como concorrente)
+async function rivals(mid) { const { DEMO } = await import('./demo-data.js'); return DEMO.supermarkets.filter((m) => m.id !== mid).map((m) => m.name); }
+
 export async function coverGet(mid) {
   if (MODE !== 'demo') return rpcP('market_cover_get', { p_market: mid });
-  const d = demoState(); const rules = { supermarket_id: mid, ...COVER_DEFAULT, ...(d.cover?.[mid] || {}) };
+  const d = demoState(); const rules = { supermarket_id: mid, ...COVER_DEFAULT, ...(d.cover?.[mid] || {}) }; const rv = await rivals(mid);
   const R = seeded(mid + 7); const coupons = (d.coverCoupons ||= Array.from({ length: 14 }, (_, i) => {
     const diff = Math.round((3 + R() * 16) * 100) / 100; const st = i < 5 ? 'usado' : i < 8 ? 'aceito' : i < 10 ? 'expirado' : 'oferta';
     return { id: 700 + i, code: ['usado', 'aceito'].includes(st) ? 'TB' + (4821 + i * 37).toString(36).toUpperCase().padStart(6, '7') : null, value: Math.ceil(diff) + 1, diff,
       my_total: Math.round((210 + R() * 180) * 100) / 100, min_spend: 0, status: st, created_at: new Date(Date.now() - i * 1.7 * 864e5).toISOString(),
       expires_at: new Date(Date.now() + (3 - i) * 864e5).toISOString(), used_at: st === 'usado' ? new Date(Date.now() - i * 864e5).toISOString() : null, used_via: st === 'usado' ? (i % 2 ? 'nota' : 'caixa') : null,
-      best_name: ['Nova Era', 'Supermercados DB', 'Veneza'][i % 3] };
+      best_name: rv[i % 3] };
   }));
   coupons.forEach((c) => { c.min_spend = Math.round(c.my_total * (rules.min_spend_pct / 100) * 100) / 100; });
   saveDemo(d);
@@ -644,7 +647,7 @@ export async function coverRedeem(mid, code, total) {
 // ---------------------------------------------------------------- previsão de demanda
 export async function demand(mid) {
   if (MODE !== 'demo') return rpcP('market_demand', { p_market: mid, p_limit: 40 });
-  const cat = await demoCatalog(mid); const R = seeded(mid * 13);
+  const cat = await demoCatalog(mid); const R = seeded(mid * 13); const rv = await rivals(mid);
   const products = cat.filter((p) => p.active).slice(0, 60).map((p) => {
     const n = Math.round(40 + R() * 1160); const considered = Math.round(n * (0.7 + R() * 0.25));
     const others = p.min_other ?? p.price * (0.95 + R() * 0.1);
@@ -654,7 +657,7 @@ export async function demand(mid) {
     const beats = steps.map((b, i) => [b, Math.round((considered - free) * w[i])]).filter((x) => x[1] > 0).sort((a, b) => b[0] - a[0]);
     const wins = free + beats.filter(([b]) => p.price <= b).reduce((s, [, c]) => s + c, 0);
     return { product_id: p.product_id, name: p.name, brand: p.brand, unit: p.unit, emoji: p.emoji, image_url: p.image_url, my_price: p.price, min_other: p.min_other,
-      min_other_name: p.min_other != null ? 'Nova Era' : null, n_lists: n, units: Math.round(n * 1.4), n_considered: considered, wins, free, n_watch: Math.round(n * 0.18), beats };
+      min_other_name: p.min_other != null ? rv[0] : null, n_lists: n, units: Math.round(n * 1.4), n_considered: considered, wins, free, n_watch: Math.round(n * 0.18), beats };
   }).sort((a, b) => b.n_lists + b.n_watch - (a.n_lists + a.n_watch)).slice(0, 40);
   return { lists: 1840, products, missing: [{ product_id: 0, name: 'Leite condensado Moça', brand: 'Nestlé', unit: '395 g', n_lists: 212 }], demo: true };
 }
@@ -700,14 +703,15 @@ async function rpcD(fn, args) {
 export async function weeklyDigest(mid) {
   if (MODE !== 'demo') return rpcD('market_weekly_digest', { p_market: mid, p_days: 7 });
   const name = (await myMarkets()).find((m) => m.id === mid)?.name || 'Coema';
+  const [o1, o2] = await rivals(mid);
   const d = { market: name, from: new Date(Date.now() - 7 * 864e5).toISOString(), to: new Date().toISOString(), days: 7, clients: 214, visits: 168, buyers: 61, receipts: 74,
     revenue: 41230.5, prev_revenue: 36410, ticket: 557.17, spend: 1200, spend_ads: 834, spend_cover: 366, roi: 34.4, ranchos_won: 96, ranchos_total: 410,
-    lost: [{ market: 'Supermercados DB', n: 3, diff: 21.4, products: ['Óleo de soja', 'Arroz tipo 1'] }, { market: 'Nova Era', n: 1, diff: 6.2, products: ['Café torrado e moído'] }],
+    lost: [{ market: o1, n: 3, diff: 21.4, products: ['Óleo de soja', 'Arroz tipo 1'] }, { market: o2, n: 1, diff: 6.2, products: ['Café torrado e moído'] }],
     missing: { n: 5, open: 2, top: ['Leite UHT integral', 'Açúcar cristal'] }, radar: { n: 4, matched: 2 }, position: { cheapest: 38, total: 112 }, demo: true };
   d.text = `📊 <b>${name}: sua semana no Tá Barato Mesmo?</b>\n${new Date(d.from).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} a ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}\n\n`
     + `👥 <b>214</b> clientes vieram pelo site (168 chegaram na loja com o site aberto)\n🧾 <b>R$ 41.230,50</b> em notas comprovadas (74 notas, +13% na semana)\n`
     + `💸 Você gastou <b>R$ 1.200,00</b> em anúncios e cupons: retorno de <b>34 vezes</b>\n🛒 96 ranchos saíram mais baratos no ${name}\n`
-    + `⚠️ Você perdeu <b>3 ranchos</b> por pouco para o Supermercados DB por causa do óleo de soja e do arroz tipo 1\n⚠️ Você perdeu <b>1 rancho</b> por pouco para o Nova Era por causa do café torrado e moído\n`
+    + `⚠️ Você perdeu <b>3 ranchos</b> por pouco para o ${o1} por causa do óleo de soja e do arroz tipo 1\n⚠️ Você perdeu <b>1 rancho</b> por pouco para o ${o2} por causa do café torrado e moído\n`
     + `🔎 5 avisos de “não achei na loja”: Leite UHT integral, Açúcar cristal\n📡 4 alertas de preço da concorrência (2 igualados)\n🏷️ Você é o mais barato em 38 de 112 produtos hoje.`;
   return d;
 }
@@ -734,7 +738,7 @@ export async function corpLinkCode(mid) {
 export async function radar(mid) {
   if (MODE !== 'demo') return rpcD('market_radar', { p_market: mid, p_days: 14 });
   const d = demoState(); const cat = (await demoCatalog(mid)).filter((r) => r.active && r.min_other != null);
-  const comp = ['Supermercados DB', 'Veneza', 'Nova Era']; const R = seeded(mid * 3);
+  const comp = (await rivals(mid)).slice(0, 3); const R = seeded(mid * 3);
   d.radarMatched ||= [];
   const alerts = cat.slice(0, 6).map((r, i) => {
     const comp_price = Math.round((r.price - 0.4 - R() * 2) * 100) / 100;
@@ -778,7 +782,7 @@ export async function missingResolve(mid, store, product) {
 export async function storesCompare(mid) {
   if (MODE !== 'demo') return rpcD('market_stores_compare', { p_market: mid, p_days: 30 });
   const st = await stores(mid); const R = seeded(mid * 17);
-  const comp = ['Supermercados DB', 'Nova Era', 'Veneza'];
+  const comp = (await rivals(mid)).slice(0, 3);
   return st.map((s, i) => { const won = Math.round(20 + R() * 60), lost = Math.round(8 + R() * 40);
     return { id: s.id, name: s.name, neighborhood: s.neighborhood, visits: Math.round(120 + R() * 600), receipts: Math.round(30 + R() * 200), revenue: Math.round((8000 + R() * 40000) * 100) / 100,
       missing: Math.round(R() * 6), promos: Math.round(R() * 4), won, lost,

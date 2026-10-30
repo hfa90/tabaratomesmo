@@ -193,6 +193,9 @@ test('portal: o mercado cadastra a própria unidade e cria promoção só nela; 
   await pf.locator('.btn--primary').evaluate((b) => b.click());
   await expect(page.locator('#promoWrap .pill--unit')).toContainText('Coema Flores');
   await page.goto('/#ofertas');
+  // a vitrine de ofertas muda com o dia: procura o produto pelo nome para o card aparecer
+  await expect(page.locator('.card').first()).toBeVisible({ timeout: 15_000 });
+  await page.fill('#searchInput', label.trim().split(/\s+/).slice(0, 2).join(' '));
   const card = page.locator(`.card[data-pid="${pid}"]`);
   await expect(card.locator('.card__unit')).toContainText('só no Coema Flores');
   await card.locator('.card__hit').click();

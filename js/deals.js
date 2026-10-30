@@ -22,7 +22,8 @@ export async function load() {
 }
 export const all = () => list.filter((d) => S.markets.has(d.supermarket_id) && isOn(d.supermarket_id));
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// dia no fuso do aparelho (toISOString é UTC: depois das 20h em Manaus já seria amanhã)
+const todayISO = () => { const t = new Date(); return new Date(t.getTime() - t.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
 const live = (d, date = new Date()) => {
   const iso = date.toISOString().slice(0, 10);
   return d.active !== false && (!d.starts_on || d.starts_on <= iso) && (!d.ends_on || d.ends_on >= iso);
