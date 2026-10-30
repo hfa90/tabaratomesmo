@@ -56,7 +56,7 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-cofrinho.sql
 
   site:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # o Playwright ainda não instala o Chromium no Ubuntu 26.04 (ubuntu-latest)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
