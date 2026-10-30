@@ -356,3 +356,30 @@ export async function dbHealth() {
   try { return await rpc('db_health'); }
   catch (e) { if (/db_health|PGRST202|could not find/i.test(e.message)) return null; throw e; }
 }
+
+// ---------------------------------------------------------------- dados de apresentação (fictícios) e zerar uso
+const FIC_UPD = 'Falta rodar no Supabase o arquivo supabase/atualizacoes/atualizacao-2026-10-dados-ficticios.sql.';
+const ficErr = (e) => { if (isMissingFn(e)) throw new Error(FIC_UPD); throw e; };
+export async function usageCounts() {
+  if (MODE === 'demo') await demo();
+  if (MODE === 'demo') return { ficticio: { clientes: D.fic ? 320 : 0, eventos: D.fic ? 44500 : 0, notas: D.fic ? 990 : 0, listas: D.fic ? 400 : 0, cupons: D.fic ? 80 : 0, alertas: D.fic ? 30 : 0, faltas: D.fic ? 90 : 0, campanhas: D.fic ? 25 : 0, ultimo: D.fic || null },
+    real: { contas: 2, eventos: 273, notas: 1, listas: 8, precos_informados: 5, promocoes: 0, campanhas: 1 }, fica: { produtos: 79, precos: 69, mercados: 5, lojas: 43 }, demo: true };
+  return rpc('admin_usage_counts').catch(ficErr);
+}
+/** gera em passos curtos; onStep({ step, steps, label }) a cada passo */
+export async function seedFictitious(onStep = () => {}) {
+  if (MODE === 'demo') { await demo(); for (let s = 0; s < 8; s++) { onStep({ step: s, steps: 8, label: 'Demonstração' }); await new Promise((r) => setTimeout(r, 120)); } D.fic = new Date().toISOString(); saveDemo(); return; }
+  let step = 0;
+  for (let guard = 0; guard < 30 && step != null; guard++) {
+    const r = await rpc('admin_seed_fictitious', { p_step: step, p_days: 90 }).catch(ficErr);
+    onStep(r); step = r?.next ?? null;
+  }
+}
+export async function clearFictitious() {
+  if (MODE === 'demo') { await demo(); D.fic = null; note('apagar dados fictícios', {}); saveDemo(); return {}; }
+  return rpc('admin_clear_fictitious').catch(ficErr);
+}
+export async function resetUsage(confirm) {
+  if (MODE === 'demo') { await demo(); if (confirm !== 'ZERAR') throw new Error('Digite ZERAR para confirmar.'); D.fic = null; note('zerar uso do site', {}); saveDemo(); return {}; }
+  return rpc('admin_reset_usage', { p_confirm: confirm }).catch(ficErr);
+}

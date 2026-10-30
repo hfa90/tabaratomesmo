@@ -80,7 +80,9 @@ CREATE TABLE auth.users (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     email text,
     raw_user_meta_data jsonb DEFAULT '{}'::jsonb,
-    created_at timestamp with time zone DEFAULT now()
+    created_at timestamp with time zone DEFAULT now(),
+    instance_id uuid, aud text, role text, encrypted_password text, raw_app_meta_data jsonb, updated_at timestamp with time zone,
+    confirmation_token text, recovery_token text, email_change_token_new text, email_change text, banned_until timestamp with time zone
 );
 
 

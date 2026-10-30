@@ -87,7 +87,7 @@ async function enter() {
 function route() {
   const v = (location.hash || '#geral').slice(1);
   const views = { geral: renderOverview, encartes: renderEncartes, mercados: renderMarkets, unidades: () => mapa.render(head, { mode: 'admin', demo: A.MODE === 'demo', markets: A.markets, saveStore: A.saveStore, saveMarket: A.saveMarket,
-      demoStores: (ms) => Promise.all(ms.map((m) => A.access(m.id).then((d) => d.stores).catch(() => []))).then((a) => a.flat()) }), usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, datas: renderEventos, uso: renderUso, saude: renderSaude, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
+      demoStores: (ms) => Promise.all(ms.map((m) => A.access(m.id).then((d) => d.stores).catch(() => []))).then((a) => a.flat()) }), usuarios: renderUsers, moderacao: renderModeration, publicidade: renderAdsAdmin, datas: renderEventos, uso: renderUso, saude: renderSaude, apresentacao: renderApresentacao, produtos: renderProducts, promocoes: renderPromos, relatorios: renderReports, config: renderConfig };
   const view = views[v] ? v : 'geral';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
   views[view]();
@@ -683,6 +683,49 @@ async function exportCSV(kind) {
 }
 
 // ================================================================ CONFIGURAÇÕES
+// ================================================================ DADOS DE APRESENTAÇÃO (fictícios) e ZERAR USO
+async function renderApresentacao() {
+  $('#ptMain').innerHTML = head('Dados de apresentação', 'Números fictícios para mostrar o site a um supermercado. Produtos e preços continuam os reais.')
+    + '<div id="apr"><div class="skeleton" style="height:300px"></div></div>';
+  let C;
+  try { C = await A.usageCounts(); if (!$('#apr')) return; } catch (e) { if ($('#apr')) $('#apr').innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
+  const F = C.ficticio || {}, R = C.real || {}, K = C.fica || {};
+  const has = (F.clientes || 0) > 0;
+  const li = (t, v) => `<li><span>${t}</span><b>${fmtN(v || 0)}</b></li>`;
+  $('#apr').innerHTML = `
+    <section class="panel apr-hero ${has ? 'is-on' : ''}">
+      <div><h2>${has ? 'Os dados fictícios estão no ar' : 'Sem dados fictícios agora'}</h2>
+        <p class="small">${has ? `Gerados em ${dateTime(F.ultimo || new Date())}. O portal de cada rede mostra visitas, buscas, notas, ranchos, alertas e cupons inventados dos últimos 90 dias.` : 'Gere para apresentar: o portal das 5 redes passa a mostrar visitas, buscas, notas fiscais, listas do mês, alertas e cupons inventados dos últimos 90 dias.'}</p>
+        <p class="muted small">Nada inventado aparece para o consumidor: campanhas, queimas e anúncios fictícios já nascem encerrados, os clientes fictícios não entram no ranking nem conseguem entrar no site, e os alertas não vão para o Telegram. As datas acompanham o dia em que você gera: gere de novo na véspera de uma apresentação.</p></div>
+      <div class="row-actions"><button class="btn btn--primary" data-fic-seed>${has ? 'Gerar de novo' : 'Gerar dados fictícios'}</button>
+        ${has ? '<button class="btn btn--ghost" data-fic-clear>Apagar só os fictícios</button>' : ''}</div>
+      <div class="apr-prog" id="aprProg" hidden><div><i style="width:0%"></i></div><small class="muted"></small></div>
+    </section>
+    <div class="pt-grid apr-grid">
+      <section class="panel"><div class="panel__head"><h2>Fictício</h2><span class="muted small">some ao apagar ou zerar</span></div>
+        <ul class="cfg-list apr-list">${li('Clientes fictícios', F.clientes)}${li('Visitas, buscas e rotas', F.eventos)}${li('Notas fiscais', F.notas)}${li('Listas do mês', F.listas)}${li('Cupons do "Cubra a diferença"', F.cupons)}${li('Alertas do radar', F.alertas)}${li('Avisos de "não achei"', F.faltas)}${li('Campanhas, queimas e anúncios encerrados', F.campanhas)}</ul></section>
+      <section class="panel"><div class="panel__head"><h2>Uso real</h2><span class="muted small">só some ao zerar</span></div>
+        <ul class="cfg-list apr-list">${li('Visitas, buscas e rotas', R.eventos)}${li('Notas fiscais', R.notas)}${li('Listas do mês', R.listas)}${li('Preços informados por clientes', R.precos_informados)}${li('Promoções', R.promocoes)}${li('Campanhas', R.campanhas)}</ul></section>
+      <section class="panel"><div class="panel__head"><h2>Sempre fica</h2><span class="muted small">nunca é apagado aqui</span></div>
+        <ul class="cfg-list apr-list">${li('Produtos', K.produtos)}${li('Preços', K.precos)}${li('Supermercados', K.mercados)}${li('Lojas', K.lojas)}${li('Contas', R.contas)}</ul></section>
+    </div>
+    <section class="panel apr-danger"><div class="panel__head"><h2>Zerar uso do site</h2></div>
+      <p class="small">Apaga <b>tudo o que foi usado</b>, fictício e real: visitas, buscas, rotas, listas do mês, listas da família, notas fiscais, preços informados por clientes, fotos e leituras com IA, avisos de "não achei", alertas do radar, cupons, queimas, campanhas, promoções, dias de desconto, anúncios e históricos do Telegram.</p>
+      <p class="small">Ficam: <b>produtos e preços</b>, supermercados, lojas, contas, acessos ao portal, Telegram ligado e configurações. Os aparelhos de quem tem conta também se limpam na próxima vez que abrirem o site.</p>
+      <button class="btn btn--danger" data-fic-reset>Zerar uso do site…</button></section>`;
+}
+async function ficSeed() {
+  const prog = $('#aprProg'); const bar = prog?.querySelector('i'); const txt = prog?.querySelector('small');
+  $$('[data-fic-seed], [data-fic-clear], [data-fic-reset]').forEach((b) => { b.disabled = true; });
+  if (prog) prog.hidden = false;
+  await run(() => A.seedFictitious((r) => {
+    const done = (r.step || 0) + 1, all = r.steps || 8;
+    if (bar) bar.style.width = `${Math.round((100 * done) / all)}%`;
+    if (txt) txt.textContent = `${r.label || 'Gerando'} (${done} de ${all})`;
+  }), 'Dados fictícios prontos. Abra o portal de uma rede para ver.');
+  if ($('#apr')) renderApresentacao();
+}
+
 async function renderConfig() {
   $('#ptMain').innerHTML = head('Configurações', 'Ligue e desligue partes do site. As mudanças valem na hora para todo mundo.') + '<div id="cfg"><div class="skeleton" style="height:300px"></div></div>';
   let S, ad, lg;
@@ -736,6 +779,18 @@ document.addEventListener('click', async (e) => {
   const t = e.target.closest('button, a'); if (!t) return;
   const d = t.dataset;
   if (d.demo !== undefined) { A.useDemo(); st.user = { email: 'haydenfernandes.ti@gmail.com' }; return enter(); }
+  if (d.ficSeed !== undefined) return ficSeed();
+  if (d.ficClear !== undefined) {
+    if (!confirm('Apagar só os dados fictícios? O uso real, os produtos e os preços não mudam.')) return;
+    if (await run(() => A.clearFictitious(), 'Dados fictícios apagados.')) renderApresentacao();
+    return;
+  }
+  if (d.ficReset !== undefined) {
+    const typed = prompt('Zerar apaga TODO o uso do site, fictício e real, sem volta. Ficam produtos, preços, supermercados, lojas, contas e acessos.\n\nDigite ZERAR para confirmar:');
+    if (typed == null) return;
+    if (await run(() => A.resetUsage(typed.trim().toUpperCase()), 'Uso do site zerado. Ficaram produtos e preços.')) renderApresentacao();
+    return;
+  }
   if (d.days) { st.days = Number(d.days); return renderOverview(); }
   if (d.usoDays) { st.usoDays = Number(d.usoDays); return renderUso(); }
   if (d.rdays) { st.days = Number(d.rdays); st.overview = null; return renderReports(); }

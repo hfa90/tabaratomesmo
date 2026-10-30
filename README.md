@@ -241,6 +241,14 @@ As cores ficam na coluna `supermarkets.color` e podem ser ajustadas para as core
 ### 4. Publicar (GitHub Pages)
 O site já está publicado em https://hfa90.github.io/tabaratomesmo/ a partir da branch `gh-pages`. Não precisa copiar nada à mão: a cada envio para a `main`, o GitHub carimba a versão e copia a `main` para a `gh-pages` sozinho (`.github/workflows/versao.yml`). Em uns 2 minutos o rodapé do site mostra a versão nova. O arquivo `.nojekyll` já está no repositório.
 
+### 1l. Dados de apresentação e "Zerar uso do site" (outubro/2026)
+
+Rode [`supabase/atualizacoes/atualizacao-2026-10-dados-ficticios.sql`](supabase/atualizacoes/atualizacao-2026-10-dados-ficticios.sql) (já está no `schema.sql`). No admin, em **Dados de apresentação**:
+
+- **Gerar dados fictícios**: 320 clientes, cerca de 44 mil visitas, buscas e rotas, notas fiscais, listas do mês, cupons, alertas do radar e avisos de "não achei" nos últimos 90 dias, nas 5 redes. Produtos e preços são os reais. Nada inventado aparece para o consumidor (campanhas, queimas e anúncios fictícios já nascem encerrados; clientes fictícios não entram no ranking nem conseguem entrar; alertas não vão para o Telegram). As datas acompanham o dia em que você gera: gere de novo na véspera de uma apresentação.
+- **Apagar só os fictícios**: tira o que foi inventado e deixa o uso real.
+- **Zerar uso do site** (pede para digitar ZERAR): apaga todo o uso, fictício e real. Ficam produtos, preços, supermercados, lojas, contas, acessos, Telegram ligado e configurações.
+
 ## Rodar localmente
 ```bash
 python -m http.server 8080

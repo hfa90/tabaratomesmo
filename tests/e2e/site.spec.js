@@ -127,6 +127,25 @@ test('administração (demonstração): uso do site e saúde do banco', async ({
   expect(errs).toEqual([]);
 });
 
+test('administração (demonstração): gerar e apagar dados fictícios, zerar com confirmação', async ({ page }) => {
+  const errs = await open(page, '/admin.html');
+  await page.locator('[data-demo]').click({ timeout: 15_000 });
+  await page.goto('/admin.html#apresentacao');
+  await expect(page.locator('#apr')).toContainText('Sem dados fictícios agora', { timeout: 15_000 });
+  await page.locator('[data-fic-seed]').click();
+  await expect(page.locator('#apr')).toContainText('Os dados fictícios estão no ar', { timeout: 15_000 });
+  page.once('dialog', (d) => d.accept());
+  await page.locator('[data-fic-clear]').click();
+  await expect(page.locator('#apr')).toContainText('Sem dados fictícios agora');
+  page.once('dialog', (d) => d.accept('errado'));
+  await page.locator('[data-fic-reset]').click();
+  await expect(page.locator('.toast').last()).toContainText('Digite ZERAR');
+  page.once('dialog', (d) => d.accept('zerar'));
+  await page.locator('[data-fic-reset]').click();
+  await expect(page.locator('.toast').last()).toContainText('Uso do site zerado');
+  expect(errs).toEqual([]);
+});
+
 test('o service worker guarda só arquivos que existem', async () => {
   const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
   const list = JSON.parse(sw.match(/const SHELL = (\[[\s\S]*?\]);/)[1].replace(/'/g, '"'));

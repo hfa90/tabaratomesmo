@@ -50,6 +50,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-publicidade.sql
       - name: Testes do dono do mercado (resumo, radar, faltas, lojas)
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-dono.sql
+      - name: Testes dos dados fictícios e do zerar uso
+        run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-ficticios.sql
 
   site:
     runs-on: ubuntu-latest
