@@ -682,6 +682,19 @@ export async function myReceipts() {
   return data || [];
 }
 
+// ---------------------------------------------------------------- Cofrinho (pontos, bônus e troca por descontos)
+const COFRE_UPD = /my_cofrinho|receipt_rewards|reward_redeem|reward_cancel|PGRST202|does not exist/i;
+async function rpcC(name, args = {}) {
+  const c = await client();
+  const { data, error } = await c.rpc(name, args);
+  if (error) { if (COFRE_UPD.test(`${error.message} ${error.code}`) && /my_cofrinho|receipt_rewards/.test(name)) return null; throw new Error(error.message); }
+  return data;
+}
+export const myCofrinho = () => rpcC('my_cofrinho');
+export const receiptRewards = (id) => rpcC('receipt_rewards', { p_receipt: id });
+export const redeemReward = (id) => rpcC('reward_redeem', { p_reward: id });
+export const cancelReward = (id) => rpcC('reward_cancel', { p_id: id });
+
 /** preço da prateleira com a foto lida pela IA como prova */
 export async function reportPriceWithPhoto(row) {
   if (MODE === 'demo') return reportPrice(row);

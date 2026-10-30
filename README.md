@@ -249,6 +249,15 @@ Rode [`supabase/atualizacoes/atualizacao-2026-10-dados-ficticios.sql`](supabase/
 - **Apagar só os fictícios**: tira o que foi inventado e deixa o uso real.
 - **Zerar uso do site** (pede para digitar ZERAR): apaga todo o uso, fictício e real. Ficam produtos, preços, supermercados, lojas, contas, acessos, Telegram ligado e configurações.
 
+### 1m. Cofrinho: o que o cliente ganha a cada nota (outubro/2026)
+
+Rode [`supabase/atualizacoes/atualizacao-2026-10-cofrinho.sql`](supabase/atualizacoes/atualizacao-2026-10-cofrinho.sql) (já está no `schema.sql`). Tudo é garantido, sem sorteio (sorteio e vale-brinde precisam de autorização pela Lei 5.768/71):
+
+- **Em Minhas notas**, o cliente vê o Cofrinho: pontos para trocar, nível (Bronze, Prata, Ouro, Diamante), semanas seguidas com nota, quanto economizou no mês e os 3 desafios da semana.
+- **Logo depois de mandar a nota**: quanto economizou naquela compra (comparado com a média dos outros mercados hoje), os bônus ganhos (+10 primeira nota do dia, +10 a +50 por semanas seguidas, +20/+30 por desafio) e quanto falta para a próxima troca.
+- **Troca de pontos**: cada supermercado cadastra no portal, em **Recompensas**, os descontos que oferece e paga (ex.: R$ 5 em compras acima de R$ 100 por 600 pontos). O cliente recebe um código; o caixa valida no portal ou o código é dado como usado quando a nota daquele mercado chega.
+- Liga e desliga em admin › Configurações › "Cofrinho: bônus e troca de pontos".
+
 ## Rodar localmente
 ```bash
 python -m http.server 8080

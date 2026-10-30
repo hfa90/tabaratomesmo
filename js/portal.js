@@ -14,6 +14,7 @@ import * as mapa from './admin-mapa.js';
 import * as marca from './marca.js';
 import * as vendas from './portal-vendas.js';
 import * as cubra from './portal-cubra.js';
+import * as recompensas from './portal-recompensas.js';
 import * as demanda from './portal-demanda.js';
 import * as queima from './portal-queima.js';
 import * as dono from './portal-dono.js';
@@ -178,9 +179,9 @@ const ctx = () => ({ main: $('#ptMain'), mid: st.mid, market: () => withBrand(ma
 function route() {
   if (!st.mid) return;
   const v = (location.hash || '#painel').slice(1);
-  const view = ['painel', 'resumo', 'radar', 'pagina', 'faltas', 'lojas', 'vendas', 'cubra', 'demanda', 'queima', 'clientes', 'campanhas', 'datas', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte', 'unidades'].includes(v) ? v : 'painel';
+  const view = ['painel', 'resumo', 'radar', 'pagina', 'faltas', 'lojas', 'vendas', 'cubra', 'recompensas', 'demanda', 'queima', 'clientes', 'campanhas', 'datas', 'produtos', 'promocoes', 'importar', 'publicidade', 'descontos', 'encarte', 'unidades'].includes(v) ? v : 'painel';
   $$('[data-pt]').forEach((a) => a.classList.toggle('is-active', a.dataset.pt === view));
-  ({ painel: renderDashboard, resumo: () => dono.renderResumo(ctx()), radar: () => dono.renderRadar(ctx()), pagina: () => dono.renderPagina(ctx()), faltas: () => dono.renderFaltas(ctx()), lojas: () => dono.renderLojas(ctx()), vendas: () => vendas.render(ctx()), cubra: () => cubra.render(ctx()), demanda: () => demanda.render(ctx()), queima: () => queima.render(ctx()), clientes: () => clientes.render(ctx()), campanhas: () => campanhas.render(ctx()), datas: () => especiais.render(ctx()), produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte, unidades: renderUnidades })[view]();
+  ({ painel: renderDashboard, resumo: () => dono.renderResumo(ctx()), radar: () => dono.renderRadar(ctx()), pagina: () => dono.renderPagina(ctx()), faltas: () => dono.renderFaltas(ctx()), lojas: () => dono.renderLojas(ctx()), vendas: () => vendas.render(ctx()), cubra: () => cubra.render(ctx()), recompensas: () => recompensas.render(ctx()), demanda: () => demanda.render(ctx()), queima: () => queima.render(ctx()), clientes: () => clientes.render(ctx()), campanhas: () => campanhas.render(ctx()), datas: () => especiais.render(ctx()), produtos: renderProducts, promocoes: renderPromos, importar: renderImport, publicidade: renderAds, descontos: renderDeals, encarte: renderEncarte, unidades: renderUnidades })[view]();
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);

@@ -11,6 +11,7 @@ import * as scanner from './scanner.js';
 import { findByEan, validEan } from './scanner.js';
 import * as ia from './ia.js';
 import { track } from './track.js';
+import * as cofrinho from './cofrinho.js';
 
 const KEY = 'tb.receipts';
 const body = () => $('#toolBody');
@@ -291,10 +292,12 @@ function done(sv) {
       ${sv.coupon_used ? `<li>${ic('ticket')} <span>Seu cupom <b>${esc(sv.coupon_used.code)}</b> (${brl(Number(sv.coupon_used.value))}) foi comprovado por esta nota</span></li>` : ''}
       <li>${ic('chart')} <span>A compra entrou no seu <b>controle de gastos</b></span></li>
     </ul>
+    <div id="notaRewards" class="nota-rw" aria-live="polite"></div>
     <div class="tool__actions"><a class="btn btn--primary btn--xl" href="#notas" data-close>Ver minhas notas</a>
       <button class="btn btn--ghost btn--block" data-nota="qr">${ic('receipt')} Mandar outra nota</button></div>
   </div></div>`);
   hooks.afterContribution?.();
+  if (!sv.foto) cofrinho.celebrate(sv, { ...cur, sent: { points: sv.points || 0 } });
   if (location.hash === '#notas') render();
 }
 
@@ -364,10 +367,13 @@ export function render() {
     <button class="notas-btn" data-nota="link"><span aria-hidden="true">${ic('link')}</span><b>Colar o link</b><small>Do QR lido em outro app</small></button>
   </section>
 
+  ${cofrinho.panel()}
+
   <details class="more">
   <summary>O que você ganha com cada nota ${ic('down')}</summary>
   <section class="notas-why" aria-label="O que você ganha">
-    <div><span aria-hidden="true">${ic('star')}</span><b>20 a 150 pontos</b><small>por nota, mais se os preços estavam velhos</small></div>
+    <div><span aria-hidden="true">${ic('star')}</span><b>20 a 150 pontos</b><small>por nota, o dobro em mercado parceiro, mais bônus do dia, da semana e dos desafios</small></div>
+    <div><span aria-hidden="true">${ic('ticket')}</span><b>Descontos nos mercados</b><small>troque os pontos do cofrinho por desconto no caixa</small></div>
     <div><span aria-hidden="true">${ic('unlock')}</span><b>+10 comparações</b><small>a cada nota, para quem tem cadastro rápido</small></div>
     <div><span aria-hidden="true">${ic('chart')}</span><b>Gastos organizados</b><small>por mês, mercado e categoria, sem digitar nada</small></div>
     <div><span aria-hidden="true">${ic('coins')}</span><b>Onde sairia mais barato</b><small>e aviso dos produtos que você compra sempre</small></div>

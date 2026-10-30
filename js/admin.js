@@ -741,6 +741,7 @@ async function renderConfig() {
     ['receipts_enabled', 'Usuários podem enviar notas fiscais', 'Página “Minhas notas”: a nota é lida na Sefaz e os preços entram com a data e o mercado certos.'],
     ['push_enabled', 'Avisos no celular com o site fechado', 'Preço que baixou, lista da família e avisos dos mercados (8h às 21h, no máximo 3 por dia). Precisa da função "notificar" publicada.'],
     ['campaigns_enabled', 'Campanhas dos supermercados', 'Janela, aviso e vitrine que os mercados criam no portal.'],
+    ['rewards_enabled', 'Cofrinho: bônus e troca de pontos', 'Bônus por nota (dia, semana, desafios) e troca de pontos pelas recompensas que os supermercados oferecem. Desligado: os pontos continuam guardados, mas não há bônus novos nem trocas.'],
     ['ia_enabled', 'Leitor com IA', 'Importar encarte por foto/PDF, Foto do preço na prateleira e nota fiscal por foto. Precisa da chave ANTHROPIC_API_KEY na função leitor-ia.'],
   ];
   $('#cfg').innerHTML = `

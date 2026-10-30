@@ -644,3 +644,13 @@ body.is-branded .pt-nav { background: color-mix(in srgb, var(--bg) 92%, var(--br
 .apr-danger p { margin: 0 0 8px; max-width: 80ch; }
 @media (max-width: 720px) { .apr-hero { grid-template-columns: 1fr; } }
 .apr-danger .btn { justify-self: start; }
+
+/* portal › recompensas */
+.rw-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.rw-list li { display: grid; grid-template-columns: 70px 1fr auto; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-md); }
+.rw-list li.is-off { opacity: .6; }
+.rw-v { font: 700 1.1rem var(--display); color: var(--brand); background: var(--brand-soft); border-radius: 10px; padding: 10px 0; text-align: center; white-space: nowrap; }
+.rw-t small, .rw-prev small { display: block; color: var(--muted); font-size: .8rem; }
+.rw-empty { display: grid; gap: 10px; justify-items: start; }
+.rw-empty p { margin: 0; }
+.rw-prev { display: grid; grid-template-columns: 70px 1fr; gap: 12px; align-items: center; padding: 10px; border-radius: var(--r-md); border: 1.5px solid var(--brand-2); background: var(--surface); }

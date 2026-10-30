@@ -2433,3 +2433,83 @@ html.big .tabbar a span:not(.tab-mic__b) { font-size: 12.5px; white-space: nowra
 .falta-list label > span { display: grid; }
 .radios.falta-list { display: grid; gap: 8px; margin: 12px 0; }
 .radios.falta-list label { height: auto !important; padding: 10px 12px; border-radius: 12px; }
+
+/* ---------------------------------------------------------------- Cofrinho (Minhas notas) */
+.cofre { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px; margin: 0 0 16px; display: grid; gap: 14px;
+  background-image: radial-gradient(120% 90% at 100% 0%, var(--tag-soft) 0%, transparent 55%); }
+.cofre__head { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
+.cofre__pig { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--tag); color: var(--tag-ink); }
+.cofre__pig svg { width: 28px; height: 28px; }
+.cofre__head small { display: block; font-size: .78rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.cofre__pts { font: 700 1.8rem/1.05 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.cofre__pts i { font: 600 .9rem var(--body); color: var(--muted); font-style: normal; }
+.cofre__t { font-weight: 700; line-height: 1.25; }
+.cofre__lvl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; }
+.cofre__lvl small { grid-column: 2; color: var(--muted); font-size: .78rem; }
+.lvl { grid-row: span 2; display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: .82rem; padding: 5px 10px; border-radius: 99px; background: #F3E2D3; color: #7A4520; }
+.lvl svg { width: 15px; height: 15px; }
+.lvl--prata { background: #E7EAEE; color: #3F4A57; }
+.lvl--ouro { background: #FFF0C2; color: #7A5600; }
+.lvl--diamante { background: #DDF3FA; color: #0E5B73; }
+.cofre__bar { display: block; height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.cofre__bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--brand-2), var(--brand)); border-radius: inherit; animation: grow .6s ease-out both; transform-origin: left; }
+.cofre__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.cofre__stats > div { background: var(--surface-2); border-radius: var(--r-md); padding: 10px; display: grid; gap: 2px; }
+.cofre__stats span { color: var(--brand); } .cofre__stats span svg { width: 18px; height: 18px; }
+.cofre__stats b { font: 700 1.05rem var(--display); font-variant-numeric: tabular-nums; }
+.cofre__stats small { color: var(--muted); font-size: .74rem; line-height: 1.2; }
+.cofre__sec h3 { font: 700 .95rem var(--body); margin: 0 0 8px; display: flex; gap: 8px; align-items: baseline; }
+.cofre__sec h3 small { color: var(--muted); font-weight: 500; font-size: .76rem; }
+.cofre__ms { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cofre__ms li { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; }
+.ms__ic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: .74rem; font-weight: 700; background: var(--surface-2); color: var(--ink-2); }
+.cofre__ms li.is-done .ms__ic { background: var(--down); color: #fff; }
+.ms__ic svg { width: 18px; height: 18px; }
+.ms__t { display: grid; gap: 5px; } .ms__t b { font-size: .88rem; font-weight: 600; }
+.ms__bar { height: 5px; border-radius: 99px; background: var(--surface-2); overflow: hidden; } .ms__bar i { display: block; height: 100%; background: var(--brand-2); }
+.cofre__ms em { font-style: normal; font-weight: 700; color: var(--brand); font-size: .88rem; }
+.cofre__ms li.is-done em { color: var(--down); }
+.cofre__codes { display: grid; gap: 8px; }
+.code-chip { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; text-align: left; padding: 10px 12px; border-radius: var(--r-md);
+  border: 1.5px dashed var(--brand-2); background: var(--brand-soft); color: var(--ink); font: inherit; cursor: pointer; }
+.code-chip svg { width: 20px; height: 20px; color: var(--brand); }
+.code-chip small { display: block; color: var(--muted); font-size: .76rem; }
+.code-chip code { font: 700 .95rem ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; color: var(--brand); }
+.cofre > .btn--text { justify-self: start; }
+.cofre-cat__bal { margin: 0 0 12px; } .cofre-cat__bal b { color: var(--brand); }
+.cat-m h3 { display: flex; gap: 8px; align-items: center; font: 700 1rem var(--body); margin: 14px 0 8px; }
+.cat-m ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.cat-r { display: grid; grid-template-columns: 70px 1fr auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.cat-r.is-ok { border-color: var(--brand-2); box-shadow: 0 0 0 1px var(--brand-2) inset; }
+.cat-r__v { font: 700 1.05rem var(--display); white-space: nowrap; color: var(--brand); text-align: center; background: var(--brand-soft); border-radius: 10px; padding: 10px 0; }
+.cat-r__t small { display: block; color: var(--muted); font-size: .76rem; }
+.cat-r__need { text-align: right; } .cat-r__need b { display: block; } .cat-r__need small { color: var(--muted); font-size: .74rem; }
+.big-code { font: 800 clamp(2rem, 9vw, 2.6rem) ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-align: center; padding: 20px 10px; margin: 12px 0;
+  border: 2px dashed var(--brand); border-radius: var(--r-lg); background: var(--brand-soft); color: var(--brand); }
+.cofre-steps { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 6px; color: var(--ink-2); font-size: .9rem; }
+.cofre-ext { list-style: none; padding: 0; margin: 0 0 12px; }
+.cofre-ext li { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.cofre-ext small { display: block; color: var(--muted); font-size: .76rem; }
+.cofre-ext em { font-style: normal; font-weight: 700; color: var(--down); font-variant-numeric: tabular-nums; } .cofre-ext em.is-neg { color: var(--up); }
+.cofre-how { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 8px; }
+.cofre-how li { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: baseline; padding: 10px; border-radius: var(--r-md); background: var(--surface-2); }
+.cofre-how b { color: var(--brand); }
+/* comemoração depois da nota */
+.nota-rw { display: grid; gap: 10px; margin: 12px 0 4px; }
+.nota-rw:empty { display: none; }
+.rw-save { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; padding: 14px; border-radius: var(--r-md); background: var(--brand); color: #fff; animation: rise .4s ease-out both; }
+.rw-save > span { width: 44px; height: 44px; border-radius: 50%; background: var(--tag); color: var(--tag-ink); display: grid; place-items: center; }
+.rw-save small { display: block; font-size: .78rem; opacity: .9; }
+.rw-save b { font: 700 1.8rem/1.1 var(--display); letter-spacing: -.02em; }
+.rw-bonus { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.rw-bonus li { background: var(--tag-soft); color: var(--tag-ink); border-radius: 99px; padding: 6px 12px; font-size: .84rem; animation: rise .4s ease-out both; }
+.rw-bonus li:nth-child(2) { animation-delay: .12s; } .rw-bonus li:nth-child(3) { animation-delay: .24s; } .rw-bonus li:nth-child(4) { animation-delay: .36s; }
+.rw-row { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: .9rem; color: var(--ink-2); }
+.rw-row span { display: inline-flex; gap: 6px; align-items: center; } .rw-row svg { width: 18px; height: 18px; color: var(--brand); }
+.rw-next, .rw-used { margin: 0; font-size: .9rem; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); }
+.rw-ms summary { cursor: pointer; font-weight: 600; font-size: .9rem; margin-bottom: 8px; }
+@media (max-width: 359px) { .cofre__stats { grid-template-columns: 1fr 1fr; } .cofre__stats > div:last-child { grid-column: span 2; } }
+:root[data-theme="dark"] .lvl { background: #4A3324; color: #F3D2B8; }
+:root[data-theme="dark"] .lvl--prata { background: #3A424C; color: #DCE2E9; }
+:root[data-theme="dark"] .lvl--ouro { background: #4D3E10; color: #FFE08A; }
+:root[data-theme="dark"] .lvl--diamante { background: #123E4B; color: #A9E6F7; }

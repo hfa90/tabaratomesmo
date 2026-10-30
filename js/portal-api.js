@@ -790,3 +790,64 @@ export async function storesCompare(mid) {
       bairros: [s.neighborhood || 'Centro', 'Aleixo', 'Parque 10', 'Adrianópolis'].map((b, j) => ({ name: b, n: Math.round((5 - j) * (8 + R() * 10)) })) }; })
     .sort((a, b) => b.visits + b.receipts - (a.visits + a.receipts));
 }
+
+// ================================================================ RECOMPENSAS (troca de pontos do Cofrinho)
+const COFRE_UPD = 'Falta a administração atualizar o banco (supabase/atualizacoes/atualizacao-2026-10-cofrinho.sql).';
+async function rpcR(fn, args) {
+  const c = await api.sbClient();
+  const { data, error } = await c.rpc(fn, args);
+  if (error) { const e = new Error(isMissingFn(error) ? COFRE_UPD : error.message); e.code = isMissingFn(error) ? 'sem_funcao' : error.code; throw e; }
+  return data;
+}
+function demoRewards(d, mid) {
+  d.rewards ||= {};
+  if (!d.rewards[mid]) {
+    const R = seeded(mid * 17); const now = Date.now();
+    const base = [{ id: 1, title: 'R$ 5 de desconto no rancho', value: 5, min_spend: 100, cost_points: 600, valid_days: 7, monthly_stock: 200, active: true },
+      { id: 2, title: 'R$ 15 de desconto no rancho', value: 15, min_spend: 250, cost_points: 1500, valid_days: 7, monthly_stock: 80, active: true }];
+    const red = Array.from({ length: 22 }, (_, i) => {
+      const w = base[i % 3 === 2 ? 1 : 0]; const r = R(); const st = r < 0.6 ? 'usado' : r < 0.9 ? 'ativo' : 'cancelado';
+      const at = now - Math.floor(R() * 26) * 864e5;
+      return { id: 500 + i, reward_id: w.id, title: w.title, value: w.value, created_at: new Date(at).toISOString(), expires_at: new Date(at + 8 * 864e5).toISOString(),
+        status: st, used_at: st === 'usado' ? new Date(Math.min(now, at + 2 * 864e5)).toISOString() : null, used_via: st === 'usado' ? (i % 2 ? 'nota' : 'caixa') : null,
+        receipt_total: st === 'usado' ? Math.round(w.min_spend * (1.1 + R() * 1.3) * 100) / 100 : null, code: 'TB' + (7340 + i * 53).toString(36).toUpperCase().padStart(6, 'K') };
+    });
+    d.rewards[mid] = { list: base, red, next: 3 };
+  }
+  return d.rewards[mid];
+}
+export async function rewardsList(mid) {
+  if (MODE !== 'demo') return rpcR('market_rewards_list', { p_market: mid });
+  const d = demoState(); const s = demoRewards(d, mid); saveDemo(d);
+  const ms = new Date(); ms.setDate(1); ms.setHours(0, 0, 0, 0);
+  const red = s.red.map((x) => ({ ...x, status: x.status === 'ativo' && new Date(x.expires_at) < Date.now() ? 'vencido' : x.status }));
+  const inM = red.filter((x) => new Date(x.created_at) >= ms);
+  const rewards = s.list.map((w) => ({ ...w, month_redeemed: inM.filter((x) => x.reward_id === w.id && x.status !== 'cancelado').length,
+    redeemed: red.filter((x) => x.reward_id === w.id && x.status !== 'cancelado').length, used: red.filter((x) => x.reward_id === w.id && x.status === 'usado').length }));
+  return { enabled: true, partner: true, demo: true, rewards,
+    month: { redeemed: inM.filter((x) => x.status !== 'cancelado').length, used: inM.filter((x) => x.status === 'usado').length, active: inM.filter((x) => x.status === 'ativo').length,
+      cost: inM.filter((x) => x.status === 'usado').reduce((a, x) => a + x.value, 0), receipts_value: inM.filter((x) => x.status === 'usado').reduce((a, x) => a + (x.receipt_total || 0), 0),
+      people: Math.max(0, Math.round(inM.filter((x) => x.status !== 'cancelado').length * 0.85)) },
+    recent: red.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 30) };
+}
+export async function rewardSave(mid, p) {
+  if (MODE !== 'demo') return rpcR('market_reward_save', { p_market: mid, p });
+  const d = demoState(); const s = demoRewards(d, mid);
+  if (!p.title || p.title.trim().length < 3) throw new Error('Dê um nome para a recompensa.');
+  const row = { title: p.title.trim().slice(0, 60), value: Number(p.value), min_spend: Number(p.min_spend || 0), cost_points: Number(p.cost_points), valid_days: Number(p.valid_days || 7),
+    monthly_stock: p.monthly_stock ? Number(p.monthly_stock) : null, active: p.active !== false };
+  if (p.id) Object.assign(s.list.find((w) => w.id === Number(p.id)) || {}, row); else s.list.push({ id: s.next++, ...row });
+  saveDemo(d); return row;
+}
+export async function rewardCheck(mid, code, total) {
+  if (MODE !== 'demo') return rpcR('market_reward_check', { p_market: mid, p_code: code, p_total: total ?? null });
+  const d = demoState(); const s = demoRewards(d, mid); const x = s.red.find((r) => r.code === String(code).replace(/\s/g, '').toUpperCase());
+  if (!x) throw new Error('Código não encontrado para esta rede.');
+  if (x.status === 'usado') throw new Error('Este código já foi usado.');
+  if (x.status === 'cancelado') throw new Error('O cliente cancelou este código.');
+  if (new Date(x.expires_at) < Date.now()) throw new Error('Este código venceu.');
+  const w = s.list.find((r) => r.id === x.reward_id);
+  if (total != null && w && total < w.min_spend) throw new Error(`A compra mínima para este código é de ${w.min_spend.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`);
+  Object.assign(x, { status: 'usado', used_at: new Date().toISOString(), used_via: 'caixa', receipt_total: total ?? null }); saveDemo(d);
+  return { title: x.title, value: x.value, min_spend: w?.min_spend || 0 };
+}

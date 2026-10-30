@@ -52,6 +52,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-dono.sql
       - name: Testes dos dados fictícios e do zerar uso
         run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-ficticios.sql
+      - name: Testes do Cofrinho (bônus da nota e troca de pontos)
+        run: psql -v ON_ERROR_STOP=1 -f tests/sql/testes-cofrinho.sql
 
   site:
     runs-on: ubuntu-latest

@@ -146,6 +146,54 @@ test('administração (demonstração): gerar e apagar dados fictícios, zerar c
   expect(errs).toEqual([]);
 });
 
+test('Cofrinho: nota enviada mostra economia e bônus; pontos viram código de desconto', async ({ page }) => {
+  await page.goto('/privacidade.html');
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('tb.seenHome', '1'); });
+  const errs = await open(page, '/#notas');
+  await expect(page.locator('#cofre .cofre__pts')).toBeVisible({ timeout: 15_000 });
+  await page.click('[data-nota="qr"]');
+  await page.click('[data-scan="demo"]');
+  await page.click('[data-nota="send"]');
+  await expect(page.locator('#notaRewards')).toContainText('Primeira nota do dia', { timeout: 10_000 });
+  await expect(page.locator('#notaRewards')).toContainText('pontos no cofrinho');
+  // com pontos suficientes, troca por um código
+  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('tb.demoCofre')); s.ledger.unshift({ delta: 300, kind: 'ajuste', ref: 't', note: 'teste', at: new Date().toISOString() }); localStorage.setItem('tb.demoCofre', JSON.stringify(s)); });
+  await page.goto('/privacidade.html'); await page.goto('/#notas');
+  await page.locator('[data-cofre="trocar"]').click();
+  await page.locator('[data-cofre-redeem]').first().click();
+  await expect(page.locator('.big-code')).toBeVisible();
+  await page.locator('#toolSheet [data-close].btn').click();
+  await expect(page.locator('#cofre .code-chip')).toBeVisible();
+  page.once('dialog', (d) => d.accept());
+  await page.locator('#cofre .code-chip').click();
+  await page.locator('[data-cofre-cancel]').click();
+  await expect(page.locator('#cofre .code-chip')).toHaveCount(0);
+  expect(errs).toEqual([]);
+});
+
+test('portal: recompensas, criar e validar código no caixa', async ({ page }) => {
+  const errs = await open(page, '/parceiros.html');
+  await page.click('[data-demo]');
+  await page.goto('/parceiros.html#recompensas');
+  await expect(page.locator('.rw-list li').first()).toBeVisible({ timeout: 15_000 });
+  await page.locator('.pt-head [data-rw-new]').click();
+  const f = page.locator('#rwForm');
+  await f.locator('[name=title]').fill('R$ 2 no café da manhã');
+  await f.locator('[name=value]').fill('2,00');
+  await f.locator('[name=min_spend]').fill('30,00');
+  await f.locator('[name=cost_points]').fill('200');
+  await f.locator('.btn--primary').click();
+  await expect(page.locator('.rw-list')).toContainText('R$ 2 no café da manhã');
+  const code = await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('tb.portalDemo')); const r = Object.values(d.rewards)[0].red.find((x) => x.status === 'ativo' && new Date(x.expires_at) > Date.now()); return r?.code; });
+  if (code) {
+    await page.fill('#rwCheck [name=code]', code);
+    await page.fill('#rwCheck [name=total]', '400,00');
+    await page.locator('#rwCheck .btn--primary').click();
+    await expect(page.locator('#rwCheckOut')).toContainText('Código válido');
+  }
+  expect(errs).toEqual([]);
+});
+
 test('o service worker guarda só arquivos que existem', async () => {
   const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
   const list = JSON.parse(sw.match(/const SHELL = (\[[\s\S]*?\]);/)[1].replace(/'/g, '"'));

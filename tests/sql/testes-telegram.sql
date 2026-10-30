@@ -68,8 +68,10 @@ insert into tg_contacts (chat_id, user_id, linked_at) values (7001, 'cccccccc-00
 insert into favorites (user_id, product_id)
   select 'cccccccc-0000-0000-0000-000000000001', id from v_products where min_price > 2 order by id limit 5;
 do $$
-declare dia timestamptz := (current_date + time '15:00') at time zone 'America/Manaus';   -- 15h em Manaus
-        noite timestamptz := (current_date + time '22:30') at time zone 'America/Manaus';
+declare -- as últimas 15h de Manaus que já passaram (horário no futuro deixa os preços novos "mais velhos" que o aviso)
+        dia timestamptz := ((now() at time zone 'America/Manaus')::date + time '15:00') at time zone 'America/Manaus'
+                           - case when now() < ((now() at time zone 'America/Manaus')::date + time '15:00') at time zone 'America/Manaus' then interval '1 day' else interval '0' end;
+        noite timestamptz := dia - interval '16 hours 30 minutes';   -- 22h30 da véspera
         o jsonb; p record;
 begin
   o := public.tg_alerts_collect(300, dia);
@@ -79,7 +81,7 @@ begin
   -- um produto baixa 10% no mercado mais barato
   select v.id, v.min_price, (v.prices->0->>'market_id')::smallint mid into p from v_products v
    where v.id in (select product_id from favorites where user_id = 'cccccccc-0000-0000-0000-000000000001') order by v.id limit 1;
-  insert into prices (product_id, supermarket_id, price, source) values (p.id, p.mid, round(p.min_price * 0.9, 2), 'teste');
+  insert into prices (product_id, supermarket_id, price, source, collected_at) values (p.id, p.mid, round(p.min_price * 0.9, 2), 'teste', clock_timestamp());
   o := public.tg_alerts_collect(300, noite);
   assert jsonb_array_length(o) = 0, 'à noite não avisa';
   o := public.tg_alerts_collect(300, dia);
@@ -90,13 +92,13 @@ begin
   assert jsonb_array_length(o) = 0, 'não repete o mesmo aviso';
 
   -- mudança pequena (1%) não avisa
-  insert into prices (product_id, supermarket_id, price, source) values (p.id, p.mid, round(p.min_price * 0.9 * 1.01, 2), 'teste');
+  insert into prices (product_id, supermarket_id, price, source, collected_at) values (p.id, p.mid, round(p.min_price * 0.9 * 1.01, 2), 'teste', clock_timestamp());
   o := public.tg_alerts_collect(300, dia);
   assert jsonb_array_length(o) = 0, 'mudança pequena não avisa';
 
   -- subiu bastante em todos os mercados: avisa também
-  insert into prices (product_id, supermarket_id, price, source)
-    select p.id, (x->>'market_id')::smallint, round((x->>'price')::numeric * 1.3, 2), 'teste'
+  insert into prices (product_id, supermarket_id, price, source, collected_at)
+    select p.id, (x->>'market_id')::smallint, round((x->>'price')::numeric * 1.3, 2), 'teste', clock_timestamp()
       from v_products v, jsonb_array_elements(v.prices) x where v.id = p.id;
   o := public.tg_alerts_collect(300, dia);
   assert jsonb_array_length(o) = 1 and (o->0->>'to')::numeric > (o->0->>'from')::numeric, 'avisa o que subiu';
@@ -104,7 +106,7 @@ begin
   -- os 4 outros mudam ao mesmo tempo: no máximo 3 por vez, o resto fica para a próxima
   for p in select v.id, v.min_price, (v.prices->0->>'market_id')::smallint mid from v_products v
             where v.id in (select product_id from favorites where user_id = 'cccccccc-0000-0000-0000-000000000001') order by v.id offset 1 loop
-    insert into prices (product_id, supermarket_id, price, source) values (p.id, p.mid, round(p.min_price * 0.8, 2), 'teste');
+    insert into prices (product_id, supermarket_id, price, source, collected_at) values (p.id, p.mid, round(p.min_price * 0.8, 2), 'teste', clock_timestamp());
   end loop;
   o := public.tg_alerts_collect(300, dia);
   assert jsonb_array_length(o) = 3, 'no máximo 3 por vez: ' || jsonb_array_length(o);
@@ -115,8 +117,8 @@ begin
 
   -- pausado: não avisa
   update tg_contacts set alerts = false, alerts_day = null where chat_id = 7001;
-  insert into prices (product_id, supermarket_id, price, source)
-    select v.id, (v.prices->0->>'market_id')::smallint, round(v.min_price * 0.5, 2), 'teste' from v_products v
+  insert into prices (product_id, supermarket_id, price, source, collected_at)
+    select v.id, (v.prices->0->>'market_id')::smallint, round(v.min_price * 0.5, 2), 'teste', clock_timestamp() from v_products v
      where v.id in (select product_id from favorites where user_id = 'cccccccc-0000-0000-0000-000000000001');
   o := public.tg_alerts_collect(300, dia);
   assert jsonb_array_length(o) = 0, 'avisos pausados';
