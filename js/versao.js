@@ -2,7 +2,7 @@
 // O número é carimbado sozinho pelo GitHub a cada envio para o main (.github/workflows/versao.yml):
 //   1.<nº do envio>.<AAMMDD>.<HHMM>  (horário de Manaus)
 // Rodando local (sem o carimbo), aparece "dev".
-export const VERSAO = { versao: '1.10.261030.0002', data: '2026-10-30T00:02:20-04:00', commit: 'eb735cdca70bda2cd5054696e0ef96bc5f91d1e0' };
+export const VERSAO = { versao: '1.11.261030.0003', data: '2026-10-30T00:03:34-04:00', commit: '7ab785f40f0b3ce47fd898ada0ea48a2e3b131db' };
 
 const fmt = (iso) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/Manaus' });
 
